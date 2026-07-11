@@ -176,13 +176,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "archetypes"
-version = "0.1.0"
-dependencies = [
- "bevy",
-]
-
-[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2288,6 +2281,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3051,6 +3051,10 @@ checksum = "ff7f53bdf698e7aa7ec916411bbdc8078135da11b66db5182675b2227f6c0d07"
 dependencies = [
  "bitflags 2.13.0",
 ]
+
+[[package]]
+name = "launcher"
+version = "0.1.0"
 
 [[package]]
 name = "lazy_static"

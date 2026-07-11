@@ -1,0 +1,15 @@
+{
+  "winget_packages": [
+    {
+      "id": "Ollama.Ollama",
+      "name": "Ollama",
+      "required": true
+    }
+  ],
+  "ollama_models": [
+    {
+      "name": "qwen2.5:7b-instruct",
+      "required": true
+    }
+  ]
+}
