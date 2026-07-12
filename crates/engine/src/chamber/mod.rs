@@ -1,16 +1,23 @@
 use bevy::prelude::*;
 
 pub mod camera;
+pub mod interior;
 pub mod merkaba;
 pub mod portal;
+pub mod ritual;
 pub mod spheres;
 
 #[derive(States, Default, Debug, Clone, Eq, PartialEq, Hash)]
 pub enum ChamberState {
     #[default]
+    Onboarding,
     IdleAtTable,
     Deliberating,
     FocusArchetype,
+    ArchitectInterior,
+    WitnessVerdict,
+    ArtifactPending,
+    ArtifactResult,
 }
 
 use crate::theme::Archetype;
@@ -30,6 +37,8 @@ impl Plugin for CouncilChamberPlugin {
                 merkaba::MerkabaPlugin,
                 spheres::SpheresPlugin,
                 portal::PortalPlugin,
+                interior::InteriorPlugin,
+                ritual::RitualPlugin,
             ));
     }
 }

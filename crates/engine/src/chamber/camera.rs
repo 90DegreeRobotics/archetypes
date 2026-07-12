@@ -46,8 +46,13 @@ fn handle_camera_transitions(
 
     let approach = match state.get() {
         ChamberState::IdleAtTable => 1.0,
+        ChamberState::Onboarding => 1.0,
         ChamberState::Deliberating => 0.82,
-        ChamberState::FocusArchetype => 0.68,
+        ChamberState::FocusArchetype
+        | ChamberState::ArchitectInterior
+        | ChamberState::WitnessVerdict
+        | ChamberState::ArtifactPending
+        | ChamberState::ArtifactResult => 0.68,
     };
     let target = witness_camera.authored.translation * approach;
     transform.translation = transform

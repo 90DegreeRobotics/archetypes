@@ -7,10 +7,20 @@ use chamber::CouncilChamberPlugin;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(AssetPlugin {
-            file_path: asset_root(),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(AssetPlugin {
+                    file_path: asset_root(),
+                    ..default()
+                })
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Archetypes — Council Chamber".to_owned(),
+                        ..default()
+                    }),
+                    ..default()
+                }),
+        )
         .add_plugins(CouncilChamberPlugin)
         .run();
 }

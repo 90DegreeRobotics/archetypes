@@ -1,1 +1,4 @@
 /target
+
+# Runtime-staged Chronos renders returned into the chamber (not source assets)
+/assets/artifacts/

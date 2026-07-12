@@ -37,8 +37,18 @@ fn animate_spheres(
     mut query: Query<(&mut Transform, &ArchetypeSphere)>,
 ) {
     for (mut transform, sphere) in &mut query {
-        let is_focused = *state.get() == ChamberState::FocusArchetype
-            && current_focus.0 == Some(sphere.archetype);
+        // The focused sphere holds the sovereign center for the entire interior
+        // sequence — not just the focus gesture — so it does not drift back out
+        // the instant the player crosses into that archetype's world.
+        let holds_center = matches!(
+            state.get(),
+            ChamberState::FocusArchetype
+                | ChamberState::ArchitectInterior
+                | ChamberState::WitnessVerdict
+                | ChamberState::ArtifactPending
+                | ChamberState::ArtifactResult
+        );
+        let is_focused = holds_center && current_focus.0 == Some(sphere.archetype);
         let target = if is_focused {
             Vec3::ZERO
         } else {
