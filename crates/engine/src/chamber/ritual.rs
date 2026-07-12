@@ -10,6 +10,7 @@ use bevy::{
     input::keyboard::Key,
     prelude::*,
     render::view::window::screenshot::{save_to_disk, Screenshot},
+    window::PrimaryWindow,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -17,8 +18,9 @@ use serde_json::{json, Value};
 use super::{
     council::{CouncilStatus, CouncilTranscript},
     speech::SpeechStatus,
-    ChamberState, CurrentFocus,
+    spheres::ArchetypeSphere, ChamberState, CurrentFocus,
 };
+use crate::chamber::camera::WitnessCamera;
 
 const DIRECTOR_URL: &str = "http://127.0.0.1:7777";
 
@@ -28,14 +30,9 @@ fn comfyui_url() -> String {
     std::env::var("ARCHETYPES_COMFYUI_URL").unwrap_or_else(|_| "http://127.0.0.1:8000".to_owned())
 }
 
-fn comfyui_install_dir() -> String {
-    std::env::var("ARCHETYPES_COMFYUI_DIR")
-        .unwrap_or_else(|_| r"C:\Users\m\Documents\ComfyUI".to_owned())
-}
-
-fn comfyui_checkpoint() -> String {
-    std::env::var("ARCHETYPES_COMFYUI_CHECKPOINT")
-        .unwrap_or_else(|_| "sd_xl_base_1.0.safetensors".to_owned())
+fn comfyui_output_dir() -> String {
+    std::env::var("ARCHETYPES_COMFYUI_OUTPUT_DIR")
+        .unwrap_or_else(|_| r"C:\Users\m\Documents\ComfyUI\output".to_owned())
 }
 
 pub struct RitualPlugin;
@@ -44,11 +41,13 @@ impl Plugin for RitualPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RitualSession>()
             .init_resource::<ChronosBridge>()
+            .init_resource::<DialogueUiState>()
             .add_systems(Startup, (spawn_ritual_ui, load_witness_profile))
             .add_systems(
                 Update,
                 (
                     receive_text_input,
+                    toggle_transcript_drawer,
                     begin_chronos_request,
                     poll_chronos_result,
                     render_ritual_ui,
@@ -124,6 +123,31 @@ struct ChronosBridge {
 #[derive(Component)]
 struct RitualUi;
 
+#[derive(Component)]
+struct TranscriptDrawer;
+
+#[derive(Component)]
+struct SpeakerBubble;
+
+#[derive(Component)]
+struct SpeakerBubbleText;
+
+#[derive(Component)]
+struct RitualPrompt;
+
+#[derive(Resource)]
+struct DialogueUiState {
+    drawer_open: bool,
+    bubble_key: String,
+    bubble_age: f32,
+}
+
+impl Default for DialogueUiState {
+    fn default() -> Self {
+        Self { drawer_open: true, bubble_key: String::new(), bubble_age: 0.0 }
+    }
+}
+
 fn spawn_ritual_ui(mut commands: Commands) {
     let ui_camera = commands
         .spawn((
@@ -137,25 +161,30 @@ fn spawn_ritual_ui(mut commands: Commands) {
             Name::new("RitualUiCamera"),
         ))
         .id();
-    commands.spawn((
-        Text::new(""),
-        TextFont {
-            font_size: 27.0,
-            ..default()
-        },
-        TextColor(Color::srgb(0.93, 0.93, 0.93)),
-        Node {
-            position_type: PositionType::Absolute,
-            left: Val::Px(36.0),
-            right: Val::Px(36.0),
-            bottom: Val::Px(32.0),
-            padding: UiRect::all(Val::Px(22.0)),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.015, 0.018, 0.025, 0.88)),
-        UiTargetCamera(ui_camera),
-        RitualUi,
-    ));
+    commands.spawn((Text::new(""), TextFont { font_size: 15.0, ..default() },
+        TextColor(Color::srgb(0.82, 0.84, 0.88)), Node {
+            position_type: PositionType::Absolute, left: Val::Px(24.0), top: Val::Px(24.0),
+            width: Val::Px(340.0), max_height: Val::Percent(88.0), padding: UiRect::all(Val::Px(18.0)),
+            border: UiRect::right(Val::Px(2.0)), overflow: Overflow::clip_y(), ..default()
+        }, BackgroundColor(Color::srgba(0.018, 0.022, 0.032, 0.94)),
+        BorderColor::all(Color::srgba(0.55, 0.65, 0.9, 0.45)), UiTargetCamera(ui_camera),
+        RitualUi, TranscriptDrawer));
+    commands.spawn((Text::new(""), TextFont { font_size: 16.0, ..default() },
+        TextColor(Color::srgb(0.72, 0.75, 0.82)), Node {
+            position_type: PositionType::Absolute, right: Val::Px(22.0), bottom: Val::Px(18.0),
+            padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)), ..default()
+        }, BackgroundColor(Color::srgba(0.015, 0.018, 0.025, 0.80)), UiTargetCamera(ui_camera), RitualPrompt));
+    commands.spawn((Node { position_type: PositionType::Absolute, left: Val::Percent(57.0),
+            top: Val::Percent(20.0), width: Val::Px(360.0), padding: UiRect::all(Val::Px(16.0)),
+            border: UiRect::all(Val::Px(2.0)), ..default() },
+        BackgroundColor(Color::srgba(0.02, 0.025, 0.04, 0.94)),
+        BorderColor::all(Color::WHITE), UiTargetCamera(ui_camera), SpeakerBubble,
+    )).with_children(|parent| { parent.spawn((Text::new(""), TextFont { font_size: 19.0, ..default() },
+            TextColor(Color::WHITE), SpeakerBubbleText)); });
+}
+
+fn toggle_transcript_drawer(keyboard: Res<ButtonInput<Key>>, mut ui: ResMut<DialogueUiState>) {
+    if keyboard.just_pressed(Key::Tab) { ui.drawer_open = !ui.drawer_open; }
 }
 
 fn load_witness_profile(mut session: ResMut<RitualSession>) {
@@ -310,19 +339,30 @@ fn request_chronos_artifact(prompt: &str) -> ArtifactOutcome {
         ));
     }
 
-    // Comfy-only: quick=false with a comfyui_url routes the Director to ComfyUI
-    // (director main.rs: comfy_enabled = !quick && comfyui_url.is_some()). Comfy is
-    // fast; the slow Blender path is never requested from the game.
+    // Match Chronos's proven museum-canvas metabolism on the 12 GB Forge: the
+    // council's Ollama model has finished its work, so release its VRAM before
+    // Flux loads. This is best-effort; the Director response remains fail-closed.
+    let _ = ureq::post("http://127.0.0.1:11434/api/generate")
+        .timeout(Duration::from_secs(20))
+        .send_json(json!({
+            "model": std::env::var("ARCHETYPES_OLLAMA_MODEL")
+                .unwrap_or_else(|_| "qwen2.5:7b-instruct".to_owned()),
+            "prompt": "",
+            "keep_alive": 0,
+        }));
+
+    // Direct canvas-image route: Chronos reuses the same Flux generator that paints
+    // its museum-wall canvas, returning the painting PNG without a Blender wrapper.
     let submit: Value = match response_json(
-        ureq::post(&format!("{DIRECTOR_URL}/api/v1/pipeline/render-still"))
-            .timeout(Duration::from_secs(20))
+        ureq::post(&format!("{DIRECTOR_URL}/api/v1/pipeline/concept-thumbnail"))
+            .timeout(Duration::from_secs(480))
             .send_json(json!({
                 "prompt": prompt,
-                "quick": false,
-                "use_dsl": false,
+                "style": "dark ceremonial artifact painting, vivid color, readable silhouette, no text",
+                "fidelity": "final",
                 "comfyui_url": comfyui_url(),
-                "comfyui_install_dir": comfyui_install_dir(),
-                "comfyui_checkpoint": comfyui_checkpoint(),
+                "comfyui_output_dir": comfyui_output_dir(),
+                "session_id": "archetypes-council",
             })),
     ) {
         Ok(body) => body,
@@ -332,80 +372,25 @@ fn request_chronos_artifact(prompt: &str) -> ArtifactOutcome {
             ))
         }
     };
-    let Some(job_id) = submit
-        .get("job_id")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-    else {
-        return failed_outcome("Chronos returned no job id".to_owned());
-    };
-
-    for _ in 0..300 {
-        thread::sleep(Duration::from_secs(1));
-        let job: Value = match response_json(
-            ureq::get(&format!("{DIRECTOR_URL}/api/v1/pipeline/job/{job_id}"))
-                .timeout(Duration::from_secs(4))
-                .call(),
-        ) {
-            Ok(job) => job,
-            Err(error) => {
-                return failed_outcome(format!("Chronos job polling failed: {error}"));
-            }
+    let png_path = string_field(&submit, "png_path");
+    let verified_path = png_path.as_deref().map(resolve_chronos_path);
+    if verified_path.as_ref().is_none_or(|path| !path.is_file()) {
+        return ArtifactOutcome {
+            status: "failed".to_owned(),
+            job_id: None,
+            artifact_id: string_field(&submit, "concept_id"),
+            png_path,
+            proof_receipt_id: string_field(&submit, "completion_event_id"),
+            detail: "Chronos reported completion without a readable canvas PNG".to_owned(),
         };
-        match job.get("status").and_then(Value::as_str) {
-            Some("done") => {
-                let png_path = job
-                    .get("png_path")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned);
-                let verified_path = png_path.as_deref().map(resolve_chronos_path);
-                if verified_path.as_ref().is_none_or(|path| !path.is_file()) {
-                    return ArtifactOutcome {
-                        status: "failed".to_owned(),
-                        job_id: Some(job_id),
-                        artifact_id: string_field(&job, "artifact_id"),
-                        png_path,
-                        proof_receipt_id: string_field(&job, "proof_receipt_id"),
-                        detail: "Chronos reported success without a readable PNG artifact"
-                            .to_owned(),
-                    };
-                }
-                return ArtifactOutcome {
-                    status: "complete".to_owned(),
-                    job_id: Some(job_id),
-                    artifact_id: string_field(&job, "artifact_id"),
-                    png_path: verified_path.map(|path| path.display().to_string()),
-                    proof_receipt_id: string_field(&job, "proof_receipt_id"),
-                    detail: "Chronos returned a verified local render artifact".to_owned(),
-                };
-            }
-            Some("failed") => {
-                return ArtifactOutcome {
-                    status: "failed".to_owned(),
-                    job_id: Some(job_id),
-                    artifact_id: string_field(&job, "artifact_id"),
-                    png_path: string_field(&job, "png_path"),
-                    proof_receipt_id: string_field(&job, "proof_receipt_id"),
-                    detail: job
-                        .get("output")
-                        .and_then(Value::as_str)
-                        .unwrap_or("Chronos render failed without output")
-                        .chars()
-                        .take(500)
-                        .collect(),
-                };
-            }
-            _ => {}
-        }
     }
-
     ArtifactOutcome {
-        status: "failed".to_owned(),
-        job_id: Some(job_id),
-        artifact_id: None,
-        png_path: None,
-        proof_receipt_id: None,
-        detail: "Chronos render exceeded the 300 second council timeout".to_owned(),
+        status: "complete".to_owned(),
+        job_id: None,
+        artifact_id: string_field(&submit, "concept_id"),
+        png_path: verified_path.map(|path| path.display().to_string()),
+        proof_receipt_id: string_field(&submit, "completion_event_id"),
+        detail: "Chronos returned a verified direct canvas image".to_owned(),
     }
 }
 
@@ -414,9 +399,18 @@ fn render_ritual_ui(
     session: Res<RitualSession>,
     council: Res<CouncilTranscript>,
     speech: Res<SpeechStatus>,
-    mut query: Query<&mut Text, With<RitualUi>>,
+    focus: Res<CurrentFocus>,
+    time: Res<Time>,
+    mut ui: ResMut<DialogueUiState>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    camera: Query<(&Camera, &GlobalTransform), With<WitnessCamera>>,
+    spheres: Query<(&ArchetypeSphere, &GlobalTransform)>,
+    mut drawer: Query<(&mut Text, &mut Node), (With<TranscriptDrawer>, Without<SpeakerBubble>)>,
+    mut bubble: Query<(&mut Node, &mut BackgroundColor, &mut BorderColor), (With<SpeakerBubble>, Without<TranscriptDrawer>)>,
+    mut bubble_text: Query<(&mut Text, &mut TextColor), (With<SpeakerBubbleText>, Without<TranscriptDrawer>, Without<RitualPrompt>)>,
+    mut prompt: Query<&mut Text, (With<RitualPrompt>, Without<SpeakerBubbleText>, Without<TranscriptDrawer>)>,
 ) {
-    let Ok(mut text) = query.single_mut() else {
+    let (Ok((mut drawer_text, mut drawer_node)), Ok(mut prompt_text)) = (drawer.single_mut(), prompt.single_mut()) else {
         return;
     };
     let witness = session
@@ -444,14 +438,9 @@ fn render_ritual_ui(
             ),
         },
         ChamberState::CouncilSpeaking => match council.lines.get(council.cursor) {
-            Some(line) => format!(
-                "THE COUNCIL SPEAKS  -  voice {} of {}\n\n{:?}, {}:\n\n{}",
-                council.cursor + 1,
-                council.lines.len(),
-                line.archetype,
-                line.role,
-                line.text,
-            ),
+            Some(_) => council.lines.iter().take(council.cursor + 1).map(|line|
+                format!("{:?} - {}\n{}", line.archetype, line.role, line.text)
+            ).collect::<Vec<_>>().join("\n\n"),
             None => "THE COUNCIL SPEAKS".to_owned(),
         },
         ChamberState::WitnessVerdict => format!(
@@ -482,11 +471,52 @@ fn render_ritual_ui(
             )
         }
     };
-    text.0 = if speech.line.is_empty() {
-        ritual_text
-    } else {
-        format!("{ritual_text}\n\n{}", speech.line)
-    };
+    drawer_text.0 = ritual_text;
+    drawer_node.display = if ui.drawer_open { Display::Flex } else { Display::None };
+    prompt_text.0 = match state.get() {
+        ChamberState::CouncilSpeaking => if speech.line.is_empty() {
+            if ui.drawer_open { "TAB  CLOSE TRANSCRIPT" } else { "TAB  OPEN TRANSCRIPT" }
+        } else { speech.line.as_str() },
+        ChamberState::Deliberating => "The council is forming its response…",
+        ChamberState::ArtifactPending => "Chronos is painting locally…",
+        _ => "ENTER  CONTINUE",
+    }.to_owned();
+
+    let active = (*state.get() == ChamberState::CouncilSpeaking)
+        .then(|| council.lines.get(council.cursor)).flatten();
+    let key = active.map(|line| format!("{:?}:{}", line.archetype, line.text)).unwrap_or_default();
+    if key != ui.bubble_key { ui.bubble_key = key; ui.bubble_age = 0.0; } else { ui.bubble_age += time.delta_secs(); }
+    let (Ok((mut bubble_node, mut bubble_bg, mut bubble_border)), Ok((mut text, mut text_color))) =
+        (bubble.single_mut(), bubble_text.single_mut()) else { return; };
+    let Some(line) = active else { bubble_node.display = Display::None; return; };
+    bubble_node.display = Display::Flex;
+    let theme = line.archetype.theme();
+    let alpha = (ui.bubble_age / 0.35).clamp(0.0, 1.0);
+    *bubble_bg = BackgroundColor(theme.bg_void.with_alpha(0.92 * alpha));
+    *bubble_border = BorderColor::all(theme.accent_primary.with_alpha(alpha));
+    text_color.0 = theme.text_primary.with_alpha(alpha);
+    text.0 = format!("{:?}  -  {}\n\n{}", line.archetype, line.role, bubble_excerpt(&line.text));
+
+    if let (Ok(window), Ok((camera, camera_transform)), Some(archetype)) =
+        (windows.single(), camera.single(), focus.0)
+    {
+        if let Some((_, sphere)) = spheres.iter().find(|(item, _)| item.archetype == archetype) {
+            if let Ok(viewport) = camera.world_to_viewport(camera_transform, sphere.translation()) {
+                let fly = (1.0 - alpha) * 28.0;
+                bubble_node.left = Val::Px((viewport.x + 42.0 + fly).min(window.width() - 390.0).max(380.0));
+                bubble_node.top = Val::Px((viewport.y - 90.0).clamp(70.0, window.height() - 250.0));
+            }
+        }
+    }
+}
+
+fn bubble_excerpt(text: &str) -> String {
+    const LIMIT: usize = 190;
+    if text.chars().count() <= LIMIT { return text.to_owned(); }
+    let mut excerpt: String = text.chars().take(LIMIT).collect();
+    if let Some(last_space) = excerpt.rfind(' ') { excerpt.truncate(last_space); }
+    excerpt.push_str("...");
+    excerpt
 }
 
 fn artifact_prompt(offering: &str, verdict: &str) -> String {
@@ -856,5 +886,14 @@ mod tests {
             .to_string_lossy()
             .replace('\\', "/")
             .ends_with("assets/artifacts"));
+    }
+
+    #[test]
+    fn speaker_bubble_excerpt_is_bounded_without_cutting_a_word() {
+        let source = "word ".repeat(60);
+        let excerpt = bubble_excerpt(&source);
+        assert!(excerpt.chars().count() <= 193);
+        assert!(excerpt.ends_with("..."));
+        assert!(excerpt.trim_end_matches("...").ends_with("word"));
     }
 }

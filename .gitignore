@@ -3,5 +3,8 @@
 # Runtime-staged Chronos renders returned into the chamber (not source assets)
 /assets/artifacts/
 
+# Deterministic visual-capture scratch runs. Accepted review frames are force-added.
+/artifacts/visual-proof/council-text-ui*
+
 # Release staging produced by scripts/install_shortcut.ps1
 /dist/
