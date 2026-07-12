@@ -54,8 +54,9 @@ of it in the live window with screenshots.
 
 ### Step 2 — Hold the focused sphere at center through the interior
 - [x] DONE. `spheres.rs` now holds center across the whole interior tail, not just
-  `FocusArchetype`. (Known refinement: dead-center overlaps the merkaba core; a
-  forward focus corridor is future work, tracked in `STATUS.md`.)
+  `FocusArchetype`. (Superseded 2026-07-12 by plan_2026-07-12_0435: the star
+  tetrahedron and spheres are now fixed and the camera does the work, so this
+  move-to-center behavior was removed.)
 - [ ] Action: Fix `spheres.rs` so the focused sphere stays centered and scaled
   across `FocusArchetype` AND `ArchitectInterior` (and the verdict/artifact tail),
   instead of drifting back out the instant the interior begins.

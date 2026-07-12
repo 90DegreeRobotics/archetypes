@@ -14,12 +14,12 @@ The game should begin with a short installation ritual rather than a standard se
 
 After profile completion, the player enters directly into the Council Chamber. This first arrival should be quiet, spatial, and ceremonial. There should be no explanatory overlay beyond what is absolutely necessary to preserve usability. The environment itself should teach: the chamber table glows, the portal invites language, the council spheres orbit above, and subtle autonomous speech or movement demonstrates that the system is already alive before the player acts.
 
-The first meaningful interaction begins at the table. The player sits in the sovereign position, faces the stargate-like portal embedded in or hovering above the table, and types a prompt. Once the prompt is submitted, the portal activates and the camera transitions upward toward the moving astrolabe or merkaba structure. The user should feel that the prompt has been offered into a larger mechanism and is now being metabolized by the council rather than simply transmitted to a text box.
+The first meaningful interaction begins at the table. The player sits in the sovereign position, faces the stargate-like portal embedded in or hovering above the table, and types a prompt. Once the prompt is submitted, the portal activates and the camera transitions upward toward the fixed star tetrahedron hung above. The user should feel that the prompt has been offered into a larger mechanism and is now being metabolized by the council rather than simply transmitted to a text box.
 
 ## Chamber staging
 The Council Chamber is the permanent home space and the metaphysical motherboard of the game. The chamber should be designed as a place of stillness around a core of elaborate motion. The table image provided is especially useful here: it suggests an illuminated circular platform with sacred geometry, a portal-like center, engraved rings, and a strong sense of artifact-grade significance.
 
-The table should serve three functions simultaneously. First, it is the physical anchor of the player’s point of view: the place from which prompts are entered and where deliberation begins. Second, it is the ritual instrument that activates the merkaba above. Third, it is the visual bridge between grounded interaction and cosmic symbolic machinery, because its circular geometry naturally extends upward into the orbital logic of the council spheres.
+The table should serve three functions simultaneously. First, it is the physical anchor of the player’s point of view: the place from which prompts are entered and where deliberation begins. Second, it is the ritual instrument that opens the ascent to the star tetrahedron above. Third, it is the visual bridge between grounded interaction and cosmic symbolic machinery, because its circular geometry naturally extends upward into the orbital logic of the council spheres.
 
 The chamber architecture around the table should be restrained rather than cluttered. The asset references already contain enough symbolic weight, so the room should avoid ornamental overload. Dark stone, metallic trim, faint starfields, subtle volumetric light, and carefully placed luminous lines will allow the table, portal, and spheres to dominate. The emotional tone should be judicial, sacred, and dreamlike at once.
 
@@ -31,14 +31,14 @@ That difference should be shown spatially and mechanically. The player’s seat 
 ## Prompt ritual
 The text input should not appear as a generic HUD element. It should be integrated into the table portal so that language feels physically offered into the machine. A prompt entered here is less a command and more a petition, provocation, confession, or initiation of deliberation.
 
-The portal should behave like a stargate or liquid astrolabe aperture. Idle state can show slow internal motion, distant stars, or subtle glyph drift. On focus, the ring inscriptions brighten, the center deepens, and the surrounding geometry begins to hum with readiness. On submit, the portal contracts slightly, gathers light, and then sends that impulse upward into the merkaba sequence.
+The portal should behave like a stargate or liquid astrolabe aperture. Idle state can show slow internal motion, distant stars, or subtle glyph drift. On focus, the ring inscriptions brighten, the center deepens, and the surrounding geometry begins to hum with readiness. On submit, the portal contracts slightly, gathers light, and then sends that impulse upward into the star alignment sequence.
 
 This interaction should always preserve a sense of consequence. Even a trivial prompt should awaken the chamber with the same seriousness as a profound one. The game’s tone depends on the idea that language enters an ecosystem of minds rather than an empty field awaiting text parsing.
 
-## Merkaba sequence
-After the player submits a prompt, the camera should lift from the table toward the astrolabe or merkaba apparatus above. This is the principal transition between grounded input and symbolic cognition. The motion should be smooth, stately, and inevitable, as though the chamber is opening a hidden dimension that was always present.
+## Star alignment sequence
+After the player submits a prompt, the camera should lift from the table toward the star tetrahedron hung fixed above. This is the principal transition between grounded input and symbolic cognition. The motion should be smooth, stately, and inevitable, as though the chamber is opening a hidden dimension that was always present.
 
-The merkaba should be in continuous slow motion even at idle. It should never feel inert. Rotating rings, intersecting geometric arms, suspended rails, and orbit tracks can suggest a machine of thought rather than a decorative mobile. The overall structure should read as celestial instrumentation crossed with sacred engine design.
+The star tetrahedron is fixed and solid — one form of two interlocked tetrahedra, hung on a chosen north. It does not rotate, and the two tetrahedra do not counter-rotate; its power is stillness. All motion belongs to the camera, which flies to the single axis where the star resolves into its hexagram silhouette. The structure should read as fixed celestial architecture — an eternal sacred form the viewer aligns to — not a decorative mobile.
 
 The seven glass spheres should be mounted or suspended at meaningful orbital points within this structure. Their motion must be synchronized enough to feel designed, but varied enough to feel alive. A fully static arrangement would feel dead, while a chaotic one would lose ceremonial authority. Slow orbital drift, axial spin, and gentle face-turning will preserve legibility and ritual gravity.
 
@@ -54,7 +54,7 @@ The sphere materials should be lightly refractive and reflective, but not so dis
 ## Speaking logic and focus choreography
 When an archetype begins to speak, its sphere should leave its idle orbital behavior and move into the central focus lane. This movement is one of the game’s signature gestures and must be elegant. The transition should look like the council yielding the floor rather than a UI widget being selected.
 
-The selected sphere should glide to the center of the merkaba field, align its panel toward the camera, and subtly increase in luminosity. The icon face can appear first for a moment, establishing symbolic authority, then rotate or phase to the portrait face as speech begins. This sequence would let the player feel the archetype becoming present rather than simply highlighted.
+The spheres never move; they are locked to the star's tips. Instead the camera should fly to the axis where the selected sphere faces the Witness and the star resolves into the hexagram. The selected sphere's panel turns toward the camera and subtly increases in luminosity. The icon face can appear first for a moment, establishing symbolic authority, then rotate or phase to the portrait face as speech begins. This sequence would let the player feel the archetype becoming present rather than simply highlighted.
 
 Non-speaking spheres should not freeze completely. They should continue micro-motions, dim pulses, or slight orbit correction so the council still feels collectively alive. Agreement, dissent, alarm, or resonance can be shown by changes in glow intensity, turn rate, facing angle, or harmonic motion between spheres. The player should be able to read the social weather of the chamber before reading every line of text.
 
@@ -86,7 +86,7 @@ The chamber reference images should be used as mood and layout anchors rather th
 The newly provided portal table image is especially valuable as a hero asset for preproduction. It can directly inform the Council Chamber table mesh, material treatment, and interaction logic. The engraved metallic rings, central vortex, and luminous geometric web together already communicate that the prompt interface should feel like an ancient machine for opening cognition.
 
 ## Suggested scene structure
-The runtime can be divided into a small number of stable scene states. The profile ritual is the threshold scene. The Council Chamber is the home scene. The merkaba focus sequence is the deliberation transition. The archetype sphere interior is a temporary domain scene, and the return to chamber is the reintegration phase. Structuring the experience this way will help keep camera logic, lighting rules, audio states, and interaction affordances consistent.
+The runtime can be divided into a small number of stable scene states. The profile ritual is the threshold scene. The Council Chamber is the home scene. The star alignment sequence is the deliberation transition. The archetype sphere interior is a temporary domain scene, and the return to chamber is the reintegration phase. Structuring the experience this way will help keep camera logic, lighting rules, audio states, and interaction affordances consistent.
 
 The player should always know where they are in symbolic terms even if no HUD says so. Table equals offering. Upward tilt equals deliberation. Centered sphere equals active voice. Entered sphere equals archetype immersion. Return to chamber equals integration and continuation.
 
@@ -112,7 +112,7 @@ The identity manuscript should be treated as the design constitution and systems
 The portal table image should inform the chamber’s central prop, while the chamber concept images should shape the wider environment, lighting, and composition. Together, they form the backbone of the game’s visual language even before final 3D assets are modeled.
 
 ## Recommended production phases
-The first phase should focus on proving the chamber loop. Build the Council Chamber, implement the Witness seat, the portal prompt interaction, the upward camera move, the merkaba idle motion, the seven orbiting spheres, the speaking focus choreography, and a return path to the table. If this loop feels powerful, the whole project has a spine.
+The first phase should focus on proving the chamber loop. Build the Council Chamber, implement the Witness seat, the portal prompt interaction, the upward camera move, the fixed star tetrahedron, the seven spheres locked at its tips, the speaking focus choreography, and a return path to the table. If this loop feels powerful, the whole project has a spine.
 
 The second phase should focus on one fully realized archetype immersion domain as a vertical slice. Architect is a strong first candidate because its visual and interaction grammar are especially concrete in the manuscript and assets. Once one domain works, the remaining archetype worlds can be built as variations on the same entry, theming, and return architecture.
 
@@ -124,6 +124,6 @@ The project should avoid becoming a gamified productivity tool, a standard branc
 The archetypes must remain distinct without turning into caricatures. The Jester cannot become comic relief, the Sentinel cannot become a generic security bot, the Mentor cannot become a self-help narrator, and the Empath cannot become therapy branding. The manuscript already provides the right seriousness and should be used to protect the project from flattening.
 
 ## Closing direction
-The clearest path forward is to treat the game as a ritual council simulator with explorable inner worlds rather than as a dialogue tree or task system. The player installs, establishes identity, takes the Witness seat, offers language into the portal, watches the merkaba awaken, sees the archetypes deliberate through their orbiting spheres, and then enters the active archetype’s domain when the sphere becomes world.
+The clearest path forward is to treat the game as a ritual council simulator with explorable inner worlds rather than as a dialogue tree or task system. The player installs, establishes identity, takes the Witness seat, offers language into the portal, watches the camera rise to the fixed star tetrahedron, sees the archetypes deliberate through their spheres, and then enters the active archetype’s domain when the sphere becomes world.
 
 All of the assets shown today already support that direction. The portraits provide embodied presence. The icons provide symbolic clarity. The manuscript provides constitutional identity. The chamber references provide environmental tone. The portal table provides the central ritual object. Together, they form a coherent game language that can carry the player from first prompt to an ever-growing interior cosmos.

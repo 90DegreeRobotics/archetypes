@@ -1,4 +1,3 @@
-use super::{ChamberState, CurrentFocus};
 use crate::theme::Archetype;
 use bevy::prelude::*;
 
@@ -6,14 +5,20 @@ pub struct SpheresPlugin;
 
 impl Plugin for SpheresPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (bind_authored_spheres, animate_spheres).chain());
+        // The glass spheres are fixed to the star tetrahedron's tips. Binding only
+        // records each sphere's gameplay identity and its locked world position;
+        // nothing ever moves a sphere. Focus is expressed by flying the camera to
+        // the selected sphere, not by relocating the sphere.
+        app.add_systems(Update, bind_authored_spheres);
     }
 }
 
 #[derive(Component)]
 pub struct ArchetypeSphere {
     pub archetype: Archetype,
-    pub authored_translation: Vec3,
+    /// The sphere's fixed world position at its star tip, recorded once at bind
+    /// time. Consumed by the camera to aim at the selected archetype.
+    pub locked_position: Vec3,
 }
 
 fn bind_authored_spheres(
@@ -24,50 +29,9 @@ fn bind_authored_spheres(
         if let Some(archetype) = archetype_from_node_name(name.as_str()) {
             commands.entity(entity).insert(ArchetypeSphere {
                 archetype,
-                authored_translation: transform.translation,
+                locked_position: transform.translation,
             });
         }
-    }
-}
-
-fn animate_spheres(
-    time: Res<Time>,
-    state: Res<State<ChamberState>>,
-    current_focus: Res<CurrentFocus>,
-    mut query: Query<(&mut Transform, &ArchetypeSphere)>,
-) {
-    for (mut transform, sphere) in &mut query {
-        // The focused sphere holds the sovereign center for the entire interior
-        // sequence — not just the focus gesture — so it does not drift back out
-        // the instant the player crosses into that archetype's world.
-        let holds_center = matches!(
-            state.get(),
-            ChamberState::FocusArchetype
-                | ChamberState::ArchitectInterior
-                | ChamberState::WitnessVerdict
-                | ChamberState::ArtifactPending
-                | ChamberState::ArtifactResult
-        );
-        let is_focused = holds_center && current_focus.0 == Some(sphere.archetype);
-        let target = if is_focused {
-            Vec3::ZERO
-        } else {
-            sphere.authored_translation
-        };
-        let response = if is_focused { 3.5 } else { 2.0 };
-
-        transform.translation = transform
-            .translation
-            .lerp(target, (time.delta_secs() * response).min(1.0));
-
-        let target_scale = if is_focused {
-            Vec3::splat(1.5)
-        } else {
-            Vec3::ONE
-        };
-        transform.scale = transform
-            .scale
-            .lerp(target_scale, (time.delta_secs() * response).min(1.0));
     }
 }
 

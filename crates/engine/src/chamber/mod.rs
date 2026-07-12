@@ -2,7 +2,6 @@ use bevy::prelude::*;
 
 pub mod camera;
 pub mod interior;
-pub mod merkaba;
 pub mod portal;
 pub mod ritual;
 pub mod spheres;
@@ -34,7 +33,6 @@ impl Plugin for CouncilChamberPlugin {
             .add_systems(Startup, load_authoritative_chamber)
             .add_plugins((
                 camera::CameraPlugin,
-                merkaba::MerkabaPlugin,
                 spheres::SpheresPlugin,
                 portal::PortalPlugin,
                 interior::InteriorPlugin,

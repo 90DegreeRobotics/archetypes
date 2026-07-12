@@ -10,8 +10,8 @@ from mathutils import Vector
 
 
 STATIC_CHAMBER_NODES = (
-    "Merkaba_Diamond",
-    "Merkaba_Emerald",
+    "Star_Tetra_A",
+    "Star_Tetra_B",
     "Witness",
     "Sentinel",
     "Architect",
@@ -98,7 +98,7 @@ def main() -> None:
     bpy.context.scene.frame_end = 240
     # Frame 180 is the authored wide establishing view. Saving and exporting
     # from it prevents runtimes that have not started CameraAction yet from
-    # opening inside the merkaba geometry.
+    # opening inside the star tetrahedron geometry.
     bpy.context.scene.frame_set(180)
     bpy.ops.wm.save_as_mainfile(filepath=str(blend_path))
 
@@ -114,7 +114,7 @@ def main() -> None:
             export_lights=True,
             export_animations=True,
             export_nla_strips=True,
-            export_apply=False,
+            export_apply=True,  # bake the star-tetrahedron Wireframe modifier (black edges)
             export_yup=True,
         )
         print(f"EXPORTED {export_path}")

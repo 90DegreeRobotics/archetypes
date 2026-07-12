@@ -674,17 +674,21 @@ impl CaptureRun {
             // carry Deliberating -> FocusArchetype -> ArchitectInterior on its own.
             steps: vec![
                 (2.0, CaptureKind::Onboard),
-                (3.0, CaptureKind::Shot("01_onboarding")),
-                (3.3, CaptureKind::Seal),
-                (4.2, CaptureKind::Shot("02_table")),
-                (4.5, CaptureKind::Submit),
-                (5.6, CaptureKind::Shot("03_deliberating")),
-                (7.2, CaptureKind::Shot("04_architect_focus")),
-                (9.8, CaptureKind::Shot("05_architect_interior")),
-                (10.1, CaptureKind::Verdict),
-                (11.0, CaptureKind::Shot("06_witness_verdict")),
-                (11.3, CaptureKind::Authorize),
-                (13.0, CaptureKind::Shot("07_artifact_pending")),
+                (3.5, CaptureKind::Shot("01_onboarding")),
+                // Second onboarding frame: the camera is fixed and every object is
+                // static, so this must be pixel-identical to 01 unless something is
+                // still moving. A hash comparison of the two is the static check.
+                (7.0, CaptureKind::Shot("01b_onboarding_static_check")),
+                (7.3, CaptureKind::Seal),
+                (8.2, CaptureKind::Shot("02_table")),
+                (8.5, CaptureKind::Submit),
+                (9.6, CaptureKind::Shot("03_deliberating")),
+                (11.2, CaptureKind::Shot("04_architect_focus")),
+                (13.8, CaptureKind::Shot("05_architect_interior")),
+                (14.1, CaptureKind::Verdict),
+                (15.0, CaptureKind::Shot("06_witness_verdict")),
+                (15.3, CaptureKind::Authorize),
+                (17.0, CaptureKind::Shot("07_artifact_pending")),
             ],
             next: 0,
             artifact_seen_at: None,

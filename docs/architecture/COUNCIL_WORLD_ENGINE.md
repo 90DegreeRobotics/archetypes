@@ -13,7 +13,7 @@ The first complete playable proof is one end-to-end loop:
 1. The player creates and seals a persistent Witness profile.
 2. The player enters the seated Council Chamber without a detached tutorial.
 3. The player offers language through the table portal.
-4. The camera rises from the portal to reveal the moving merkaba.
+4. The camera rises from the portal to reveal the fixed star tetrahedron hung above.
 5. The council deliberates through differentiated voices and motion laws.
 6. One speaking sphere enters the focus corridor.
 7. The camera crosses into one fully realized archetype interior.
@@ -27,7 +27,7 @@ Until this entire path is reachable through the live application and driven end 
 
 ### Chamber staging
 
-The Blender-authored chamber owns the merkaba geometry, sphere placement, materials, lights, and environmental composition. Bevy owns live state, input, focus choreography, runtime cameras, and transitions. The portal table remains a required authored asset; a procedural substitute is not acceptable as the final surface.
+The Blender-authored chamber owns the star tetrahedron geometry, sphere placement, materials, lights, and environmental composition. Bevy owns live state, input, focus choreography, runtime cameras, and transitions. The portal table remains a required authored asset; a procedural substitute is not acceptable as the final surface.
 
 ### Archetype theming
 
