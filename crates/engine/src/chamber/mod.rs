@@ -4,7 +4,6 @@ pub mod boot;
 pub mod camera;
 pub mod council;
 pub mod interior;
-pub mod panels;
 pub mod portal;
 pub mod ritual;
 pub mod speech;
@@ -41,7 +40,6 @@ impl Plugin for CouncilChamberPlugin {
                 boot::BootPlugin,
                 camera::CameraPlugin,
                 spheres::SpheresPlugin,
-                panels::PanelsPlugin,
                 portal::PortalPlugin,
                 interior::InteriorPlugin,
                 council::CouncilPlugin,

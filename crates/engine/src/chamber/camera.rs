@@ -83,7 +83,13 @@ fn drive_camera(
         _ => establishing,
     };
 
-    let t = (time.delta_secs() * CAMERA_RESPONSE).min(1.0);
+    // During boot the camera snaps to the establishing pose (t = 1.0) so that when the
+    // title lifts it is already composed — no opening glide/flyby into position.
+    let t = if *state.get() == ChamberState::Booting {
+        1.0
+    } else {
+        (time.delta_secs() * CAMERA_RESPONSE).min(1.0)
+    };
     transform.translation = transform.translation.lerp(target.translation, t);
     transform.rotation = transform.rotation.slerp(target.rotation, t);
 }

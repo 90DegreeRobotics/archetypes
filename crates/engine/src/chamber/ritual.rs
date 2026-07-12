@@ -21,6 +21,7 @@ use super::{
     spheres::ArchetypeSphere, ChamberState, CurrentFocus,
 };
 use crate::chamber::camera::WitnessCamera;
+use crate::theme::Archetype;
 
 const DIRECTOR_URL: &str = "http://127.0.0.1:7777";
 
@@ -51,6 +52,7 @@ impl Plugin for RitualPlugin {
                     begin_chronos_request,
                     poll_chronos_result,
                     render_ritual_ui,
+                    update_speaker_avatar,
                 )
                     .chain(),
             )
@@ -58,6 +60,10 @@ impl Plugin for RitualPlugin {
             .add_systems(
                 OnEnter(ChamberState::ArtifactResult),
                 present_artifact_image,
+            )
+            .add_systems(
+                Update,
+                position_artifact_image.run_if(in_state(ChamberState::ArtifactResult)),
             )
             .add_systems(OnExit(ChamberState::ArtifactResult), clear_artifact_image);
 
@@ -132,6 +138,10 @@ struct SpeakerBubble;
 #[derive(Component)]
 struct SpeakerBubbleText;
 
+/// The circular face-crop avatar of the archetype currently speaking, inside the bubble.
+#[derive(Component)]
+struct SpeakerBubbleAvatar;
+
 #[derive(Component)]
 struct RitualPrompt;
 
@@ -148,7 +158,7 @@ impl Default for DialogueUiState {
     }
 }
 
-fn spawn_ritual_ui(mut commands: Commands) {
+fn spawn_ritual_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     let ui_camera = commands
         .spawn((
             Camera2d,
@@ -175,12 +185,21 @@ fn spawn_ritual_ui(mut commands: Commands) {
             padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)), ..default()
         }, BackgroundColor(Color::srgba(0.015, 0.018, 0.025, 0.80)), UiTargetCamera(ui_camera), RitualPrompt));
     commands.spawn((Node { position_type: PositionType::Absolute, left: Val::Percent(57.0),
-            top: Val::Percent(20.0), width: Val::Px(360.0), padding: UiRect::all(Val::Px(16.0)),
-            border: UiRect::all(Val::Px(2.0)), ..default() },
+            top: Val::Percent(20.0), width: Val::Px(410.0), padding: UiRect::all(Val::Px(16.0)),
+            border: UiRect::all(Val::Px(2.0)), flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center, column_gap: Val::Px(14.0), ..default() },
         BackgroundColor(Color::srgba(0.02, 0.025, 0.04, 0.94)),
         BorderColor::all(Color::WHITE), UiTargetCamera(ui_camera), SpeakerBubble,
-    )).with_children(|parent| { parent.spawn((Text::new(""), TextFont { font_size: 19.0, ..default() },
-            TextColor(Color::WHITE), SpeakerBubbleText)); });
+    )).with_children(|parent| {
+        parent.spawn((
+            ImageNode::new(asset_server.load("avatars/architect.png")),
+            Node { width: Val::Px(78.0), height: Val::Px(78.0), flex_shrink: 0.0, ..default() },
+            SpeakerBubbleAvatar,
+        ));
+        parent.spawn((Text::new(""), TextFont { font_size: 18.0, ..default() },
+            TextColor(Color::WHITE), Node { max_width: Val::Px(284.0), ..default() },
+            SpeakerBubbleText));
+    });
 }
 
 fn toggle_transcript_drawer(keyboard: Res<ButtonInput<Key>>, mut ui: ResMut<DialogueUiState>) {
@@ -510,6 +529,38 @@ fn render_ritual_ui(
     }
 }
 
+/// Set the bubble's face-crop avatar to the currently speaking archetype. The bubble
+/// (and thus this child) is hidden by `render_ritual_ui` whenever no one holds the floor.
+fn update_speaker_avatar(
+    state: Res<State<ChamberState>>,
+    focus: Res<CurrentFocus>,
+    asset_server: Res<AssetServer>,
+    mut avatar: Query<&mut ImageNode, With<SpeakerBubbleAvatar>>,
+) {
+    if *state.get() != ChamberState::CouncilSpeaking {
+        return;
+    }
+    let Some(archetype) = focus.0 else {
+        return;
+    };
+    let Ok(mut image) = avatar.single_mut() else {
+        return;
+    };
+    image.image = asset_server.load(format!("avatars/{}.png", avatar_slug(archetype)));
+}
+
+fn avatar_slug(archetype: Archetype) -> &'static str {
+    match archetype {
+        Archetype::Architect => "architect",
+        Archetype::Sentinel => "sentinel",
+        Archetype::Jester => "jester",
+        Archetype::Mentor => "mentor",
+        Archetype::Explorer => "explorer",
+        Archetype::Oracle => "oracle",
+        Archetype::Empath | Archetype::Codex | Archetype::Viren => "empath",
+    }
+}
+
 fn bubble_excerpt(text: &str) -> String {
     const LIMIT: usize = 190;
     if text.chars().count() <= LIMIT { return text.to_owned(); }
@@ -629,14 +680,39 @@ fn present_artifact_image(
     commands.spawn((
         Node {
             position_type: PositionType::Absolute,
-            top: Val::Percent(7.0),
-            left: Val::Percent(28.0),
-            width: Val::Percent(44.0),
+            width: Val::Px(ARTIFACT_DISPLAY_SIZE),
             ..default()
         },
         ImageNode::new(handle),
         ArtifactImageNode,
     ));
+}
+
+/// On-screen size of the returned artifact, shown at the Witness sphere.
+const ARTIFACT_DISPLAY_SIZE: f32 = 320.0;
+
+/// Keep the returned image pinned over the Witness (user) sphere — the empty eighth
+/// vessel is where a created work manifests. Tracks the sphere's screen position so the
+/// image reads as living in the user's own sphere rather than as a floating HUD panel.
+fn position_artifact_image(
+    windows: Query<&Window, With<PrimaryWindow>>,
+    camera: Query<(&Camera, &GlobalTransform), With<WitnessCamera>>,
+    named: Query<(&Name, &GlobalTransform)>,
+    mut node: Query<&mut Node, With<ArtifactImageNode>>,
+) {
+    let (Ok(mut node), Ok(window), Ok((camera, camera_transform))) =
+        (node.single_mut(), windows.single(), camera.single())
+    else {
+        return;
+    };
+    let Some((_, witness)) = named.iter().find(|(name, _)| name.as_str() == "Witness") else {
+        return;
+    };
+    if let Ok(viewport) = camera.world_to_viewport(camera_transform, witness.translation()) {
+        let size = ARTIFACT_DISPLAY_SIZE;
+        node.left = Val::Px((viewport.x - size / 2.0).clamp(8.0, window.width() - size - 8.0));
+        node.top = Val::Px((viewport.y - size / 2.0).clamp(8.0, window.height() - size - 8.0));
+    }
 }
 
 /// Remove the artifact image when leaving the result state.

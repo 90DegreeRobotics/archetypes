@@ -10,8 +10,9 @@ use bevy::prelude::*;
 
 use super::{ritual::RitualSession, spheres::ArchetypeSphere, ChamberState};
 
-/// Minimum time the title holds, so it never merely flickers past.
-const MIN_BOOT_SECS: f32 = 2.0;
+/// Minimum time the title holds — long enough that the heavy scene textures finish
+/// uploading behind it, so the reveal does not hitch.
+const MIN_BOOT_SECS: f32 = 3.0;
 /// The seven council vessels; when all are bound the scene is ready.
 const READY_SPHERES: usize = 7;
 
