@@ -14,30 +14,48 @@ use bevy::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::{speech::SpeechStatus, ChamberState, CurrentFocus};
-use crate::theme::Archetype;
+use super::{
+    council::{CouncilStatus, CouncilTranscript},
+    speech::SpeechStatus,
+    ChamberState, CurrentFocus,
+};
 
 const DIRECTOR_URL: &str = "http://127.0.0.1:7777";
+
+/// Comfy-only image backend. The Chronos Foundry supervisor keeps ComfyUI alive on
+/// this port; the game always requests the fast Comfy path, never the slow Blender path.
+fn comfyui_url() -> String {
+    std::env::var("ARCHETYPES_COMFYUI_URL").unwrap_or_else(|_| "http://127.0.0.1:8000".to_owned())
+}
+
+fn comfyui_install_dir() -> String {
+    std::env::var("ARCHETYPES_COMFYUI_DIR")
+        .unwrap_or_else(|_| r"C:\Users\m\Documents\ComfyUI".to_owned())
+}
+
+fn comfyui_checkpoint() -> String {
+    std::env::var("ARCHETYPES_COMFYUI_CHECKPOINT")
+        .unwrap_or_else(|_| "sd_xl_base_1.0.safetensors".to_owned())
+}
 
 pub struct RitualPlugin;
 
 impl Plugin for RitualPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RitualSession>()
-            .init_resource::<RitualClock>()
             .init_resource::<ChronosBridge>()
             .add_systems(Startup, (spawn_ritual_ui, load_witness_profile))
             .add_systems(
                 Update,
                 (
                     receive_text_input,
-                    advance_ritual_clock,
                     begin_chronos_request,
                     poll_chronos_result,
                     render_ritual_ui,
                 )
                     .chain(),
             )
+            .add_systems(OnEnter(ChamberState::IdleAtTable), clear_focus_on_table)
             .add_systems(
                 OnEnter(ChamberState::ArtifactResult),
                 present_artifact_image,
@@ -66,6 +84,27 @@ pub(super) struct RitualSession {
     artifact_note: Option<String>,
 }
 
+impl RitualSession {
+    pub(super) fn offering(&self) -> &str {
+        &self.offering
+    }
+
+    pub(super) fn witness_name(&self) -> &str {
+        self.profile
+            .as_ref()
+            .map(|profile| profile.name.as_str())
+            .unwrap_or("Witness")
+    }
+
+    pub(super) fn set_verdict(&mut self, verdict: String) {
+        self.verdict = verdict;
+    }
+
+    pub(super) fn has_profile(&self) -> bool {
+        self.profile.is_some()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ArtifactOutcome {
     status: String,
@@ -74,12 +113,6 @@ struct ArtifactOutcome {
     png_path: Option<String>,
     proof_receipt_id: Option<String>,
     detail: String,
-}
-
-#[derive(Resource, Default)]
-struct RitualClock {
-    last_state: Option<ChamberState>,
-    elapsed: f32,
 }
 
 #[derive(Resource, Default)]
@@ -125,17 +158,13 @@ fn spawn_ritual_ui(mut commands: Commands) {
     ));
 }
 
-fn load_witness_profile(
-    mut session: ResMut<RitualSession>,
-    mut next_state: ResMut<NextState<ChamberState>>,
-) {
+fn load_witness_profile(mut session: ResMut<RitualSession>) {
     let Ok(body) = fs::read_to_string(profile_path()) else {
         return;
     };
     if let Ok(profile) = serde_json::from_str::<WitnessProfile>(&body) {
         if !profile.name.trim().is_empty() {
             session.profile = Some(profile);
-            next_state.set(ChamberState::IdleAtTable);
         }
     }
 }
@@ -159,10 +188,9 @@ fn receive_text_input(
             Key::Enter => match state.get() {
                 ChamberState::Onboarding => seal_profile(&mut session, &mut next_state),
                 ChamberState::IdleAtTable => submit_offering(&mut session, &mut next_state),
-                ChamberState::ArchitectInterior => {
-                    session.verdict = architect_verdict(&session.offering);
-                    next_state.set(ChamberState::WitnessVerdict);
-                }
+                // Enter during deliberation abandons this council and returns to the table
+                // (an escape hatch if the council is slow or has failed).
+                ChamberState::Deliberating => next_state.set(ChamberState::IdleAtTable),
                 ChamberState::WitnessVerdict => {
                     session.artifact = None;
                     next_state.set(ChamberState::ArtifactPending);
@@ -216,32 +244,9 @@ fn submit_offering(session: &mut RitualSession, next_state: &mut NextState<Chamb
     next_state.set(ChamberState::Deliberating);
 }
 
-fn advance_ritual_clock(
-    time: Res<Time>,
-    state: Res<State<ChamberState>>,
-    mut clock: ResMut<RitualClock>,
-    mut next_state: ResMut<NextState<ChamberState>>,
-    mut focus: ResMut<CurrentFocus>,
-) {
-    let current = state.get().clone();
-    if clock.last_state.as_ref() != Some(&current) {
-        clock.last_state = Some(current.clone());
-        clock.elapsed = 0.0;
-    } else {
-        clock.elapsed += time.delta_secs();
-    }
-
-    match current {
-        ChamberState::Deliberating if clock.elapsed >= 2.0 => {
-            focus.0 = Some(Archetype::Architect);
-            next_state.set(ChamberState::FocusArchetype);
-        }
-        ChamberState::FocusArchetype if clock.elapsed >= 2.0 => {
-            next_state.set(ChamberState::ArchitectInterior);
-        }
-        ChamberState::IdleAtTable => focus.0 = None,
-        _ => {}
-    }
+/// When the ritual returns to the table, no archetype holds the floor.
+fn clear_focus_on_table(mut focus: ResMut<CurrentFocus>) {
+    focus.0 = None;
 }
 
 fn begin_chronos_request(
@@ -305,14 +310,26 @@ fn request_chronos_artifact(prompt: &str) -> ArtifactOutcome {
         ));
     }
 
+    // Comfy-only: quick=false with a comfyui_url routes the Director to ComfyUI
+    // (director main.rs: comfy_enabled = !quick && comfyui_url.is_some()). Comfy is
+    // fast; the slow Blender path is never requested from the game.
     let submit: Value = match response_json(
         ureq::post(&format!("{DIRECTOR_URL}/api/v1/pipeline/render-still"))
-            .timeout(Duration::from_secs(10))
-            .send_json(json!({ "prompt": prompt, "quick": true, "use_dsl": false })),
+            .timeout(Duration::from_secs(20))
+            .send_json(json!({
+                "prompt": prompt,
+                "quick": false,
+                "use_dsl": false,
+                "comfyui_url": comfyui_url(),
+                "comfyui_install_dir": comfyui_install_dir(),
+                "comfyui_checkpoint": comfyui_checkpoint(),
+            })),
     ) {
         Ok(body) => body,
         Err(error) => {
-            return failed_outcome(format!("Chronos rejected the artifact request: {error}"))
+            return failed_outcome(format!(
+                "Chronos rejected the Comfy request: {error}. Is the Chronos Foundry (ComfyUI on :8000) running?"
+            ))
         }
     };
     let Some(job_id) = submit
@@ -395,6 +412,7 @@ fn request_chronos_artifact(prompt: &str) -> ArtifactOutcome {
 fn render_ritual_ui(
     state: Res<State<ChamberState>>,
     session: Res<RitualSession>,
+    council: Res<CouncilTranscript>,
     speech: Res<SpeechStatus>,
     mut query: Query<&mut Text, With<RitualUi>>,
 ) {
@@ -407,27 +425,37 @@ fn render_ritual_ui(
         .map(|profile| profile.name.as_str())
         .unwrap_or("Witness");
     let ritual_text = match state.get() {
+        ChamberState::Booting => String::new(),
         ChamberState::Onboarding => format!(
-            "THE WITNESS\n\nName the sovereign center:\n{}▌\n\nEnter seals the profile.",
+            "YOU ARE THE WITNESS\n\nSeven minds convene in this chamber, and they answer to one\nseat only — yours. Before the council will speak, it must know\nwho holds that seat.\n\nType your name, then press Enter:\n\n  {}▌\n\nThe council will address you by this name. It is sealed here.",
             session.draft
         ),
         ChamberState::IdleAtTable => format!(
-            "{witness} — THE TABLE\n\nOffer a thought to the council:\n{}▌\n\nEnter begins deliberation.",
+            "{witness}, THE COUNCIL IS SEATED\n\nOffer a thought, a question, or a fear to the seven:\n\n  {}▌\n\nEnter sends it into deliberation.",
             session.draft
         ),
-        ChamberState::Deliberating => format!(
-            "THE COUNCIL AWAKENS\n\nOffering: {}\n\nSeven laws of mind are taking position.",
-            session.offering
-        ),
-        ChamberState::FocusArchetype => {
-            "THE ARCHITECT TAKES THE CENTER\n\nStructure emerges from contention.".to_owned()
-        }
-        ChamberState::ArchitectInterior => format!(
-            "LUMINOUS BLUEPRINT\n\nThe Architect frames the offering:\n{}\n\nEnter requests a buildable verdict.",
-            session.offering
-        ),
+        ChamberState::Deliberating => match &council.status {
+            CouncilStatus::Failed(reason) => format!(
+                "THE COUNCIL IS SILENT\n\n{reason}\n\nEnter returns to the table."
+            ),
+            _ => format!(
+                "THE COUNCIL DELIBERATES\n\nOffering: {}\n\nThe seven confer through Ollama; their voices are forming...",
+                session.offering
+            ),
+        },
+        ChamberState::CouncilSpeaking => match council.lines.get(council.cursor) {
+            Some(line) => format!(
+                "THE COUNCIL SPEAKS  -  voice {} of {}\n\n{:?}, {}:\n\n{}",
+                council.cursor + 1,
+                council.lines.len(),
+                line.archetype,
+                line.role,
+                line.text,
+            ),
+            None => "THE COUNCIL SPEAKS".to_owned(),
+        },
         ChamberState::WitnessVerdict => format!(
-            "COUNCIL VERDICT\n\n{}\n\n{witness}, Enter authorizes this becoming through Chronos.",
+            "COUNCIL VERDICT\n\n{}\n\n{witness}, Enter authorizes this becoming through Comfy.",
             session.verdict
         ),
         ChamberState::ArtifactPending => {
@@ -461,16 +489,9 @@ fn render_ritual_ui(
     };
 }
 
-fn architect_verdict(offering: &str) -> String {
-    format!(
-        "Build one coherent visual artifact from this seed: ‘{}’. Preserve a clear central structure, restrained sacred geometry, material legibility, and one intentional point of asymmetry. The Witness retains acceptance authority.",
-        offering.trim()
-    )
-}
-
 fn artifact_prompt(offering: &str, verdict: &str) -> String {
     format!(
-        "Council-authorized Architect study. Original offering: {offering}. Build verdict: {verdict}. Produce one restrained, artifact-grade 3D still with a readable silhouette, dark ceremonial environment, and no text."
+        "Council-authorized study. Original offering: {offering}. Build verdict: {verdict}. Produce one restrained, artifact-grade image with a readable silhouette, dark ceremonial atmosphere, and no text."
     )
 }
 
@@ -649,12 +670,8 @@ enum CaptureKind {
     Onboard,
     /// Seal the profile and stage the offering draft at the table.
     Seal,
-    /// Submit the offering, handing off to the deliberation clock.
+    /// Submit the offering; the real council (Ollama) then drives the flow.
     Submit,
-    /// Resolve the Architect's build verdict.
-    Verdict,
-    /// Authorize the becoming, triggering the real Chronos request.
-    Authorize,
     /// Save a screenshot of the current frame under this stem.
     Shot(&'static str),
 }
@@ -664,7 +681,17 @@ struct CaptureRun {
     dir: PathBuf,
     steps: Vec<(f32, CaptureKind)>,
     next: usize,
-    artifact_seen_at: Option<f32>,
+    // The post-submit stages are event-driven because the council's Ollama calls
+    // and the Comfy render finish on their own, variable schedules.
+    council_seen: Option<f32>,
+    council_shot: bool,
+    council_shot2: bool,
+    verdict_seen: Option<f32>,
+    verdict_shot: bool,
+    authorized: bool,
+    pending_seen: Option<f32>,
+    pending_shot: bool,
+    artifact_seen: Option<f32>,
     artifact_shot: bool,
 }
 
@@ -679,10 +706,10 @@ impl CaptureRun {
         let _ = fs::create_dir_all(&dir);
         Some(Self {
             dir,
-            // (seconds since app start, action). Ordered. Timings leave room for
-            // the GLB scene to load and for the deliberation clock (2s + 2s) to
-            // carry Deliberating -> FocusArchetype -> ArchitectInterior on its own.
+            // (seconds since app start, action). Only the pre-council steps are timed;
+            // everything after Submit is captured event-driven below.
             steps: vec![
+                (1.0, CaptureKind::Shot("00_title")),
                 (2.0, CaptureKind::Onboard),
                 (3.5, CaptureKind::Shot("01_onboarding")),
                 // Second onboarding frame: the camera is fixed and every object is
@@ -692,16 +719,18 @@ impl CaptureRun {
                 (7.3, CaptureKind::Seal),
                 (8.2, CaptureKind::Shot("02_table")),
                 (8.5, CaptureKind::Submit),
-                (9.6, CaptureKind::Shot("03_deliberating")),
-                (11.2, CaptureKind::Shot("04_architect_focus")),
-                (13.8, CaptureKind::Shot("05_architect_interior")),
-                (14.1, CaptureKind::Verdict),
-                (15.0, CaptureKind::Shot("06_witness_verdict")),
-                (15.3, CaptureKind::Authorize),
-                (17.0, CaptureKind::Shot("07_artifact_pending")),
+                (10.5, CaptureKind::Shot("03_deliberating")),
             ],
             next: 0,
-            artifact_seen_at: None,
+            council_seen: None,
+            council_shot: false,
+            council_shot2: false,
+            verdict_seen: None,
+            verdict_shot: false,
+            authorized: false,
+            pending_seen: None,
+            pending_shot: false,
+            artifact_seen: None,
             artifact_shot: false,
         })
     }
@@ -717,6 +746,7 @@ impl CaptureRun {
 fn run_capture(
     time: Res<Time>,
     state: Res<State<ChamberState>>,
+    council: Res<CouncilTranscript>,
     mut capture: ResMut<CaptureRun>,
     mut session: ResMut<RitualSession>,
     mut next_state: ResMut<NextState<ChamberState>>,
@@ -743,43 +773,66 @@ fn run_capture(
                 session.draft.clear();
                 next_state.set(ChamberState::Deliberating);
             }
-            CaptureKind::Verdict => {
-                session.verdict = architect_verdict(&session.offering);
-                next_state.set(ChamberState::WitnessVerdict);
-            }
-            CaptureKind::Authorize => {
-                session.artifact = None;
-                next_state.set(ChamberState::ArtifactPending);
-            }
             CaptureKind::Shot(stem) => capture.shot(&mut commands, stem),
         }
         capture.next += 1;
     }
 
-    // The Chronos render finishes on its own schedule, so the result frame is
-    // captured on arrival rather than on a fixed timeline.
-    if *state.get() == ChamberState::ArtifactResult {
-        match capture.artifact_seen_at {
-            None => capture.artifact_seen_at = Some(now),
-            Some(seen) if !capture.artifact_shot && now - seen >= 2.5 => {
+    // Post-submit stages are event-driven: the council (Ollama) and the Comfy
+    // render finish on their own schedules.
+    match state.get() {
+        ChamberState::Deliberating => {
+            if matches!(council.status, CouncilStatus::Failed(_)) && !capture.council_shot {
+                capture.shot(&mut commands, "05_council_failed");
+                capture.council_shot = true;
+            }
+        }
+        ChamberState::CouncilSpeaking => {
+            let seen = *capture.council_seen.get_or_insert(now);
+            if !capture.council_shot && now - seen >= 2.0 {
+                capture.shot(&mut commands, "05_council_speaking");
+                capture.council_shot = true;
+            }
+            // A second frame of the same speaker: the focused panel should have turned
+            // (clockwise) between the two, while the fixed star/spheres have not moved.
+            if capture.council_shot && !capture.council_shot2 && now - seen >= 4.5 {
+                capture.shot(&mut commands, "05b_council_speaking");
+                capture.council_shot2 = true;
+            }
+        }
+        ChamberState::WitnessVerdict => {
+            let seen = *capture.verdict_seen.get_or_insert(now);
+            if !capture.verdict_shot && now - seen >= 2.5 {
+                capture.shot(&mut commands, "06_witness_verdict");
+                capture.verdict_shot = true;
+            }
+            if capture.verdict_shot && !capture.authorized {
+                session.artifact = None;
+                next_state.set(ChamberState::ArtifactPending);
+                capture.authorized = true;
+            }
+        }
+        ChamberState::ArtifactPending => {
+            let seen = *capture.pending_seen.get_or_insert(now);
+            if !capture.pending_shot && now - seen >= 1.5 {
+                capture.shot(&mut commands, "07_artifact_pending");
+                capture.pending_shot = true;
+            }
+        }
+        ChamberState::ArtifactResult => {
+            let seen = *capture.artifact_seen.get_or_insert(now);
+            if !capture.artifact_shot && now - seen >= 2.5 {
                 capture.shot(&mut commands, "08_artifact_result");
                 capture.artifact_shot = true;
             }
-            _ => {}
         }
+        _ => {}
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn architect_verdict_preserves_witness_authority() {
-        let verdict = architect_verdict("a city grown around a memory");
-        assert!(verdict.contains("a city grown around a memory"));
-        assert!(verdict.contains("Witness retains acceptance authority"));
-    }
 
     #[test]
     fn relative_chronos_paths_resolve_under_repo_root() {

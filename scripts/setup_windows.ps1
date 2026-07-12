@@ -37,6 +37,22 @@ foreach ($pkg in $Manifest.winget_packages) {
     }
 }
 
+foreach ($model in $Manifest.ollama_models) {
+    if (-not $model.required) { continue }
+    Write-Host "Checking Ollama model $($model.name)..."
+    $have = $false
+    try { $have = ((& ollama list 2>$null) -match [regex]::Escape($model.name)).Count -gt 0 } catch {}
+    if ($have) {
+        Write-Host "  -> Present."
+    } elseif ($PreflightOnly) {
+        Write-Host "  -> Missing. (Preflight only, skipping pull)"
+    } else {
+        Write-Host "  -> Pulling via Ollama (this can take a while)..."
+        & ollama pull $model.name
+        if ($LASTEXITCODE -ne 0) { throw "ollama pull failed for $($model.name)" }
+    }
+}
+
 foreach ($artifact in $Manifest.download_artifacts) {
     if (-not $artifact.required) { continue }
     $destination = Join-Path $InstallRoot $artifact.destination

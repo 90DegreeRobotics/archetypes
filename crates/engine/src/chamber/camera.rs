@@ -1,32 +1,52 @@
-use super::ChamberState;
+//! The Witness camera — the only moving element in the chamber.
+//!
+//! The star tetrahedron and the spheres are fixed; focus is expressed by flying the
+//! camera. At rest the camera holds the Director's **authored** establishing frame
+//! (the `Witness_Camera` node inside the temple); when a council member holds the
+//! floor it glides to a pose that brings that archetype's sphere to the fore with
+//! the star behind it.
+
 use bevy::prelude::*;
+
+use super::{spheres::ArchetypeSphere, ChamberState, CurrentFocus};
+use crate::theme::Archetype;
+
+/// Fallback establishing pose, used only until the authored camera node is loaded.
+const ESTABLISHING_FALLBACK: Vec3 = Vec3::new(8.0, 6.2, 12.0);
+const COUNCIL_CENTER: Vec3 = Vec3::new(0.0, 2.0, 0.0);
+/// When an archetype speaks, the camera swings to that sphere's compass bearing at a
+/// fixed radius and height (well inside the temple walls at radius ~21, and always
+/// above the floor), then looks at the sphere with the star beyond it. Positioning by
+/// the sphere's *horizontal* bearing — not its full radial — keeps the camera from
+/// diving under the floor for spheres in the lower hemisphere.
+const FRAME_RADIUS: f32 = 11.0;
+const FRAME_HEIGHT: f32 = 4.5;
+/// Per-second lerp/slerp response for the camera glide.
+const CAMERA_RESPONSE: f32 = 1.6;
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_witness_camera).add_systems(
-            Update,
-            (disable_imported_cameras, handle_camera_transitions).chain(),
-        );
+        app.add_systems(Startup, setup_witness_camera)
+            .add_systems(Update, (disable_imported_cameras, drive_camera).chain());
     }
 }
 
 #[derive(Component)]
-pub struct WitnessCamera {
-    authored: Transform,
-}
+pub struct WitnessCamera;
 
 fn setup_witness_camera(mut commands: Commands) {
-    let authored = Transform::from_xyz(12.0, 10.0, 16.0).looking_at(Vec3::ZERO, Vec3::Y);
     commands.spawn((
         Camera3d::default(),
-        authored,
-        WitnessCamera { authored },
+        Transform::from_translation(ESTABLISHING_FALLBACK).looking_at(COUNCIL_CENTER, Vec3::Y),
+        WitnessCamera,
         Name::new("RuntimeWitnessCamera"),
     ));
 }
 
+/// The authored GLB cameras are part of the scene contract but not the live view;
+/// the runtime Witness camera owns framing.
 fn disable_imported_cameras(
     mut query: Query<&mut Camera, (With<Camera3d>, Without<WitnessCamera>)>,
 ) {
@@ -35,27 +55,52 @@ fn disable_imported_cameras(
     }
 }
 
-fn handle_camera_transitions(
+fn drive_camera(
     state: Res<State<ChamberState>>,
-    mut query: Query<(&mut Transform, &WitnessCamera)>,
+    focus: Res<CurrentFocus>,
+    spheres: Query<(&ArchetypeSphere, &GlobalTransform)>,
+    authored: Query<(&Name, &GlobalTransform), (With<Camera3d>, Without<WitnessCamera>)>,
+    mut camera: Query<&mut Transform, With<WitnessCamera>>,
     time: Res<Time>,
 ) {
-    let Ok((mut transform, witness_camera)) = query.single_mut() else {
+    let Ok(mut transform) = camera.single_mut() else {
         return;
     };
 
-    let approach = match state.get() {
-        ChamberState::IdleAtTable => 1.0,
-        ChamberState::Onboarding => 1.0,
-        ChamberState::Deliberating => 0.82,
-        ChamberState::FocusArchetype
-        | ChamberState::ArchitectInterior
-        | ChamberState::WitnessVerdict
-        | ChamberState::ArtifactPending
-        | ChamberState::ArtifactResult => 0.68,
+    // Rest pose = the Director's authored establishing frame, read from the scene.
+    let establishing = authored
+        .iter()
+        .find(|(name, _)| name.as_str() == "Witness_Camera")
+        .map(|(_, global)| global.compute_transform())
+        .unwrap_or_else(|| {
+            Transform::from_translation(ESTABLISHING_FALLBACK).looking_at(COUNCIL_CENTER, Vec3::Y)
+        });
+
+    let target = match (state.get(), focus.0) {
+        (ChamberState::CouncilSpeaking, Some(archetype)) => sphere_world_pos(&spheres, archetype)
+            .map(frame_sphere)
+            .unwrap_or(establishing),
+        _ => establishing,
     };
-    let target = witness_camera.authored.translation * approach;
-    transform.translation = transform
-        .translation
-        .lerp(target, (time.delta_secs() * 2.0).min(1.0));
+
+    let t = (time.delta_secs() * CAMERA_RESPONSE).min(1.0);
+    transform.translation = transform.translation.lerp(target.translation, t);
+    transform.rotation = transform.rotation.slerp(target.rotation, t);
+}
+
+/// A pose that frames the speaking sphere with the star beyond it. The camera sits at
+/// the sphere's horizontal bearing, at a fixed radius and height, looking at the sphere.
+fn frame_sphere(sphere_pos: Vec3) -> Transform {
+    let bearing = Vec3::new(sphere_pos.x, 0.0, sphere_pos.z).normalize_or_zero();
+    let camera_pos = bearing * FRAME_RADIUS + Vec3::Y * FRAME_HEIGHT;
+    Transform::from_translation(camera_pos).looking_at(sphere_pos, Vec3::Y)
+}
+
+fn sphere_world_pos(
+    spheres: &Query<(&ArchetypeSphere, &GlobalTransform)>,
+    archetype: Archetype,
+) -> Option<Vec3> {
+    spheres.iter().find_map(|(sphere, transform)| {
+        (sphere.archetype == archetype).then(|| transform.translation())
+    })
 }

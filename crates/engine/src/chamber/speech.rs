@@ -18,12 +18,8 @@ impl Plugin for SpeechPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SpeechBridge>()
             .init_resource::<SpeechStatus>()
-            .add_systems(
-                OnEnter(ChamberState::FocusArchetype),
-                play_focused_signature,
-            )
-            .add_systems(OnEnter(ChamberState::WitnessVerdict), request_verdict_voice)
-            .add_systems(Update, poll_speech_result);
+            .add_systems(Update, (play_focused_signature, poll_speech_result))
+            .add_systems(OnEnter(ChamberState::WitnessVerdict), request_verdict_voice);
     }
 }
 
@@ -52,8 +48,13 @@ fn play_focused_signature(
     mut status: ResMut<SpeechStatus>,
     playing: Query<Entity, With<ArchetypeVoice>>,
 ) {
+    // Each time the council yields the floor to a new speaker, `CurrentFocus`
+    // changes; play that archetype's signature voice on the change only.
+    if !focus.is_changed() {
+        return;
+    }
     let Some(archetype) = focus.0 else {
-        status.line = "Voice: silent — no focused archetype".to_owned();
+        status.line = String::new();
         return;
     };
     for entity in &playing {

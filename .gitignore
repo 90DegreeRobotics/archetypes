@@ -2,3 +2,6 @@
 
 # Runtime-staged Chronos renders returned into the chamber (not source assets)
 /assets/artifacts/
+
+# Release staging produced by scripts/install_shortcut.ps1
+/dist/

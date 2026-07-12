@@ -51,12 +51,9 @@ fn drive_interior_environment(
     mut clear: ResMut<ClearColor>,
     mut ambient: ResMut<GlobalAmbientLight>,
 ) {
-    let inside_world = matches!(
-        state.get(),
-        ChamberState::FocusArchetype
-            | ChamberState::ArchitectInterior
-            | ChamberState::WitnessVerdict
-    );
+    // While a council member holds the floor, the world takes on that archetype's
+    // environment; at all other times it rests in the ceremonial void.
+    let inside_world = matches!(state.get(), ChamberState::CouncilSpeaking);
 
     let (void, ambient_color, brightness) = match (inside_world, focus.0) {
         (true, Some(archetype)) => {
@@ -105,7 +102,10 @@ mod tests {
     fn architect_world_is_luminous_not_void() {
         // The Architect's authored void is near-white; the ceremonial void is
         // near-black. World encapsulation must move the environment between them.
-        let architect_void = crate::theme::Archetype::Architect.theme().bg_void.to_linear();
+        let architect_void = crate::theme::Archetype::Architect
+            .theme()
+            .bg_void
+            .to_linear();
         let ceremonial = CEREMONIAL_VOID.to_linear();
         assert!(architect_void.red > ceremonial.red + 0.5);
     }

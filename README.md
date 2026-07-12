@@ -6,18 +6,20 @@ Archetypes is a council-driven world engine based on the Mirrorborn architecture
 
 The Bevy engine loads the Director's Blender-authored chamber scene — an enclosed faceted temple, suspended glass star tetrahedron, altar rings, runtime-safe lights, Witness at the sovereign center, and seven enlarged glass council spheres locked to the star's tips. Each council sphere now encloses a continuously rotating double-faced panel built from the repository's archetype icon and portrait assets. The star tetrahedron and its spheres remain fixed; only the internal panels, camera, and environment move.
 
-Typing and `Enter` advance the loop:
+A title/loading screen holds until the authored scene is ready — nothing of the chamber shows before then. Then typing and `Enter` advance the loop:
 
 1. **Onboarding** — the Witness names the sovereign center, sealing a persistent profile.
 2. **The table** — the Witness types a thought offering to the council.
-3. **Deliberation** — the star tetrahedron holds fixed; the camera moves in on the Architect as the world begins to change.
-4. **Architect interior** — the world itself inverts into the Architect's *Luminous Blueprint* environment: the ceremonial dark void becomes luminous silver-white and the ambient light floods to structural clarity. This is a real environmental translation of the archetype's design tokens, not a caption.
-5. **Witness verdict** — the council resolves a buildable brief under the Witness's retained authority.
-6. **Artifact return** — the authorized brief is sent to the local [Chronos](../chronos) Director, which renders a still through Blender; the verified PNG returns and is **displayed in-game** inside the chamber, with its artifact id and provenance. When Chronos is not ready, the chamber fails closed with a precise reason and shows no image.
+3. **Deliberation** — three council members (a framer, a counter, a deepener, chosen so all seven surface over time) answer **in character** through a local Ollama model (`qwen2.5:7b-instruct`); the exchange collapses into a Witness verdict. Nothing is templated — if Ollama is down, deliberation fails visibly.
+4. **The council speaks** — each member takes the floor in turn: the camera glides to that sphere, its Kokoro voice plays, its double-faced icon/portrait panel turns clockwise, and the world tints to that archetype's environment.
+5. **Witness verdict** — the council resolves into one heavy verdict under the Witness's retained authority.
+6. **Artifact return** — the authorized brief is sent to the local [Chronos](../chronos) Director for a fast **ComfyUI** image; the verified PNG returns and is **displayed in-game** with its provenance. When the render cannot be produced, the chamber fails closed with a precise reason and shows no image.
 
-The Council now has offline neural voices. When an archetype takes focus, Bevy immediately plays its Kokoro signature voice; when the Architect forms a verdict, a background sherpa-onnx worker synthesizes that generated text without blocking the render thread and returns a WAV for in-chamber playback. Keyboard input remains the Witness interface. Missing runtime/model files fail visibly in the ritual UI instead of silently claiming speech.
+Launch it via the desktop/Start-Menu shortcut created by `scripts/install_shortcut.ps1` (after `scripts/setup_windows.ps1` installs Ollama + the model + the offline voices). The shortcut runs the `launcher`, which enforces a single instance, checks readiness, and starts the engine.
 
-Verified end-to-end in the live window against a running Chronos Director (see `STATUS.md`). What remains: the state-driven camera-alignment flight that turns the fixed star to frame the selected sphere in the hexagram view, the other six archetype worlds, Chronos lineage/mutation and world memory, audio, the authored portal table, installer delivery, and launcher supervision. See [Council-Driven World Engine](docs/architecture/COUNCIL_WORLD_ENGINE.md) for the canonical vertical slice.
+The Council has offline neural voices. As each member takes the floor its Kokoro signature voice plays; the Witness verdict's generated text is synthesized by a background sherpa-onnx worker without blocking the render thread and returned as a WAV for in-chamber playback. Missing runtime/model files fail visibly in the ritual UI instead of silently claiming speech.
+
+Verified on screen in the live window (see `STATUS.md`). What remains: the full hexagram-alignment flight (star resolving into the 2D silhouette behind the speaker), per-line dynamic voices, distinct archetype interior worlds beyond the environment tint, Chronos lineage/mutation and world memory, the authored portal table, and a full installer. The live Comfy image is currently blocked by a Chronos Director `codex.db` error (Chronos-side). See [Council-Driven World Engine](docs/architecture/COUNCIL_WORLD_ENGINE.md) for the canonical vertical slice.
 
 A deterministic self-capture mode (`ARCHETYPES_CAPTURE=1`, optional `ARCHETYPES_CAPTURE_DIR`) scripts the whole ritual and writes a screenshot of each stage, so the rendered-frame green check is reproducible on any machine.
 
