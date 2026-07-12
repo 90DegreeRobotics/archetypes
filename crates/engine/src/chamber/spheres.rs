@@ -1,67 +1,32 @@
 use super::{ChamberState, CurrentFocus};
 use crate::theme::Archetype;
 use bevy::prelude::*;
-use std::f32::consts::PI;
 
 pub struct SpheresPlugin;
 
 impl Plugin for SpheresPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_spheres)
-            .add_systems(Update, animate_spheres);
+        app.add_systems(Update, (bind_authored_spheres, animate_spheres).chain());
     }
 }
 
 #[derive(Component)]
 pub struct ArchetypeSphere {
     pub archetype: Archetype,
-    pub base_angle: f32,
-    pub orbit_radius: f32,
-    pub orbit_speed: f32,
+    pub authored_translation: Vec3,
 }
 
-fn setup_spheres(
+fn bind_authored_spheres(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    query: Query<(Entity, &Name, &Transform), Without<ArchetypeSphere>>,
 ) {
-    let sphere_mesh = meshes.add(Sphere::new(0.3));
-
-    let council = [
-        Archetype::Architect,
-        Archetype::Sentinel,
-        Archetype::Jester,
-        Archetype::Mentor,
-        Archetype::Explorer,
-        Archetype::Oracle,
-        Archetype::Empath,
-    ];
-
-    let num_spheres = council.len();
-
-    for (i, &archetype) in council.iter().enumerate() {
-        let theme = archetype.theme();
-        let angle = (i as f32) * (2.0 * PI / num_spheres as f32);
-
-        // Material inherits the archetype's exact glow / accent color
-        let material = materials.add(StandardMaterial {
-            base_color: theme.accent_primary.with_alpha(0.6), // Glassy but tinted
-            emissive: theme.glow_primary.into(),
-            alpha_mode: AlphaMode::Blend,
-            ..default()
-        });
-
-        commands.spawn((
-            Mesh3d(sphere_mesh.clone()),
-            MeshMaterial3d(material),
-            Transform::from_xyz(0.0, 0.0, 0.0), // Updated in system
-            ArchetypeSphere {
+    for (entity, name, transform) in &query {
+        if let Some(archetype) = archetype_from_node_name(name.as_str()) {
+            commands.entity(entity).insert(ArchetypeSphere {
                 archetype,
-                base_angle: angle,
-                orbit_radius: 2.5,
-                orbit_speed: 0.2,
-            },
-        ));
+                authored_translation: transform.translation,
+            });
+        }
     }
 }
 
@@ -71,21 +36,13 @@ fn animate_spheres(
     current_focus: Res<CurrentFocus>,
     mut query: Query<(&mut Transform, &ArchetypeSphere)>,
 ) {
-    let center = Vec3::new(0.0, 5.0, 0.0); // Merkaba center
     for (mut transform, sphere) in &mut query {
-        let current_angle = sphere.base_angle + time.elapsed_secs() * sphere.orbit_speed;
-        let x = center.x + current_angle.cos() * sphere.orbit_radius;
-        let z = center.z + current_angle.sin() * sphere.orbit_radius;
-        // Add a slight bobbing
-        let y = center.y + (time.elapsed_secs() + sphere.base_angle).sin() * 0.2;
-
-        let orbit_position = Vec3::new(x, y, z);
         let is_focused = *state.get() == ChamberState::FocusArchetype
             && current_focus.0 == Some(sphere.archetype);
         let target = if is_focused {
-            center + Vec3::Z
+            Vec3::ZERO
         } else {
-            orbit_position
+            sphere.authored_translation
         };
         let response = if is_focused { 3.5 } else { 2.0 };
 
@@ -101,5 +58,40 @@ fn animate_spheres(
         transform.scale = transform
             .scale
             .lerp(target_scale, (time.delta_secs() * response).min(1.0));
+    }
+}
+
+fn archetype_from_node_name(name: &str) -> Option<Archetype> {
+    match name {
+        "Architect" => Some(Archetype::Architect),
+        "Sentinel" => Some(Archetype::Sentinel),
+        "Jester" => Some(Archetype::Jester),
+        "Mentor" => Some(Archetype::Mentor),
+        "Explorer" => Some(Archetype::Explorer),
+        "Oracle" => Some(Archetype::Oracle),
+        "Empath" => Some(Archetype::Empath),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exported_node_names_map_to_all_seven_council_archetypes() {
+        let names = [
+            "Architect",
+            "Sentinel",
+            "Jester",
+            "Mentor",
+            "Explorer",
+            "Oracle",
+            "Empath",
+        ];
+        assert!(names
+            .into_iter()
+            .all(|name| archetype_from_node_name(name).is_some()));
+        assert_eq!(archetype_from_node_name("Witness"), None);
     }
 }

@@ -24,6 +24,7 @@ impl Plugin for CouncilChamberPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<ChamberState>()
             .init_resource::<CurrentFocus>()
+            .add_systems(Startup, load_authoritative_chamber)
             .add_plugins((
                 camera::CameraPlugin,
                 merkaba::MerkabaPlugin,
@@ -31,4 +32,11 @@ impl Plugin for CouncilChamberPlugin {
                 portal::PortalPlugin,
             ));
     }
+}
+
+fn load_authoritative_chamber(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn((
+        SceneRoot(asset_server.load("scenes/uiscene1.glb#Scene0")),
+        Name::new("AuthoritativeCouncilChamber"),
+    ));
 }

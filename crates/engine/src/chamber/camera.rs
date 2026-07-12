@@ -5,49 +5,52 @@ pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_camera)
-            .add_systems(Update, handle_camera_transitions);
+        app.add_systems(Startup, setup_witness_camera).add_systems(
+            Update,
+            (disable_imported_cameras, handle_camera_transitions).chain(),
+        );
     }
 }
 
 #[derive(Component)]
-pub struct WitnessCamera;
+pub struct WitnessCamera {
+    authored: Transform,
+}
 
-fn setup_camera(mut commands: Commands) {
-    // Initial Witness position at the table, looking forward/up
+fn setup_witness_camera(mut commands: Commands) {
+    let authored = Transform::from_xyz(12.0, 10.0, 16.0).looking_at(Vec3::ZERO, Vec3::Y);
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 1.5, 3.0).looking_at(Vec3::new(0.0, 3.0, 0.0), Vec3::Y),
-        WitnessCamera,
+        authored,
+        WitnessCamera { authored },
+        Name::new("RuntimeWitnessCamera"),
     ));
+}
+
+fn disable_imported_cameras(
+    mut query: Query<&mut Camera, (With<Camera3d>, Without<WitnessCamera>)>,
+) {
+    for mut camera in &mut query {
+        camera.is_active = false;
+    }
 }
 
 fn handle_camera_transitions(
     state: Res<State<ChamberState>>,
-    mut query: Query<&mut Transform, With<WitnessCamera>>,
+    mut query: Query<(&mut Transform, &WitnessCamera)>,
     time: Res<Time>,
 ) {
-    let Ok(mut transform) = query.single_mut() else {
+    let Ok((mut transform, witness_camera)) = query.single_mut() else {
         return;
     };
 
-    // Simple placeholder lerp towards merkaba (y=5.0) during deliberation
-    let target_y = match state.get() {
-        ChamberState::IdleAtTable => 1.5,
-        ChamberState::Deliberating | ChamberState::FocusArchetype => 3.5,
+    let approach = match state.get() {
+        ChamberState::IdleAtTable => 1.0,
+        ChamberState::Deliberating => 0.82,
+        ChamberState::FocusArchetype => 0.68,
     };
-
-    let target_z = match state.get() {
-        ChamberState::IdleAtTable => 3.0,
-        ChamberState::Deliberating | ChamberState::FocusArchetype => 5.0,
-    };
-
-    transform.translation.y = transform
+    let target = witness_camera.authored.translation * approach;
+    transform.translation = transform
         .translation
-        .y
-        .lerp(target_y, time.delta_secs() * 2.0);
-    transform.translation.z = transform
-        .translation
-        .z
-        .lerp(target_z, time.delta_secs() * 2.0);
+        .lerp(target, (time.delta_secs() * 2.0).min(1.0));
 }

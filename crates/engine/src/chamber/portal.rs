@@ -6,33 +6,8 @@ pub struct PortalPlugin;
 
 impl Plugin for PortalPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_portal)
-            .add_systems(Update, handle_portal_input);
+        app.add_systems(Update, handle_portal_input);
     }
-}
-
-fn setup_portal(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    // The Table
-    commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(1.5, 0.2))),
-        MeshMaterial3d(materials.add(Color::srgb(0.1, 0.1, 0.15))),
-        Transform::from_xyz(0.0, 0.0, 0.0),
-    ));
-
-    // The Portal
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(1.0, 1.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.0, 0.2, 0.8), // deep blue portal
-            unlit: true,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 0.11, 0.0),
-    ));
 }
 
 fn handle_portal_input(
