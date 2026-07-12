@@ -4,7 +4,7 @@ Archetypes is a council-driven world engine based on the Mirrorborn architecture
 
 ## Current Prototype
 
-The Bevy engine loads the Director's Blender-authored chamber scene — the fixed star tetrahedron, reflection plane, lights, materials, Witness at the sovereign center, and seven council spheres locked to the star's tips — and drives one continuous council-world ritual on top of it. The star tetrahedron and its spheres never move; only the camera and the environment do.
+The Bevy engine loads the Director's Blender-authored chamber scene — an enclosed faceted temple, suspended glass star tetrahedron, altar rings, runtime-safe lights, Witness at the sovereign center, and seven enlarged glass council spheres locked to the star's tips. Each council sphere now encloses a continuously rotating double-faced panel built from the repository's archetype icon and portrait assets. The star tetrahedron and its spheres remain fixed; only the internal panels, camera, and environment move.
 
 Typing and `Enter` advance the loop:
 
@@ -15,7 +15,7 @@ Typing and `Enter` advance the loop:
 5. **Witness verdict** — the council resolves a buildable brief under the Witness's retained authority.
 6. **Artifact return** — the authorized brief is sent to the local [Chronos](../chronos) Director, which renders a still through Blender; the verified PNG returns and is **displayed in-game** inside the chamber, with its artifact id and provenance. When Chronos is not ready, the chamber fails closed with a precise reason and shows no image.
 
-Verified end-to-end in the live window against a running Chronos Director (see `STATUS.md`). What remains: the enclosed temple atmosphere (the open-edge void is a placeholder — the set should be a closed ancient temple with the star hung in the sky and a circular table whose center is the stargate/prompt wavefield), the camera-alignment flight that turns the fixed star to frame the selected sphere in the hexagram view, the other six archetype worlds, portrait/icon sphere faces, Chronos lineage/mutation and world memory, audio, the authored portal table, installer delivery, and launcher supervision. See [Council-Driven World Engine](docs/architecture/COUNCIL_WORLD_ENGINE.md) for the canonical vertical slice.
+Verified end-to-end in the live window against a running Chronos Director (see `STATUS.md`). What remains: the state-driven camera-alignment flight that turns the fixed star to frame the selected sphere in the hexagram view, the other six archetype worlds, Chronos lineage/mutation and world memory, audio, the authored portal table, installer delivery, and launcher supervision. See [Council-Driven World Engine](docs/architecture/COUNCIL_WORLD_ENGINE.md) for the canonical vertical slice.
 
 A deterministic self-capture mode (`ARCHETYPES_CAPTURE=1`, optional `ARCHETYPES_CAPTURE_DIR`) scripts the whole ritual and writes a screenshot of each stage, so the rendered-frame green check is reproducible on any machine.
 
@@ -24,4 +24,3 @@ A deterministic self-capture mode (`ARCHETYPES_CAPTURE=1`, optional `ARCHETYPES_
 - [AGENTS.md](AGENTS.md): Core constitution for agent collaboration.
 - [CLAUDE.md](CLAUDE.md): Agent orientation and rules.
 - [PROTOCOL.md](PROTOCOL.md): Full development protocol.
-

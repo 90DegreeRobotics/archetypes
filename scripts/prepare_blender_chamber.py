@@ -75,12 +75,9 @@ def main() -> None:
         camera_data = cinematic_camera.data.copy()
         camera = bpy.data.objects.new("Witness_Camera", camera_data)
         bpy.context.scene.collection.objects.link(camera)
+    # The working .blend owns the approved Witness framing. Export must preserve
+    # that authored camera instead of replacing it with a generic fallback view.
     camera.animation_data_clear()
-    camera.location = (12.0, -16.0, 10.0)
-    camera.rotation_euler = (Vector((0.0, 0.0, 0.0)) - camera.location).to_track_quat(
-        "-Z", "Y"
-    ).to_euler()
-    camera.data.lens = 52.0
     camera["runtime_role"] = "witness_camera"
     bpy.context.scene.camera = camera
 
@@ -96,10 +93,7 @@ def main() -> None:
 
     bpy.context.scene.frame_start = 0
     bpy.context.scene.frame_end = 240
-    # Frame 180 is the authored wide establishing view. Saving and exporting
-    # from it prevents runtimes that have not started CameraAction yet from
-    # opening inside the star tetrahedron geometry.
-    bpy.context.scene.frame_set(180)
+    # Preserve the authored working frame; panel animation is exported below.
     bpy.ops.wm.save_as_mainfile(filepath=str(blend_path))
 
     for export_path_value in args.export:
@@ -110,7 +104,9 @@ def main() -> None:
             filepath=str(export_path),
             export_format="GLB",
             use_selection=False,
-            export_cameras=not is_runtime_export,
+            # The camera is authored in the working .blend and is part of the
+            # scene contract even when the current engine supplies its own view.
+            export_cameras=True,
             export_lights=True,
             export_animations=True,
             export_nla_strips=True,
