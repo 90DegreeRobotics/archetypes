@@ -14,7 +14,7 @@ use bevy::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::{ChamberState, CurrentFocus};
+use super::{speech::SpeechStatus, ChamberState, CurrentFocus};
 use crate::theme::Archetype;
 
 const DIRECTOR_URL: &str = "http://127.0.0.1:7777";
@@ -38,7 +38,10 @@ impl Plugin for RitualPlugin {
                 )
                     .chain(),
             )
-            .add_systems(OnEnter(ChamberState::ArtifactResult), present_artifact_image)
+            .add_systems(
+                OnEnter(ChamberState::ArtifactResult),
+                present_artifact_image,
+            )
             .add_systems(OnExit(ChamberState::ArtifactResult), clear_artifact_image);
 
         if let Some(run) = CaptureRun::from_env() {
@@ -54,11 +57,11 @@ struct WitnessProfile {
 }
 
 #[derive(Resource, Default)]
-struct RitualSession {
+pub(super) struct RitualSession {
     profile: Option<WitnessProfile>,
     draft: String,
     offering: String,
-    verdict: String,
+    pub(super) verdict: String,
     artifact: Option<ArtifactOutcome>,
     artifact_note: Option<String>,
 }
@@ -392,6 +395,7 @@ fn request_chronos_artifact(prompt: &str) -> ArtifactOutcome {
 fn render_ritual_ui(
     state: Res<State<ChamberState>>,
     session: Res<RitualSession>,
+    speech: Res<SpeechStatus>,
     mut query: Query<&mut Text, With<RitualUi>>,
 ) {
     let Ok(mut text) = query.single_mut() else {
@@ -402,7 +406,7 @@ fn render_ritual_ui(
         .as_ref()
         .map(|profile| profile.name.as_str())
         .unwrap_or("Witness");
-    text.0 = match state.get() {
+    let ritual_text = match state.get() {
         ChamberState::Onboarding => format!(
             "THE WITNESS\n\nName the sovereign center:\n{}▌\n\nEnter seals the profile.",
             session.draft
@@ -449,6 +453,11 @@ fn render_ritual_ui(
                 outcome.and_then(|value| value.proof_receipt_id.as_deref()).unwrap_or("none"),
             )
         }
+    };
+    text.0 = if speech.line.is_empty() {
+        ritual_text
+    } else {
+        format!("{ritual_text}\n\n{}", speech.line)
     };
 }
 
@@ -559,8 +568,9 @@ fn present_artifact_image(
         return;
     }
     if let Err(error) = fs::copy(png_path, dir.join(&file_name)) {
-        session.artifact_note =
-            Some(format!("verified render could not be staged for display: {error}"));
+        session.artifact_note = Some(format!(
+            "verified render could not be staged for display: {error}"
+        ));
         return;
     }
 

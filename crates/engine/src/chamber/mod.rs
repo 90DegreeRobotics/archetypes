@@ -4,6 +4,7 @@ pub mod camera;
 pub mod interior;
 pub mod portal;
 pub mod ritual;
+pub mod speech;
 pub mod spheres;
 
 #[derive(States, Default, Debug, Clone, Eq, PartialEq, Hash)]
@@ -37,6 +38,7 @@ impl Plugin for CouncilChamberPlugin {
                 portal::PortalPlugin,
                 interior::InteriorPlugin,
                 ritual::RitualPlugin,
+                speech::SpeechPlugin,
             ));
     }
 }

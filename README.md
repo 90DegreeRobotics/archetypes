@@ -15,6 +15,8 @@ Typing and `Enter` advance the loop:
 5. **Witness verdict** — the council resolves a buildable brief under the Witness's retained authority.
 6. **Artifact return** — the authorized brief is sent to the local [Chronos](../chronos) Director, which renders a still through Blender; the verified PNG returns and is **displayed in-game** inside the chamber, with its artifact id and provenance. When Chronos is not ready, the chamber fails closed with a precise reason and shows no image.
 
+The Council now has offline neural voices. When an archetype takes focus, Bevy immediately plays its Kokoro signature voice; when the Architect forms a verdict, a background sherpa-onnx worker synthesizes that generated text without blocking the render thread and returns a WAV for in-chamber playback. Keyboard input remains the Witness interface. Missing runtime/model files fail visibly in the ritual UI instead of silently claiming speech.
+
 Verified end-to-end in the live window against a running Chronos Director (see `STATUS.md`). What remains: the state-driven camera-alignment flight that turns the fixed star to frame the selected sphere in the hexagram view, the other six archetype worlds, Chronos lineage/mutation and world memory, audio, the authored portal table, installer delivery, and launcher supervision. See [Council-Driven World Engine](docs/architecture/COUNCIL_WORLD_ENGINE.md) for the canonical vertical slice.
 
 A deterministic self-capture mode (`ARCHETYPES_CAPTURE=1`, optional `ARCHETYPES_CAPTURE_DIR`) scripts the whole ritual and writes a screenshot of each stage, so the rendered-frame green check is reproducible on any machine.
