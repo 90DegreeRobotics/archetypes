@@ -14,6 +14,10 @@ use crate::theme::Archetype;
 /// Fallback establishing pose, used only until the authored camera node is loaded.
 const ESTABLISHING_FALLBACK: Vec3 = Vec3::new(8.0, 6.2, 12.0);
 const COUNCIL_CENTER: Vec3 = Vec3::new(0.0, 2.0, 0.0);
+/// The table pose: seated above the portal table, looking down into the stargate where
+/// the Witness places intent. On submit the camera sweeps up from here to the star.
+const TABLE_CAMERA_POS: Vec3 = Vec3::new(0.0, 2.5, 9.0);
+const TABLE_LOOK: Vec3 = Vec3::new(0.0, -3.5, 0.0);
 /// When an archetype speaks, the camera swings to that sphere's compass bearing at a
 /// fixed radius and height (well inside the temple walls at radius ~21, and always
 /// above the floor), then looks at the sphere with the star beyond it. Positioning by
@@ -76,10 +80,18 @@ fn drive_camera(
             Transform::from_translation(ESTABLISHING_FALLBACK).looking_at(COUNCIL_CENTER, Vec3::Y)
         });
 
-    let target = match (state.get(), focus.0) {
-        (ChamberState::CouncilSpeaking, Some(archetype)) => sphere_world_pos(&spheres, archetype)
+    let target = match state.get() {
+        // At the table: seated over the portal where intent is placed.
+        ChamberState::Booting | ChamberState::Onboarding | ChamberState::IdleAtTable => {
+            Transform::from_translation(TABLE_CAMERA_POS).looking_at(TABLE_LOOK, Vec3::Y)
+        }
+        // A council member holds the floor: frame that sphere.
+        ChamberState::CouncilSpeaking => focus
+            .0
+            .and_then(|archetype| sphere_world_pos(&spheres, archetype))
             .map(frame_sphere)
             .unwrap_or(establishing),
+        // Deliberation, verdict, artifact: the star / council establishing view.
         _ => establishing,
     };
 

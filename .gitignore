@@ -5,6 +5,7 @@
 
 # Deterministic visual-capture scratch runs. Accepted review frames are force-added.
 /artifacts/visual-proof/council-text-ui*
+/artifacts/visual-proof/portal-table-final*
 
 # Release staging produced by scripts/install_shortcut.ps1
 /dist/

@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 use super::{
     council::{CouncilStatus, CouncilTranscript},
     speech::SpeechStatus,
-    spheres::ArchetypeSphere, ChamberState, CurrentFocus,
+    portal::StargatePortal, spheres::ArchetypeSphere, ChamberState, CurrentFocus,
 };
 use crate::chamber::camera::WitnessCamera;
 use crate::theme::Archetype;
@@ -424,6 +424,7 @@ fn render_ritual_ui(
     windows: Query<&Window, With<PrimaryWindow>>,
     camera: Query<(&Camera, &GlobalTransform), With<WitnessCamera>>,
     spheres: Query<(&ArchetypeSphere, &GlobalTransform)>,
+    portal: Query<&GlobalTransform, With<StargatePortal>>,
     mut drawer: Query<(&mut Text, &mut Node), (With<TranscriptDrawer>, Without<SpeakerBubble>)>,
     mut bubble: Query<(&mut Node, &mut BackgroundColor, &mut BorderColor), (With<SpeakerBubble>, Without<TranscriptDrawer>)>,
     mut bubble_text: Query<(&mut Text, &mut TextColor), (With<SpeakerBubbleText>, Without<TranscriptDrawer>, Without<RitualPrompt>)>,
@@ -492,6 +493,19 @@ fn render_ritual_ui(
     };
     drawer_text.0 = ritual_text;
     drawer_node.display = if ui.drawer_open { Display::Flex } else { Display::None };
+    if matches!(state.get(), ChamberState::Onboarding | ChamberState::IdleAtTable) {
+        if let (Ok(window), Ok((camera, camera_transform)), Ok(portal_transform)) =
+            (windows.single(), camera.single(), portal.single())
+        {
+            if let Ok(viewport) = camera.world_to_viewport(camera_transform, portal_transform.translation()) {
+                drawer_node.left = Val::Px((viewport.x - 170.0).clamp(24.0, window.width() - 364.0));
+                drawer_node.top = Val::Px((viewport.y - 170.0).clamp(24.0, window.height() - 390.0));
+            }
+        }
+    } else {
+        drawer_node.left = Val::Px(24.0);
+        drawer_node.top = Val::Px(24.0);
+    }
     prompt_text.0 = match state.get() {
         ChamberState::CouncilSpeaking => if speech.line.is_empty() {
             if ui.drawer_open { "TAB  CLOSE TRANSCRIPT" } else { "TAB  OPEN TRANSCRIPT" }

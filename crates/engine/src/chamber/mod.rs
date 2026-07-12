@@ -54,4 +54,11 @@ fn load_authoritative_chamber(mut commands: Commands, asset_server: Res<AssetSer
         SceneRoot(asset_server.load("scenes/uiscene1.glb#Scene0")),
         Name::new("AuthoritativeCouncilChamber"),
     ));
+    // The portal table sits on the chamber floor, centred beneath the star. The user
+    // places intent into its stargate portal; the camera then sweeps up to the star.
+    commands.spawn((
+        SceneRoot(asset_server.load("scenes/table.glb#Scene0")),
+        Transform::from_xyz(0.0, -5.5, 0.0).with_scale(Vec3::splat(5.0)),
+        Name::new("PortalTable"),
+    ));
 }
