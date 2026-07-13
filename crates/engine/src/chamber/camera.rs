@@ -25,6 +25,12 @@ const TABLE_LOOK: Vec3 = Vec3::new(0.0, 0.35, 0.0);
 /// diving under the floor for spheres in the lower hemisphere.
 const FRAME_RADIUS: f32 = 11.0;
 const FRAME_HEIGHT: f32 = 4.5;
+/// Deliberation gets its own deliberately composed frame instead of falling back to
+/// the wide Director establishing shot (authored for the main-menu backdrop, not
+/// for "the council convenes"): pulled back and slightly elevated, centered
+/// straight-on on the star so it reads as a clear, intentional composition while
+/// the seven confer.
+const DELIBERATION_CAMERA_POS: Vec3 = Vec3::new(0.0, 8.0, 21.0);
 /// Per-second lerp/slerp response for the camera glide.
 const CAMERA_RESPONSE: f32 = 1.6;
 
@@ -133,7 +139,12 @@ fn drive_camera(
             .and_then(|archetype| sphere_world_pos(&spheres, archetype))
             .map(frame_sphere)
             .unwrap_or(establishing),
-        // Deliberation and verdict: reveal the star / council only after submission.
+        // The council convenes: a deliberate, centered frame on the star, not the
+        // wide main-menu establishing shot.
+        ChamberState::Deliberating => {
+            Transform::from_translation(DELIBERATION_CAMERA_POS).looking_at(COUNCIL_CENTER, Vec3::Y)
+        }
+        // Verdict: reveal the council in the same establishing composition.
         _ => establishing,
     };
 

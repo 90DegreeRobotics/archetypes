@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 use super::{
     council::{CouncilStatus, CouncilTranscript},
     portal::StargatePortal,
-    speech::SpeechStatus,
+    speech::{CouncilVoiceState, SpeechStatus},
     spheres::ArchetypeSphere,
     ChamberState, CurrentFocus,
 };
@@ -178,45 +178,55 @@ fn spawn_ritual_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             Name::new("RitualUiCamera"),
         ))
         .id();
+    // The single consolidated ritual panel: one clear, bordered container pinned to
+    // the top of the screen. Everything the Witness needs to read lives here instead
+    // of being split between opposite screen corners.
     commands.spawn((
         Text::new(""),
         TextFont {
-            font_size: 15.0,
+            font_size: 19.0,
             ..default()
         },
-        TextColor(Color::srgb(0.82, 0.84, 0.88)),
+        TextColor(Color::srgb(0.86, 0.88, 0.92)),
         Node {
             position_type: PositionType::Absolute,
             left: Val::Px(24.0),
             top: Val::Px(24.0),
-            width: Val::Px(340.0),
-            max_height: Val::Percent(88.0),
-            padding: UiRect::all(Val::Px(18.0)),
-            border: UiRect::right(Val::Px(2.0)),
+            width: Val::Px(620.0),
+            max_width: Val::Percent(70.0),
+            max_height: Val::Percent(70.0),
+            padding: UiRect::all(Val::Px(20.0)),
+            border: UiRect::all(Val::Px(2.0)),
             overflow: Overflow::clip_y(),
             ..default()
         },
-        BackgroundColor(Color::srgba(0.018, 0.022, 0.032, 0.94)),
-        BorderColor::all(Color::srgba(0.55, 0.65, 0.9, 0.45)),
+        BackgroundColor(Color::srgba(0.018, 0.022, 0.032, 0.96)),
+        BorderColor::all(Color::srgba(0.55, 0.65, 0.9, 0.5)),
         UiTargetCamera(ui_camera),
         RitualUi,
         TranscriptDrawer,
     ));
+    // A small persistent status/hint line, docked to the same top edge as the main
+    // panel (not the opposite corner) so it reads as part of the same top area even
+    // though it must stay visible independent of whether the panel above is closed.
     commands.spawn((
         Text::new(""),
         TextFont {
             font_size: 16.0,
             ..default()
         },
-        TextColor(Color::srgb(0.72, 0.75, 0.82)),
+        TextColor(Color::srgb(0.78, 0.81, 0.88)),
         Node {
             position_type: PositionType::Absolute,
-            right: Val::Px(22.0),
-            bottom: Val::Px(18.0),
+            right: Val::Px(24.0),
+            top: Val::Px(24.0),
             padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)),
+            border: UiRect::all(Val::Px(2.0)),
+            display: Display::None,
             ..default()
         },
-        BackgroundColor(Color::srgba(0.015, 0.018, 0.025, 0.80)),
+        BackgroundColor(Color::srgba(0.015, 0.018, 0.025, 0.85)),
+        BorderColor::all(Color::srgba(0.55, 0.65, 0.9, 0.35)),
         UiTargetCamera(ui_camera),
         RitualPrompt,
     ));
@@ -446,6 +456,12 @@ fn poll_chronos_result(
         guard.as_ref().and_then(|receiver| receiver.try_recv().ok())
     };
     if let Some(result) = result {
+        // The player-facing text never shows these raw ids (see render_ritual_ui);
+        // they're logged here so the receipt is still traceable for debugging.
+        info!(
+            "ARTIFACT status={} artifact_id={:?} png_path={:?} proof_receipt_id={:?} detail={}",
+            result.status, result.artifact_id, result.png_path, result.proof_receipt_id, result.detail
+        );
         let _ = persist_json(&artifact_receipt_path(), &result);
         session.artifact = Some(result);
         next_state.set(ChamberState::ArtifactResult);
@@ -490,8 +506,12 @@ fn request_chronos_artifact(prompt: &str) -> ArtifactOutcome {
             .timeout(Duration::from_secs(480))
             .send_json(json!({
                 "prompt": prompt,
-                "style": "dark ceremonial artifact painting, vivid color, readable silhouette, no text",
-                "fidelity": "final",
+                "style": "modern realistic digital painting, natural lighting and color, crisp detail, readable silhouette, no text",
+                // Chronos's `storyboard_prompt_from_req` only recognizes "refined";
+                // anything else (this used to send "final") silently falls back to
+                // its rough-sketch default, which is why every artifact came back
+                // as a dark, low-detail sketch regardless of the `style` above.
+                "fidelity": "refined",
                 "comfyui_url": comfyui_url(),
                 "comfyui_output_dir": comfyui_output_dir(),
                 "session_id": "archetypes-council",
@@ -531,6 +551,7 @@ fn render_ritual_ui(
     session: Res<RitualSession>,
     council: Res<CouncilTranscript>,
     speech: Res<SpeechStatus>,
+    voice: Res<CouncilVoiceState>,
     focus: Res<CurrentFocus>,
     time: Res<Time>,
     mut ui: ResMut<DialogueUiState>,
@@ -538,7 +559,10 @@ fn render_ritual_ui(
     camera: Query<(&Camera, &GlobalTransform), With<WitnessCamera>>,
     spheres: Query<(&ArchetypeSphere, &GlobalTransform)>,
     portal: Query<&GlobalTransform, With<StargatePortal>>,
-    mut drawer: Query<(&mut Text, &mut Node), (With<TranscriptDrawer>, Without<SpeakerBubble>)>,
+    mut drawer: Query<
+        (&mut Text, &mut Node, &mut TextFont),
+        (With<TranscriptDrawer>, Without<SpeakerBubble>),
+    >,
     mut bubble: Query<
         (&mut Node, &mut BackgroundColor, &mut BorderColor),
         (With<SpeakerBubble>, Without<TranscriptDrawer>),
@@ -552,15 +576,16 @@ fn render_ritual_ui(
         ),
     >,
     mut prompt: Query<
-        &mut Text,
+        (&mut Text, &mut Node),
         (
             With<RitualPrompt>,
             Without<SpeakerBubbleText>,
             Without<TranscriptDrawer>,
+            Without<SpeakerBubble>,
         ),
     >,
 ) {
-    let (Ok((mut drawer_text, mut drawer_node)), Ok(mut prompt_text)) =
+    let (Ok((mut drawer_text, mut drawer_node, mut drawer_font)), Ok((mut prompt_text, mut prompt_node))) =
         (drawer.single_mut(), prompt.single_mut())
     else {
         return;
@@ -586,42 +611,62 @@ fn render_ritual_ui(
                 "THE COUNCIL IS SILENT\n\n{reason}\n\nEnter returns to the table."
             ),
             _ => format!(
-                "THE COUNCIL DELIBERATES\n\nOffering: {}\n\nThe seven confer through Ollama; their voices are forming...",
+                "THE COUNCIL DELIBERATES\n\nOffering: {}\n\nThe seven are conferring; their voices are forming...",
                 session.offering
             ),
         },
-        ChamberState::CouncilSpeaking => match council.lines.get(council.cursor) {
-            Some(_) => council.lines.iter().take(council.cursor + 1).map(|line|
-                format!("{:?} - {}\n{}", line.archetype, line.role, line.text)
-            ).collect::<Vec<_>>().join("\n\n"),
-            None => "THE COUNCIL SPEAKS".to_owned(),
-        },
+        ChamberState::CouncilSpeaking => {
+            // Lines before the cursor have already fully played. The current line
+            // only shows its generated text once its voice is actually audible —
+            // otherwise the transcript would race ahead of what's being heard.
+            let mut shown: Vec<String> = council
+                .lines
+                .iter()
+                .take(council.cursor)
+                .map(|line| format!("{:?} - {}\n{}", line.archetype, line.role, line.text))
+                .collect();
+            if let Some(line) = council.lines.get(council.cursor) {
+                shown.push(if voice.line_audible(council.cursor) {
+                    format!("{:?} - {}\n{}", line.archetype, line.role, line.text)
+                } else {
+                    format!("{:?} - {}\n…", line.archetype, line.role)
+                });
+            }
+            if shown.is_empty() {
+                "THE COUNCIL SPEAKS".to_owned()
+            } else {
+                shown.join("\n\n")
+            }
+        }
         ChamberState::WitnessVerdict => format!(
-            "COUNCIL VERDICT\n\n{}\n\n{witness}, Enter authorizes this becoming through Comfy.",
+            "COUNCIL VERDICT\n\n{}\n\n{witness}, Enter brings this verdict into being as an image.",
             session.verdict
         ),
         ChamberState::ArtifactPending => {
-            "CHRONOS ARTIFACT ORGAN\n\nThe authorized brief is rendering locally.\nNo artifact will be claimed until a real PNG path is verified.".to_owned()
+            "TURNING THE VERDICT INTO AN IMAGE\n\nThis is being painted for you now. It will appear here as soon as it's ready.".to_owned()
         }
         ChamberState::ArtifactResult => {
             let outcome = session.artifact.as_ref();
-            let display_line = match (
+            match (
                 outcome.map(|value| value.status.as_str()),
                 session.artifact_note.as_deref(),
             ) {
-                (Some("complete"), None) => "Display: manifested above.".to_owned(),
-                (Some("complete"), Some(note)) => format!("Display: {note}"),
-                _ => "Display: none — no verified image to show.".to_owned(),
-            };
-            format!(
-                "ARTIFACT RETURN\n\nStatus: {}\n{}\n{}\nArtifact: {}\nPNG: {}\nProof: {}\n\nEnter returns to the table.",
-                outcome.map(|value| value.status.as_str()).unwrap_or("unknown"),
-                outcome.map(|value| value.detail.as_str()).unwrap_or("No result"),
-                display_line,
-                outcome.and_then(|value| value.artifact_id.as_deref()).unwrap_or("none"),
-                outcome.and_then(|value| value.png_path.as_deref()).unwrap_or("none"),
-                outcome.and_then(|value| value.proof_receipt_id.as_deref()).unwrap_or("none"),
-            )
+                (Some("complete"), None) => {
+                    "YOUR ARTIFACT\n\nThe council's verdict, made visible.\n\nEnter returns to the table."
+                        .to_owned()
+                }
+                (Some("complete"), Some(note)) => format!(
+                    "THE IMAGE COULDN'T BE SHOWN\n\nIt was painted, but {note}.\n\nEnter returns to the table."
+                ),
+                _ => {
+                    let reason = outcome
+                        .map(|value| value.detail.as_str())
+                        .unwrap_or("No result was returned.");
+                    format!(
+                        "THE IMAGE COULD NOT BE MADE\n\n{reason}\n\nEnter returns to the table."
+                    )
+                }
+            }
         }
     };
     drawer_text.0 = ritual_text;
@@ -636,6 +681,10 @@ fn render_ritual_ui(
         state.get(),
         ChamberState::Onboarding | ChamberState::IdleAtTable
     ) {
+        // Smaller footprint here so it hovers beside the portal without covering it
+        // — the bigger top panel below is for the deliberation/render stages only.
+        drawer_node.width = Val::Px(340.0);
+        drawer_font.font_size = 15.0;
         if let (Ok(window), Ok((camera, camera_transform)), Ok(portal_transform)) =
             (windows.single(), camera.single(), portal.single())
         {
@@ -649,9 +698,13 @@ fn render_ritual_ui(
             }
         }
     } else {
+        drawer_node.width = Val::Px(620.0);
+        drawer_font.font_size = 19.0;
         drawer_node.left = Val::Px(24.0);
         drawer_node.top = Val::Px(24.0);
     }
+    // Only shown when it adds information the main panel doesn't already state
+    // inline (every other branch already ends with its own explicit instruction).
     prompt_text.0 = match state.get() {
         ChamberState::CouncilSpeaking => {
             if speech.line.is_empty() {
@@ -664,16 +717,21 @@ fn render_ritual_ui(
                 speech.line.as_str()
             }
         }
-        ChamberState::Deliberating => "The council is forming its response…",
-        ChamberState::ArtifactPending => "Chronos is painting locally…",
-        ChamberState::Booting | ChamberState::MainMenu => "",
-        _ => "ENTER  CONTINUE",
+        _ => "",
     }
     .to_owned();
+    prompt_node.display = if prompt_text.0.is_empty() {
+        Display::None
+    } else {
+        Display::Flex
+    };
 
-    let active = (*state.get() == ChamberState::CouncilSpeaking)
-        .then(|| council.lines.get(council.cursor))
-        .flatten();
+    // The bubble only ever shows a line once its voice is actually audible — this
+    // is the fix for text appearing before (or well ahead of) the matching speech.
+    let active = (*state.get() == ChamberState::CouncilSpeaking
+        && voice.line_audible(council.cursor))
+    .then(|| council.lines.get(council.cursor))
+    .flatten();
     let key = active
         .map(|line| format!("{:?}:{}", line.archetype, line.text))
         .unwrap_or_default();
@@ -751,7 +809,7 @@ fn avatar_slug(archetype: Archetype) -> &'static str {
 
 fn artifact_prompt(offering: &str, verdict: &str) -> String {
     format!(
-        "Council-authorized study. Original offering: {offering}. Build verdict: {verdict}. Produce one restrained, artifact-grade image with a readable silhouette, dark ceremonial atmosphere, and no text."
+        "Council-authorized study. Original offering: {offering}. Build verdict: {verdict}. Produce one restrained, artifact-grade image, modern and realistic, with a readable silhouette and no text."
     )
 }
 
@@ -812,6 +870,10 @@ fn persist_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
 #[derive(Component)]
 struct ArtifactImageNode;
 
+/// Seconds since the artifact image was first shown, driving its zoom-in.
+#[derive(Component, Default)]
+struct ArtifactImageAge(f32);
+
 /// On entering the artifact result, stage the verified render into the asset tree
 /// and display it in the chamber. The image is only shown when Chronos returned a
 /// verified, on-disk PNG — never a placeholder standing in for a render that does
@@ -859,26 +921,35 @@ fn present_artifact_image(
     commands.spawn((
         Node {
             position_type: PositionType::Absolute,
-            width: Val::Px(ARTIFACT_DISPLAY_SIZE),
+            width: Val::Px(ARTIFACT_DISPLAY_SIZE * ARTIFACT_ZOOM_START_SCALE),
             ..default()
         },
         ImageNode::new(handle),
         ArtifactImageNode,
+        ArtifactImageAge::default(),
     ));
 }
 
 /// On-screen size of the returned artifact, manifested over the portal table.
 const ARTIFACT_DISPLAY_SIZE: f32 = 390.0;
+/// The reveal starts at this fraction of the final size and eases up to full size
+/// over `ARTIFACT_ZOOM_DURATION`, so the image draws the eye in instead of popping
+/// onto the table at full size.
+const ARTIFACT_ZOOM_START_SCALE: f32 = 0.3;
+const ARTIFACT_ZOOM_DURATION: f32 = 2.0;
 
-/// Keep the returned image pinned over the portal. ArtifactResult returns the camera
-/// downward to the table, so creation visibly lands where the Witness placed intent.
+/// Keep the returned image pinned over the portal, zooming in from a smaller size
+/// to `ARTIFACT_DISPLAY_SIZE` over the first couple of seconds. ArtifactResult
+/// returns the camera downward to the table, so creation visibly lands where the
+/// Witness placed intent.
 fn position_artifact_image(
+    time: Res<Time>,
     windows: Query<&Window, With<PrimaryWindow>>,
     camera: Query<(&Camera, &GlobalTransform), With<WitnessCamera>>,
     named: Query<(&Name, &GlobalTransform)>,
-    mut node: Query<&mut Node, With<ArtifactImageNode>>,
+    mut node: Query<(&mut Node, &mut ArtifactImageAge), With<ArtifactImageNode>>,
 ) {
-    let (Ok(mut node), Ok(window), Ok((camera, camera_transform))) =
+    let (Ok((mut node, mut age)), Ok(window), Ok((camera, camera_transform))) =
         (node.single_mut(), windows.single(), camera.single())
     else {
         return;
@@ -889,8 +960,13 @@ fn position_artifact_image(
     else {
         return;
     };
+    age.0 += time.delta_secs();
+    let t = (age.0 / ARTIFACT_ZOOM_DURATION).clamp(0.0, 1.0);
+    let eased = t * t * (3.0 - 2.0 * t); // smoothstep
+    let size =
+        ARTIFACT_DISPLAY_SIZE * (ARTIFACT_ZOOM_START_SCALE + (1.0 - ARTIFACT_ZOOM_START_SCALE) * eased);
+    node.width = Val::Px(size);
     if let Ok(viewport) = camera.world_to_viewport(camera_transform, witness.translation()) {
-        let size = ARTIFACT_DISPLAY_SIZE;
         node.left = Val::Px((viewport.x - size / 2.0).clamp(8.0, window.width() - size - 8.0));
         node.top = Val::Px((viewport.y - size / 2.0).clamp(8.0, window.height() - size - 8.0));
     }

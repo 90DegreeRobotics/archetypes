@@ -77,6 +77,18 @@ impl CouncilVoiceState {
                 CouncilVoicePhase::Complete | CouncilVoicePhase::Failed
             )
     }
+
+    /// True once this line's voice has actually started (or will never come — a
+    /// failure still unblocks the text so the ritual doesn't stall silently).
+    /// Never true while the TTS request is still `Pending`, which is the gap that
+    /// used to let text appear before any sound played.
+    pub(super) fn line_audible(&self, cursor: usize) -> bool {
+        self.cursor == Some(cursor)
+            && matches!(
+                self.phase,
+                CouncilVoicePhase::Playing | CouncilVoicePhase::Complete | CouncilVoicePhase::Failed
+            )
+    }
 }
 
 fn reset_council_voice(mut voice: ResMut<CouncilVoiceState>) {

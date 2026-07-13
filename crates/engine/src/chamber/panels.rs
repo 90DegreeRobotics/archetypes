@@ -12,7 +12,26 @@ pub struct PanelsPlugin;
 
 impl Plugin for PanelsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, keep_panels_upright);
+        app.add_systems(Update, (keep_panels_upright, show_portrait_face));
+    }
+}
+
+/// The Icon and Portrait children (`author_panel` in
+/// `scripts/author_temple_overhaul.py`) are two coplanar-ish, back-to-back planes
+/// with backface culling disabled — so whichever one sits physically nearer the
+/// camera wins the depth test and is what's actually seen, regardless of which way
+/// its face normal points. Blender's Z-up authoring axis becomes Bevy's Y-up on
+/// glTF export, so the offset that separates them at runtime is local `+/-Y`
+/// (confirmed empirically: Icon at `y=+0.025`, Portrait at `y=-0.025`), not Z.
+/// Icon was the near (visible) one on every sphere; swap them so the Portrait —
+/// the actual archetype artwork — is what the Witness sees.
+fn show_portrait_face(mut panels: Query<(&Name, &mut Transform)>) {
+    for (name, mut local) in &mut panels {
+        if name.as_str().ends_with("_Icon_Panel") {
+            local.translation.y = -0.025;
+        } else if name.as_str().ends_with("_Portrait_Panel") {
+            local.translation.y = 0.025;
+        }
     }
 }
 
