@@ -172,18 +172,9 @@ def build_table():
         g.scale = (0.010 if i % 2 else 0.016, 0.052, 0.012)
         keep(g, steel)
 
-    # --- plasma-etched geometric grid inside the rim ---
-    grid_radius = TOP_RADIUS - 0.20
-    geometric_grid("Council_Plasma_Grid", grid_radius, TOP_Z + 0.012, rings=11, mat=cyan, thickness=0.0075)
-    # Radial spokes that read as lines "radiating from the centre" in the reference.
-    for i in range(24):
-        a = math.tau * i / 24
-        tube_between(f"Council_Grid_Spoke_{i + 1:02d}",
-                     (0.02 * math.cos(a), 0.02 * math.sin(a), TOP_Z + 0.011),
-                     (grid_radius * math.cos(a), grid_radius * math.sin(a), TOP_Z + 0.011),
-                     0.0038, cyan, verts=6)
-    for rr in (0.22, 0.34, 0.46, 0.58, 0.70):
-        torus(f"Council_Astrolabe_Ring_{int(rr*100)}", rr, 0.0045, TOP_Z + 0.014, cyan, 128, 6)
+    # The tabletop is left clean — a dark polished surface with the portal glowing
+    # at its centre and a single subtle underglow ring. (The operator did not want a
+    # white grid etched across the top.)
     torus("Council_Underglow_Ring", 0.60, 0.018, TOP_Z - 0.11, underglow, 128, 10)
 
     # --- apron skirt under the top ---
