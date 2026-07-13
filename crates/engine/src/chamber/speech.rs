@@ -9,7 +9,7 @@ use std::{
 
 use bevy::{audio::AudioSource, prelude::*};
 
-use super::{ritual::RitualSession, ChamberState, CurrentFocus};
+use super::{council::CouncilTranscript, ritual::RitualSession, ChamberState, CurrentFocus};
 use crate::theme::Archetype;
 
 pub struct SpeechPlugin;
@@ -18,7 +18,17 @@ impl Plugin for SpeechPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SpeechBridge>()
             .init_resource::<SpeechStatus>()
-            .add_systems(Update, (play_focused_signature, poll_speech_result))
+            .init_resource::<CouncilVoiceState>()
+            .add_systems(
+                Update,
+                (
+                    request_council_line,
+                    poll_speech_result,
+                    track_voice_completion,
+                )
+                    .chain(),
+            )
+            .add_systems(OnEnter(ChamberState::Deliberating), reset_council_voice)
             .add_systems(OnEnter(ChamberState::WitnessVerdict), request_verdict_voice);
     }
 }
@@ -36,38 +46,77 @@ struct SpeechBridge {
 struct SpeechResult {
     archetype: Archetype,
     wav: Vec<u8>,
+    council_cursor: Option<usize>,
 }
 
 #[derive(Component)]
 struct ArchetypeVoice;
 
-fn play_focused_signature(
-    mut commands: Commands,
-    focus: Res<CurrentFocus>,
-    asset_server: Res<AssetServer>,
+#[derive(Resource, Default, Debug)]
+pub(super) struct CouncilVoiceState {
+    cursor: Option<usize>,
+    phase: CouncilVoicePhase,
+    playback_seen: bool,
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+enum CouncilVoicePhase {
+    #[default]
+    Idle,
+    Pending,
+    Playing,
+    Complete,
+    Failed,
+}
+
+impl CouncilVoiceState {
+    pub(super) fn finished(&self, cursor: usize) -> bool {
+        self.cursor == Some(cursor)
+            && matches!(
+                self.phase,
+                CouncilVoicePhase::Complete | CouncilVoicePhase::Failed
+            )
+    }
+}
+
+fn reset_council_voice(mut voice: ResMut<CouncilVoiceState>) {
+    *voice = CouncilVoiceState::default();
+}
+
+fn request_council_line(
+    state: Res<State<ChamberState>>,
+    transcript: Res<CouncilTranscript>,
+    bridge: Res<SpeechBridge>,
     mut status: ResMut<SpeechStatus>,
+    mut voice: ResMut<CouncilVoiceState>,
     playing: Query<Entity, With<ArchetypeVoice>>,
 ) {
-    // Each time the council yields the floor to a new speaker, `CurrentFocus`
-    // changes; play that archetype's signature voice on the change only.
-    if !focus.is_changed() {
+    if *state.get() != ChamberState::CouncilSpeaking || voice.cursor == Some(transcript.cursor) {
         return;
     }
-    let Some(archetype) = focus.0 else {
-        status.line = String::new();
+    let Some(line) = transcript.lines.get(transcript.cursor) else {
         return;
     };
-    for entity in &playing {
-        commands.entity(entity).despawn();
+    if !playing.is_empty() {
+        return;
     }
-    let filename = format!("audio/archetypes/{}.wav", archetype_slug(archetype));
-    commands.spawn((
-        AudioPlayer::new(asset_server.load(filename)),
-        PlaybackSettings::DESPAWN,
-        ArchetypeVoice,
-        Name::new(format!("{:?}SignatureVoice", archetype)),
-    ));
-    status.line = format!("Voice: {:?} speaking", archetype);
+    let archetype = line.archetype;
+    let request = VoiceRequest::for_council_line(archetype, &line.text);
+    let (sender, receiver) = mpsc::channel();
+    *bridge.receiver.lock().expect("speech receiver lock") = Some(receiver);
+    voice.cursor = Some(transcript.cursor);
+    voice.phase = CouncilVoicePhase::Pending;
+    voice.playback_seen = false;
+    status.line = format!("Voice: {} is forming speech...", request.name);
+    let cursor = transcript.cursor;
+    thread::spawn(move || {
+        let result = synthesize(request).map(|wav| SpeechResult {
+            archetype,
+            wav,
+            council_cursor: Some(cursor),
+        });
+        let _ = sender.send(result);
+    });
 }
 
 fn request_verdict_voice(
@@ -89,7 +138,11 @@ fn request_verdict_voice(
     *bridge.receiver.lock().expect("speech receiver lock") = Some(receiver);
     status.line = format!("Voice: {} is forming speech...", request.name);
     thread::spawn(move || {
-        let result = synthesize(request).map(|wav| SpeechResult { archetype, wav });
+        let result = synthesize(request).map(|wav| SpeechResult {
+            archetype,
+            wav,
+            council_cursor: None,
+        });
         let _ = sender.send(result);
     });
 }
@@ -99,6 +152,7 @@ fn poll_speech_result(
     bridge: Res<SpeechBridge>,
     mut status: ResMut<SpeechStatus>,
     mut audio_assets: ResMut<Assets<AudioSource>>,
+    mut voice: ResMut<CouncilVoiceState>,
     playing: Query<Entity, With<ArchetypeVoice>>,
 ) {
     let result = {
@@ -119,9 +173,31 @@ fn poll_speech_result(
                 ArchetypeVoice,
                 Name::new(format!("{:?}Voice", result.archetype)),
             ));
+            if let Some(cursor) = result.council_cursor {
+                voice.cursor = Some(cursor);
+                voice.phase = CouncilVoicePhase::Playing;
+                voice.playback_seen = false;
+            }
             status.line = format!("Voice: {:?} speaking", result.archetype);
         }
-        Err(error) => status.line = format!("Voice unavailable: {error}"),
+        Err(error) => {
+            voice.phase = CouncilVoicePhase::Failed;
+            status.line = format!("Voice unavailable: {error}");
+        }
+    }
+}
+
+fn track_voice_completion(
+    mut voice: ResMut<CouncilVoiceState>,
+    playing: Query<(), With<ArchetypeVoice>>,
+) {
+    if voice.phase != CouncilVoicePhase::Playing {
+        return;
+    }
+    if !playing.is_empty() {
+        voice.playback_seen = true;
+    } else if voice.playback_seen {
+        voice.phase = CouncilVoicePhase::Complete;
     }
 }
 
@@ -133,6 +209,12 @@ struct VoiceRequest {
 }
 
 impl VoiceRequest {
+    fn for_council_line(archetype: Archetype, text: &str) -> Self {
+        let mut request = Self::for_archetype(archetype);
+        request.text = text.to_owned();
+        request
+    }
+
     fn for_archetype(archetype: Archetype) -> Self {
         match archetype {
             Archetype::Architect => Self {
@@ -183,19 +265,6 @@ impl VoiceRequest {
                 text: "The council is listening.".to_owned(),
             },
         }
-    }
-}
-
-fn archetype_slug(archetype: Archetype) -> &'static str {
-    match archetype {
-        Archetype::Architect => "architect",
-        Archetype::Sentinel => "sentinel",
-        Archetype::Mentor => "mentor",
-        Archetype::Explorer => "explorer",
-        Archetype::Oracle => "oracle",
-        Archetype::Empath => "empath",
-        Archetype::Jester => "jester",
-        Archetype::Codex | Archetype::Viren => "architect",
     }
 }
 
@@ -351,5 +420,12 @@ mod tests {
         assert!(
             app_data_root().ends_with(Path::new("NeuroCognica").join("Archetypes").join("data"))
         );
+    }
+
+    #[test]
+    fn council_voice_request_preserves_every_generated_character() {
+        let generated = "Exact speech — punctuation, spacing, and every final word.";
+        let request = VoiceRequest::for_council_line(Archetype::Oracle, generated);
+        assert_eq!(request.text, generated);
     }
 }

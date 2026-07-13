@@ -19,12 +19,10 @@ use std::{
 use bevy::prelude::*;
 use serde_json::{json, Value};
 
-use super::{ritual::RitualSession, ChamberState, CurrentFocus};
+use super::{ritual::RitualSession, speech::CouncilVoiceState, ChamberState, CurrentFocus};
 use crate::theme::Archetype;
 
 const OLLAMA_CHAT_URL: &str = "http://127.0.0.1:11434/api/chat";
-/// Seconds each speaker holds the floor before the council yields to the next.
-const SPEAKER_DWELL: f32 = 5.5;
 
 fn ollama_model() -> String {
     std::env::var("ARCHETYPES_OLLAMA_MODEL").unwrap_or_else(|_| "qwen2.5:7b-instruct".to_owned())
@@ -73,7 +71,6 @@ pub struct CouncilTranscript {
     pub verdict: String,
     /// Index of the speaker currently holding the floor during `CouncilSpeaking`.
     pub cursor: usize,
-    dwell: f32,
     receiver: Mutex<Option<mpsc::Receiver<Result<CouncilOutcome, String>>>>,
     started: bool,
 }
@@ -91,7 +88,6 @@ fn begin_deliberation(mut transcript: ResMut<CouncilTranscript>, session: Res<Ri
     transcript.lines.clear();
     transcript.verdict.clear();
     transcript.cursor = 0;
-    transcript.dwell = 0.0;
     transcript.started = true;
     transcript.status = CouncilStatus::Deliberating;
 
@@ -131,7 +127,6 @@ fn poll_deliberation(
             transcript.lines = outcome.lines;
             transcript.verdict = outcome.verdict;
             transcript.cursor = 0;
-            transcript.dwell = 0.0;
             transcript.status = CouncilStatus::Ready;
             next_state.set(ChamberState::CouncilSpeaking);
         }
@@ -145,8 +140,8 @@ fn poll_deliberation(
 /// Walk the transcript speaker by speaker; when the last has spoken, the council
 /// collapses into the Witness verdict.
 fn advance_speakers(
-    time: Res<Time>,
     state: Res<State<ChamberState>>,
+    voice: Res<CouncilVoiceState>,
     mut transcript: ResMut<CouncilTranscript>,
     mut focus: ResMut<CurrentFocus>,
     mut next_state: ResMut<NextState<ChamberState>>,
@@ -155,11 +150,9 @@ fn advance_speakers(
     if *state.get() != ChamberState::CouncilSpeaking {
         return;
     }
-    transcript.dwell += time.delta_secs();
-    if transcript.dwell < SPEAKER_DWELL {
+    if !voice.finished(transcript.cursor) {
         return;
     }
-    transcript.dwell = 0.0;
     let next = transcript.cursor + 1;
     if next < transcript.lines.len() {
         transcript.cursor = next;

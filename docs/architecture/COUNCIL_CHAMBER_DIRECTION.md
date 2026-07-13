@@ -21,7 +21,9 @@ The Council Chamber is the permanent home space and the metaphysical motherboard
 
 The table should serve three functions simultaneously. First, it is the physical anchor of the player’s point of view: the place from which prompts are entered and where deliberation begins. Second, it is the ritual instrument that opens the ascent to the star tetrahedron above. Third, it is the visual bridge between grounded interaction and cosmic symbolic machinery, because its circular geometry naturally extends upward into the orbital logic of the council spheres.
 
-The chamber architecture around the table should be restrained rather than cluttered. The asset references already contain enough symbolic weight, so the room should avoid ornamental overload. Dark stone, metallic trim, faint starfields, subtle volumetric light, and carefully placed luminous lines will allow the table, portal, and spheres to dominate. The emotional tone should be judicial, sacred, and dreamlike at once.
+The chamber architecture around the table should be restrained rather than cluttered. The asset references already contain enough symbolic weight, so the room avoids ornamental overload. Dark stone, metallic trim, subtle volumetric light, and carefully placed luminous lines allow the table, portal, and spheres to dominate. Above and behind those lit assets is absolute black: no sky, starfield, dome, or ambient color wash competes with the composition.
+
+The table is one supported physical artifact: a dark circular top, gilded rims, contained cyan inlay, central living aperture, and readable legs. Sacred geometry belongs inside the tabletop. It must never spread beneath the table as a geodesic floor substitute.
 
 ## The Witness position
 The player is not one archetype among many. The player occupies the Witness role: the sovereign center that authorizes, receives, and ultimately collapses council activity into choice. The identity document defines the Witness as the observing center and final site of executive intent, which means the game should treat the player’s seat as ontologically different from all other nodes.

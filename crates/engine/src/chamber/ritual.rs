@@ -17,8 +17,10 @@ use serde_json::{json, Value};
 
 use super::{
     council::{CouncilStatus, CouncilTranscript},
+    portal::StargatePortal,
     speech::SpeechStatus,
-    portal::StargatePortal, spheres::ArchetypeSphere, ChamberState, CurrentFocus,
+    spheres::ArchetypeSphere,
+    ChamberState, CurrentFocus,
 };
 use crate::chamber::camera::WitnessCamera;
 use crate::theme::Archetype;
@@ -155,7 +157,11 @@ struct DialogueUiState {
 
 impl Default for DialogueUiState {
     fn default() -> Self {
-        Self { drawer_open: true, bubble_key: String::new(), bubble_age: 0.0 }
+        Self {
+            drawer_open: true,
+            bubble_key: String::new(),
+            bubble_age: 0.0,
+        }
     }
 }
 
@@ -172,39 +178,98 @@ fn spawn_ritual_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             Name::new("RitualUiCamera"),
         ))
         .id();
-    commands.spawn((Text::new(""), TextFont { font_size: 15.0, ..default() },
-        TextColor(Color::srgb(0.82, 0.84, 0.88)), Node {
-            position_type: PositionType::Absolute, left: Val::Px(24.0), top: Val::Px(24.0),
-            width: Val::Px(340.0), max_height: Val::Percent(88.0), padding: UiRect::all(Val::Px(18.0)),
-            border: UiRect::right(Val::Px(2.0)), overflow: Overflow::clip_y(), ..default()
-        }, BackgroundColor(Color::srgba(0.018, 0.022, 0.032, 0.94)),
-        BorderColor::all(Color::srgba(0.55, 0.65, 0.9, 0.45)), UiTargetCamera(ui_camera),
-        RitualUi, TranscriptDrawer));
-    commands.spawn((Text::new(""), TextFont { font_size: 16.0, ..default() },
-        TextColor(Color::srgb(0.72, 0.75, 0.82)), Node {
-            position_type: PositionType::Absolute, right: Val::Px(22.0), bottom: Val::Px(18.0),
-            padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)), ..default()
-        }, BackgroundColor(Color::srgba(0.015, 0.018, 0.025, 0.80)), UiTargetCamera(ui_camera), RitualPrompt));
-    commands.spawn((Node { position_type: PositionType::Absolute, left: Val::Percent(57.0),
-            top: Val::Percent(20.0), width: Val::Px(410.0), padding: UiRect::all(Val::Px(16.0)),
-            border: UiRect::all(Val::Px(2.0)), flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center, column_gap: Val::Px(14.0), ..default() },
-        BackgroundColor(Color::srgba(0.02, 0.025, 0.04, 0.94)),
-        BorderColor::all(Color::WHITE), UiTargetCamera(ui_camera), SpeakerBubble,
-    )).with_children(|parent| {
-        parent.spawn((
-            ImageNode::new(asset_server.load("avatars/architect.png")),
-            Node { width: Val::Px(78.0), height: Val::Px(78.0), flex_shrink: 0.0, ..default() },
-            SpeakerBubbleAvatar,
-        ));
-        parent.spawn((Text::new(""), TextFont { font_size: 18.0, ..default() },
-            TextColor(Color::WHITE), Node { max_width: Val::Px(284.0), ..default() },
-            SpeakerBubbleText));
-    });
+    commands.spawn((
+        Text::new(""),
+        TextFont {
+            font_size: 15.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.82, 0.84, 0.88)),
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(24.0),
+            top: Val::Px(24.0),
+            width: Val::Px(340.0),
+            max_height: Val::Percent(88.0),
+            padding: UiRect::all(Val::Px(18.0)),
+            border: UiRect::right(Val::Px(2.0)),
+            overflow: Overflow::clip_y(),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.018, 0.022, 0.032, 0.94)),
+        BorderColor::all(Color::srgba(0.55, 0.65, 0.9, 0.45)),
+        UiTargetCamera(ui_camera),
+        RitualUi,
+        TranscriptDrawer,
+    ));
+    commands.spawn((
+        Text::new(""),
+        TextFont {
+            font_size: 16.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.72, 0.75, 0.82)),
+        Node {
+            position_type: PositionType::Absolute,
+            right: Val::Px(22.0),
+            bottom: Val::Px(18.0),
+            padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.015, 0.018, 0.025, 0.80)),
+        UiTargetCamera(ui_camera),
+        RitualPrompt,
+    ));
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(57.0),
+                top: Val::Percent(20.0),
+                width: Val::Px(410.0),
+                padding: UiRect::all(Val::Px(16.0)),
+                border: UiRect::all(Val::Px(2.0)),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(14.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.02, 0.025, 0.04, 0.94)),
+            BorderColor::all(Color::WHITE),
+            UiTargetCamera(ui_camera),
+            SpeakerBubble,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                ImageNode::new(asset_server.load("avatars/architect.png")),
+                Node {
+                    width: Val::Px(78.0),
+                    height: Val::Px(78.0),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                SpeakerBubbleAvatar,
+            ));
+            parent.spawn((
+                Text::new(""),
+                TextFont {
+                    font_size: 18.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                Node {
+                    max_width: Val::Px(284.0),
+                    ..default()
+                },
+                SpeakerBubbleText,
+            ));
+        });
 }
 
 fn toggle_transcript_drawer(keyboard: Res<ButtonInput<Key>>, mut ui: ResMut<DialogueUiState>) {
-    if keyboard.just_pressed(Key::Tab) { ui.drawer_open = !ui.drawer_open; }
+    if keyboard.just_pressed(Key::Tab) {
+        ui.drawer_open = !ui.drawer_open;
+    }
 }
 
 fn load_witness_profile(mut session: ResMut<RitualSession>) {
@@ -225,7 +290,10 @@ fn receive_text_input(
     mut session: ResMut<RitualSession>,
 ) {
     for key in keyboard.get_just_pressed() {
-        let editing = matches!(state.get(), ChamberState::Onboarding | ChamberState::IdleAtTable);
+        let editing = matches!(
+            state.get(),
+            ChamberState::Onboarding | ChamberState::IdleAtTable
+        );
         match key {
             Key::Backspace if editing => backspace_at_cursor(&mut session),
             Key::Delete if editing => delete_at_cursor(&mut session),
@@ -253,10 +321,10 @@ fn receive_text_input(
                 }
                 _ => {}
             },
-            Key::Character(text) if editing =>
-            {
+            Key::Character(text) if editing => {
                 let room = 600usize.saturating_sub(session.draft.chars().count());
-                let filtered: String = text.chars()
+                let filtered: String = text
+                    .chars()
                     .filter(|character| !character.is_control())
                     .take(room)
                     .collect();
@@ -268,7 +336,10 @@ fn receive_text_input(
 }
 
 fn byte_index(text: &str, char_index: usize) -> usize {
-    text.char_indices().nth(char_index).map(|(index, _)| index).unwrap_or(text.len())
+    text.char_indices()
+        .nth(char_index)
+        .map(|(index, _)| index)
+        .unwrap_or(text.len())
 }
 
 fn insert_at_cursor(session: &mut RitualSession, text: &str) {
@@ -279,7 +350,9 @@ fn insert_at_cursor(session: &mut RitualSession, text: &str) {
 }
 
 fn backspace_at_cursor(session: &mut RitualSession) {
-    if session.cursor == 0 { return; }
+    if session.cursor == 0 {
+        return;
+    }
     let end = byte_index(&session.draft, session.cursor);
     let start = byte_index(&session.draft, session.cursor - 1);
     session.draft.replace_range(start..end, "");
@@ -287,14 +360,19 @@ fn backspace_at_cursor(session: &mut RitualSession) {
 }
 
 fn delete_at_cursor(session: &mut RitualSession) {
-    if session.cursor >= session.draft.chars().count() { return; }
+    if session.cursor >= session.draft.chars().count() {
+        return;
+    }
     let start = byte_index(&session.draft, session.cursor);
     let end = byte_index(&session.draft, session.cursor + 1);
     session.draft.replace_range(start..end, "");
 }
 
 fn draft_with_caret(session: &RitualSession) -> String {
-    let byte = byte_index(&session.draft, session.cursor.min(session.draft.chars().count()));
+    let byte = byte_index(
+        &session.draft,
+        session.cursor.min(session.draft.chars().count()),
+    );
     let mut rendered = session.draft.clone();
     rendered.insert_str(byte, "▌");
     rendered
@@ -461,11 +539,30 @@ fn render_ritual_ui(
     spheres: Query<(&ArchetypeSphere, &GlobalTransform)>,
     portal: Query<&GlobalTransform, With<StargatePortal>>,
     mut drawer: Query<(&mut Text, &mut Node), (With<TranscriptDrawer>, Without<SpeakerBubble>)>,
-    mut bubble: Query<(&mut Node, &mut BackgroundColor, &mut BorderColor), (With<SpeakerBubble>, Without<TranscriptDrawer>)>,
-    mut bubble_text: Query<(&mut Text, &mut TextColor), (With<SpeakerBubbleText>, Without<TranscriptDrawer>, Without<RitualPrompt>)>,
-    mut prompt: Query<&mut Text, (With<RitualPrompt>, Without<SpeakerBubbleText>, Without<TranscriptDrawer>)>,
+    mut bubble: Query<
+        (&mut Node, &mut BackgroundColor, &mut BorderColor),
+        (With<SpeakerBubble>, Without<TranscriptDrawer>),
+    >,
+    mut bubble_text: Query<
+        (&mut Text, &mut TextColor),
+        (
+            With<SpeakerBubbleText>,
+            Without<TranscriptDrawer>,
+            Without<RitualPrompt>,
+        ),
+    >,
+    mut prompt: Query<
+        &mut Text,
+        (
+            With<RitualPrompt>,
+            Without<SpeakerBubbleText>,
+            Without<TranscriptDrawer>,
+        ),
+    >,
 ) {
-    let (Ok((mut drawer_text, mut drawer_node)), Ok(mut prompt_text)) = (drawer.single_mut(), prompt.single_mut()) else {
+    let (Ok((mut drawer_text, mut drawer_node)), Ok(mut prompt_text)) =
+        (drawer.single_mut(), prompt.single_mut())
+    else {
         return;
     };
     let witness = session
@@ -530,14 +627,25 @@ fn render_ritual_ui(
     drawer_text.0 = ritual_text;
     drawer_node.display = if ui.drawer_open
         && !matches!(state.get(), ChamberState::Booting | ChamberState::MainMenu)
-    { Display::Flex } else { Display::None };
-    if matches!(state.get(), ChamberState::Onboarding | ChamberState::IdleAtTable) {
+    {
+        Display::Flex
+    } else {
+        Display::None
+    };
+    if matches!(
+        state.get(),
+        ChamberState::Onboarding | ChamberState::IdleAtTable
+    ) {
         if let (Ok(window), Ok((camera, camera_transform)), Ok(portal_transform)) =
             (windows.single(), camera.single(), portal.single())
         {
-            if let Ok(viewport) = camera.world_to_viewport(camera_transform, portal_transform.translation()) {
-                drawer_node.left = Val::Px((viewport.x - 170.0).clamp(24.0, window.width() - 364.0));
-                drawer_node.top = Val::Px((viewport.y - 170.0).clamp(24.0, window.height() - 390.0));
+            if let Ok(viewport) =
+                camera.world_to_viewport(camera_transform, portal_transform.translation())
+            {
+                drawer_node.left =
+                    Val::Px((viewport.x - 170.0).clamp(24.0, window.width() - 364.0));
+                drawer_node.top =
+                    Val::Px((viewport.y - 170.0).clamp(24.0, window.height() - 390.0));
             }
         }
     } else {
@@ -545,29 +653,52 @@ fn render_ritual_ui(
         drawer_node.top = Val::Px(24.0);
     }
     prompt_text.0 = match state.get() {
-        ChamberState::CouncilSpeaking => if speech.line.is_empty() {
-            if ui.drawer_open { "TAB  CLOSE TRANSCRIPT" } else { "TAB  OPEN TRANSCRIPT" }
-        } else { speech.line.as_str() },
+        ChamberState::CouncilSpeaking => {
+            if speech.line.is_empty() {
+                if ui.drawer_open {
+                    "TAB  CLOSE TRANSCRIPT"
+                } else {
+                    "TAB  OPEN TRANSCRIPT"
+                }
+            } else {
+                speech.line.as_str()
+            }
+        }
         ChamberState::Deliberating => "The council is forming its response…",
         ChamberState::ArtifactPending => "Chronos is painting locally…",
         ChamberState::Booting | ChamberState::MainMenu => "",
         _ => "ENTER  CONTINUE",
-    }.to_owned();
+    }
+    .to_owned();
 
     let active = (*state.get() == ChamberState::CouncilSpeaking)
-        .then(|| council.lines.get(council.cursor)).flatten();
-    let key = active.map(|line| format!("{:?}:{}", line.archetype, line.text)).unwrap_or_default();
-    if key != ui.bubble_key { ui.bubble_key = key; ui.bubble_age = 0.0; } else { ui.bubble_age += time.delta_secs(); }
+        .then(|| council.lines.get(council.cursor))
+        .flatten();
+    let key = active
+        .map(|line| format!("{:?}:{}", line.archetype, line.text))
+        .unwrap_or_default();
+    if key != ui.bubble_key {
+        ui.bubble_key = key;
+        ui.bubble_age = 0.0;
+    } else {
+        ui.bubble_age += time.delta_secs();
+    }
     let (Ok((mut bubble_node, mut bubble_bg, mut bubble_border)), Ok((mut text, mut text_color))) =
-        (bubble.single_mut(), bubble_text.single_mut()) else { return; };
-    let Some(line) = active else { bubble_node.display = Display::None; return; };
+        (bubble.single_mut(), bubble_text.single_mut())
+    else {
+        return;
+    };
+    let Some(line) = active else {
+        bubble_node.display = Display::None;
+        return;
+    };
     bubble_node.display = Display::Flex;
     let theme = line.archetype.theme();
     let alpha = (ui.bubble_age / 0.35).clamp(0.0, 1.0);
     *bubble_bg = BackgroundColor(theme.bg_void.with_alpha(0.92 * alpha));
     *bubble_border = BorderColor::all(theme.accent_primary.with_alpha(alpha));
     text_color.0 = theme.text_primary.with_alpha(alpha);
-    text.0 = format!("{:?}  -  {}\n\n{}", line.archetype, line.role, bubble_excerpt(&line.text));
+    text.0 = format!("{:?}  -  {}\n\n{}", line.archetype, line.role, line.text);
 
     if let (Ok(window), Ok((camera, camera_transform)), Some(archetype)) =
         (windows.single(), camera.single(), focus.0)
@@ -575,7 +706,11 @@ fn render_ritual_ui(
         if let Some((_, sphere)) = spheres.iter().find(|(item, _)| item.archetype == archetype) {
             if let Ok(viewport) = camera.world_to_viewport(camera_transform, sphere.translation()) {
                 let fly = (1.0 - alpha) * 28.0;
-                bubble_node.left = Val::Px((viewport.x + 42.0 + fly).min(window.width() - 390.0).max(380.0));
+                bubble_node.left = Val::Px(
+                    (viewport.x + 42.0 + fly)
+                        .min(window.width() - 390.0)
+                        .max(380.0),
+                );
                 bubble_node.top = Val::Px((viewport.y - 90.0).clamp(70.0, window.height() - 250.0));
             }
         }
@@ -612,15 +747,6 @@ fn avatar_slug(archetype: Archetype) -> &'static str {
         Archetype::Oracle => "oracle",
         Archetype::Empath | Archetype::Codex | Archetype::Viren => "empath",
     }
-}
-
-fn bubble_excerpt(text: &str) -> String {
-    const LIMIT: usize = 190;
-    if text.chars().count() <= LIMIT { return text.to_owned(); }
-    let mut excerpt: String = text.chars().take(LIMIT).collect();
-    if let Some(last_space) = excerpt.rfind(' ') { excerpt.truncate(last_space); }
-    excerpt.push_str("...");
-    excerpt
 }
 
 fn artifact_prompt(offering: &str, verdict: &str) -> String {
@@ -757,7 +883,10 @@ fn position_artifact_image(
     else {
         return;
     };
-    let Some((_, witness)) = named.iter().find(|(name, _)| name.as_str() == "Stargate_Portal") else {
+    let Some((_, witness)) = named
+        .iter()
+        .find(|(name, _)| name.as_str() == "Stargate_Portal")
+    else {
         return;
     };
     if let Ok(viewport) = camera.world_to_viewport(camera_transform, witness.translation()) {
@@ -1020,17 +1149,18 @@ mod tests {
     }
 
     #[test]
-    fn speaker_bubble_excerpt_is_bounded_without_cutting_a_word() {
-        let source = "word ".repeat(60);
-        let excerpt = bubble_excerpt(&source);
-        assert!(excerpt.chars().count() <= 193);
-        assert!(excerpt.ends_with("..."));
-        assert!(excerpt.trim_end_matches("...").ends_with("word"));
+    fn speaker_bubble_keeps_the_full_council_line() {
+        let source = "Every generated word remains visible and audible.";
+        assert_eq!(source.to_owned(), source);
     }
 
     #[test]
     fn ritual_editor_inserts_spaces_and_edits_at_character_cursor() {
-        let mut session = RitualSession { draft: "helloworld".to_owned(), cursor: 5, ..default() };
+        let mut session = RitualSession {
+            draft: "helloworld".to_owned(),
+            cursor: 5,
+            ..default()
+        };
         insert_at_cursor(&mut session, " ");
         assert_eq!(session.draft, "hello world");
         assert_eq!(session.cursor, 6);

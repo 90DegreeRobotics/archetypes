@@ -16,7 +16,7 @@ use bevy::prelude::*;
 use super::{ChamberState, CurrentFocus};
 
 /// Near-black ceremonial void — the resting law of the chamber.
-const CEREMONIAL_VOID: Color = Color::srgb(0.020, 0.021, 0.028);
+const CEREMONIAL_VOID: Color = Color::BLACK;
 /// Cool, dim ambient so the authored Blender lights carry the resting scene.
 const CEREMONIAL_AMBIENT: Color = Color::srgb(0.60, 0.65, 0.82);
 const CEREMONIAL_BRIGHTNESS: f32 = 90.0;
@@ -55,17 +55,17 @@ fn drive_interior_environment(
     // environment; at all other times it rests in the ceremonial void.
     let inside_world = matches!(state.get(), ChamberState::CouncilSpeaking);
 
-    let (void, ambient_color, brightness) = match (inside_world, focus.0) {
+    let (ambient_color, brightness) = match (inside_world, focus.0) {
         (true, Some(archetype)) => {
             let theme = archetype.theme();
             let light = theme.accent_secondary.unwrap_or(theme.bg_void);
-            (theme.bg_void, light, INTERIOR_BRIGHTNESS)
+            (light, INTERIOR_BRIGHTNESS)
         }
-        _ => (CEREMONIAL_VOID, CEREMONIAL_AMBIENT, CEREMONIAL_BRIGHTNESS),
+        _ => (CEREMONIAL_AMBIENT, CEREMONIAL_BRIGHTNESS),
     };
 
     let t = (time.delta_secs() * ENV_RESPONSE).min(1.0);
-    clear.0 = lerp_color(clear.0, void, t);
+    clear.0 = CEREMONIAL_VOID;
     ambient.color = lerp_color(ambient.color, ambient_color, t);
     ambient.brightness += (brightness - ambient.brightness) * t;
 }
@@ -99,14 +99,8 @@ mod tests {
     }
 
     #[test]
-    fn architect_world_is_luminous_not_void() {
-        // The Architect's authored void is near-white; the ceremonial void is
-        // near-black. World encapsulation must move the environment between them.
-        let architect_void = crate::theme::Archetype::Architect
-            .theme()
-            .bg_void
-            .to_linear();
-        let ceremonial = CEREMONIAL_VOID.to_linear();
-        assert!(architect_void.red > ceremonial.red + 0.5);
+    fn the_render_void_is_absolute_black() {
+        let void = CEREMONIAL_VOID.to_linear();
+        assert!(void.red == 0.0 && void.green == 0.0 && void.blue == 0.0);
     }
 }
