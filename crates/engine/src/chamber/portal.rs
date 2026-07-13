@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 
 /// Portal swirl speed (radians per second).
-const PORTAL_SPIN: f32 = 0.5;
+const PORTAL_SPIN: f32 = 0.16;
 
 pub struct PortalPlugin;
 
@@ -32,7 +32,10 @@ fn bind_portal(mut commands: Commands, query: Query<(Entity, &Name), Without<Sta
 fn spin_portal(
     time: Res<Time>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut query: Query<(&mut Transform, Option<&MeshMaterial3d<StandardMaterial>>), With<StargatePortal>>,
+    mut query: Query<
+        (&mut Transform, Option<&MeshMaterial3d<StandardMaterial>>),
+        With<StargatePortal>,
+    >,
 ) {
     let pulse = 2.4 + (time.elapsed_secs() * 1.7).sin() * 0.8;
     for (mut transform, material_handle) in &mut query {

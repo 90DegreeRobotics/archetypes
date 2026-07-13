@@ -11,7 +11,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::PrimitiveTopology;
 
-use super::{spheres::ArchetypeSphere, ChamberState};
+use super::{spheres::ArchetypeSphere, ChamberState, COUNCIL_CENTER};
 
 pub struct StarPlugin;
 
@@ -61,7 +61,9 @@ fn spawn_solid_star(
     if positions.len() < 7 {
         return;
     }
-    let center = positions.iter().copied().sum::<Vec3>() / positions.len() as f32;
+    // Do not derive placement from an asynchronous GLTF transform on the spawn
+    // frame. The authored assembly and camera share this explicit raised center.
+    let center = COUNCIL_CENTER;
     let mean_radius =
         positions.iter().map(|p| p.distance(center)).sum::<f32>() / positions.len() as f32;
     let half = (mean_radius * STAR_FILL) / 3.0_f32.sqrt();
@@ -84,8 +86,12 @@ fn spawn_solid_star(
         MeshMaterial3d(material),
         // Tilt off the symmetry axes so the camera sees a foreshortened 3/4 view of
         // a real 3D crystal, not the flat head-on star silhouette.
-        Transform::from_translation(center)
-            .with_rotation(Quat::from_euler(EulerRot::XYZ, 0.62, 0.5, 0.15)),
+        Transform::from_translation(center).with_rotation(Quat::from_euler(
+            EulerRot::XYZ,
+            0.62,
+            0.5,
+            0.15,
+        )),
         Visibility::Hidden,
         SolidStar,
         Name::new("SolidStar"),
@@ -120,8 +126,18 @@ fn stellated_octahedron(half: f32) -> Mesh {
     let s = half;
     let v = |x: f32, y: f32, z: f32| Vec3::new(x * s, y * s, z * s);
     // Two tetrahedra on alternating cube corners.
-    let tetra_a = [v(1.0, 1.0, 1.0), v(1.0, -1.0, -1.0), v(-1.0, 1.0, -1.0), v(-1.0, -1.0, 1.0)];
-    let tetra_b = [v(-1.0, -1.0, -1.0), v(-1.0, 1.0, 1.0), v(1.0, -1.0, 1.0), v(1.0, 1.0, -1.0)];
+    let tetra_a = [
+        v(1.0, 1.0, 1.0),
+        v(1.0, -1.0, -1.0),
+        v(-1.0, 1.0, -1.0),
+        v(-1.0, -1.0, 1.0),
+    ];
+    let tetra_b = [
+        v(-1.0, -1.0, -1.0),
+        v(-1.0, 1.0, 1.0),
+        v(1.0, -1.0, 1.0),
+        v(1.0, 1.0, -1.0),
+    ];
 
     let mut positions: Vec<[f32; 3]> = Vec::with_capacity(24);
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(24);
@@ -152,9 +168,12 @@ fn stellated_octahedron(half: f32) -> Mesh {
         push_tri(p1, p3, p2);
     }
 
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
 }
 
 #[cfg(test)]

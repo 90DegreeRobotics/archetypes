@@ -30,6 +30,10 @@ pub enum ChamberState {
 
 use crate::theme::Archetype;
 
+/// Canonical world-space center of the raised council constellation. The authored
+/// `Council_Assembly`, runtime solid star, and deliberation camera all share it.
+pub(super) const COUNCIL_CENTER: Vec3 = Vec3::new(0.0, 2.0, 0.0);
+
 #[derive(Resource, Default, Debug, Clone)]
 pub struct CurrentFocus(pub Option<Archetype>);
 

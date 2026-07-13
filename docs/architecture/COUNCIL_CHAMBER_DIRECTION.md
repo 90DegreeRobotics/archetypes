@@ -35,6 +35,8 @@ The text input should not appear as a generic HUD element. It should be integrat
 
 The portal should behave like a stargate or liquid astrolabe aperture. Idle state can show slow internal motion, distant stars, or subtle glyph drift. On focus, the ring inscriptions brighten, the center deepens, and the surrounding geometry begins to hum with readiness. On submit, the portal contracts slightly, gathers light, and then sends that impulse upward into the star alignment sequence.
 
+The main menu is the first portal interaction, not a detached title card over the chamber. Its game-mode choices sit within the living portal surface while the close, steep table composition remains dominant. Portal rotation stays slow and ceremonial so the controls remain readable.
+
 This interaction should always preserve a sense of consequence. Even a trivial prompt should awaken the chamber with the same seriousness as a profound one. The game’s tone depends on the idea that language enters an ecosystem of minds rather than an empty field awaiting text parsing.
 
 ## Star alignment sequence

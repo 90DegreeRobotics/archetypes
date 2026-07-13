@@ -24,10 +24,18 @@ impl Plugin for BootPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_boot_ui)
             .init_resource::<BootSequence>()
-            .add_systems(Update, (animate_loading_veil, boot_ready).chain().run_if(in_state(ChamberState::Booting)))
+            .add_systems(
+                Update,
+                (animate_loading_veil, boot_ready)
+                    .chain()
+                    .run_if(in_state(ChamberState::Booting)),
+            )
             .add_systems(OnExit(ChamberState::Booting), despawn_boot_ui)
             .add_systems(OnEnter(ChamberState::MainMenu), spawn_main_menu)
-            .add_systems(Update, activate_standard_mode.run_if(in_state(ChamberState::MainMenu)))
+            .add_systems(
+                Update,
+                activate_standard_mode.run_if(in_state(ChamberState::MainMenu)),
+            )
             .add_systems(OnExit(ChamberState::MainMenu), despawn_main_menu);
     }
 }
@@ -56,7 +64,11 @@ struct MainMenuUi;
 #[derive(Component)]
 struct StandardModeButton;
 
-fn spawn_boot_ui(mut commands: Commands, asset_server: Res<AssetServer>, mut sequence: ResMut<BootSequence>) {
+fn spawn_boot_ui(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut sequence: ResMut<BootSequence>,
+) {
     sequence.frames = (1..=LOADING_FRAMES)
         .map(|index| asset_server.load(format!("loading/blackflame/frame_{index:03}.jpg")))
         .collect();
@@ -90,8 +102,10 @@ fn spawn_boot_ui(mut commands: Commands, asset_server: Res<AssetServer>, mut seq
                 ImageNode::new(first),
                 Node {
                     position_type: PositionType::Absolute,
-                    left: Val::Px(0.0), top: Val::Px(0.0),
-                    width: Val::Percent(100.0), height: Val::Percent(100.0),
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
                     ..default()
                 },
                 ZIndex(-1),
@@ -128,7 +142,9 @@ fn animate_loading_veil(
     let elapsed = time.elapsed_secs();
     if let Ok(mut image) = frame.single_mut() {
         let index = ((elapsed * LOADING_FPS) as usize) % sequence.frames.len().max(1);
-        if let Some(handle) = sequence.frames.get(index) { image.image = handle.clone(); }
+        if let Some(handle) = sequence.frames.get(index) {
+            image.image = handle.clone();
+        }
     }
     if let Ok(mut color) = title.single_mut() {
         color.0 = Color::srgba(0.95, 0.95, 0.96, (elapsed / 2.2).clamp(0.0, 1.0));
@@ -152,7 +168,10 @@ fn boot_ready(
 ) {
     let elapsed = time.elapsed_secs();
     let frames_ready = !sequence.frames.is_empty()
-        && sequence.frames.iter().all(|handle| asset_server.is_loaded_with_dependencies(handle.id()));
+        && sequence
+            .frames
+            .iter()
+            .all(|handle| asset_server.is_loaded_with_dependencies(handle.id()));
     let chamber_ready = spheres.iter().count() >= READY_SPHERES
         && portal.iter().any(|name| name.as_str() == "Stargate_Portal");
     if elapsed < MIN_BOOT_SECS || !frames_ready || !chamber_ready {
@@ -163,9 +182,15 @@ fn boot_ready(
     if let Ok(mut background) = overlay.single_mut() {
         background.0 = Color::srgba(0.0, 0.0, 0.0, 1.0 - fade);
     }
-    if let Ok(mut image) = frame.single_mut() { image.color = Color::srgba(1.0, 1.0, 1.0, 1.0 - fade); }
-    if let Ok(mut color) = title.single_mut() { color.0 = color.0.with_alpha(1.0 - fade); }
-    if let Ok(mut color) = subtitle.single_mut() { color.0 = color.0.with_alpha(1.0 - fade); }
+    if let Ok(mut image) = frame.single_mut() {
+        image.color = Color::srgba(1.0, 1.0, 1.0, 1.0 - fade);
+    }
+    if let Ok(mut color) = title.single_mut() {
+        color.0 = color.0.with_alpha(1.0 - fade);
+    }
+    if let Ok(mut color) = subtitle.single_mut() {
+        color.0 = color.0.with_alpha(1.0 - fade);
+    }
     if fade >= 1.0 {
         next_state.set(ChamberState::MainMenu);
     }
@@ -178,33 +203,56 @@ fn despawn_boot_ui(mut commands: Commands, query: Query<Entity, With<BootUi>>) {
 }
 
 fn spawn_main_menu(mut commands: Commands) {
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            left: Val::Percent(35.0), top: Val::Percent(28.0),
-            width: Val::Percent(30.0),
-            flex_direction: FlexDirection::Column,
-            align_items: AlignItems::Center,
-            row_gap: Val::Px(22.0),
-            padding: UiRect::all(Val::Px(26.0)),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.01, 0.015, 0.025, 0.86)),
-        GlobalZIndex(900),
-        MainMenuUi,
-    )).with_children(|parent| {
-        parent.spawn((Text::new("ARCHETYPES"), TextFont { font_size: 48.0, ..default() }, TextColor(Color::WHITE)));
-        parent.spawn((Text::new("CHOOSE GAME MODE"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::srgb(0.55, 0.72, 0.9))));
-        parent.spawn((
-            Button,
-            Node { padding: UiRect::axes(Val::Px(28.0), Val::Px(14.0)), border: UiRect::all(Val::Px(2.0)), ..default() },
-            BackgroundColor(Color::srgba(0.04, 0.10, 0.16, 0.94)),
-            BorderColor::all(Color::srgb(0.25, 0.78, 1.0)),
-            StandardModeButton,
-        )).with_children(|button| {
-            button.spawn((Text::new("START STANDARD MODE"), TextFont { font_size: 22.0, ..default() }, TextColor(Color::WHITE)));
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(32.0),
+                top: Val::Percent(29.0),
+                width: Val::Percent(36.0),
+                height: Val::Percent(25.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(12.0),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            GlobalZIndex(900),
+            MainMenuUi,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("CHOOSE MODE"),
+                TextFont {
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.66, 0.88, 1.0)),
+            ));
+            parent
+                .spawn((
+                    Button,
+                    Node {
+                        padding: UiRect::axes(Val::Px(34.0), Val::Px(12.0)),
+                        border: UiRect::all(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.01, 0.04, 0.10, 0.58)),
+                    BorderColor::all(Color::srgba(0.30, 0.84, 1.0, 0.86)),
+                    StandardModeButton,
+                ))
+                .with_children(|button| {
+                    button.spawn((
+                        Text::new("STANDARD MODE"),
+                        TextFont {
+                            font_size: 20.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                    ));
+                });
         });
-    });
 }
 
 fn activate_standard_mode(
@@ -213,11 +261,21 @@ fn activate_standard_mode(
     session: Res<RitualSession>,
     mut next_state: ResMut<NextState<ChamberState>>,
 ) {
-    let clicked = interaction.iter().any(|value| *value == Interaction::Pressed);
-    if !clicked && !keyboard.just_pressed(KeyCode::Enter) { return; }
-    next_state.set(if session.has_profile() { ChamberState::IdleAtTable } else { ChamberState::Onboarding });
+    let clicked = interaction
+        .iter()
+        .any(|value| *value == Interaction::Pressed);
+    if !clicked && !keyboard.just_pressed(KeyCode::Enter) {
+        return;
+    }
+    next_state.set(if session.has_profile() {
+        ChamberState::IdleAtTable
+    } else {
+        ChamberState::Onboarding
+    });
 }
 
 fn despawn_main_menu(mut commands: Commands, query: Query<Entity, With<MainMenuUi>>) {
-    for entity in &query { commands.entity(entity).despawn(); }
+    for entity in &query {
+        commands.entity(entity).despawn();
+    }
 }
