@@ -16,7 +16,7 @@ import math
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,6 +30,7 @@ FLOOR_TOP_Z = FLOOR_CENTER_Z + FLOOR_DEPTH / 2.0
 COLUMN_RADIUS = 12.0
 COLUMN_HEIGHT = 6.0
 COLUMN_TOP_Z = FLOOR_TOP_Z + COLUMN_HEIGHT
+COUNCIL_LIFT_Z = 2.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -186,6 +187,42 @@ def ensure_witness_camera() -> None:
     aim_at(camera, (0.0, 0.0, -0.15))
     bpy.context.scene.camera = camera
     log("created Witness_Camera")
+
+
+def group_and_raise_council() -> None:
+    """Place all seven vessels under one idempotent authored assembly root.
+
+    The runtime solid star is derived from these vessels' centroid, so raising this
+    one assembly also raises the star calculation without a second guessed offset.
+    """
+    vessels = [bpy.data.objects.get(name) for name in ARCHETYPES]
+    if any(obj is None for obj in vessels):
+        missing = [name for name, obj in zip(ARCHETYPES, vessels) if obj is None]
+        raise RuntimeError(f"Cannot assemble council; missing vessels: {missing}")
+
+    vessels = [obj for obj in vessels if obj is not None]
+    world_matrices = [obj.matrix_world.copy() for obj in vessels]
+    current_center_z = sum(matrix.translation.z for matrix in world_matrices) / len(world_matrices)
+
+    existing = bpy.data.objects.get("Council_Assembly")
+    if existing is not None:
+        bpy.data.objects.remove(existing, do_unlink=True)
+
+    assembly = bpy.data.objects.new("Council_Assembly", None)
+    bpy.context.scene.collection.objects.link(assembly)
+    assembly.location.z = COUNCIL_LIFT_Z
+    assembly["runtime_role"] = "council_constellation_root"
+    bpy.context.view_layer.update()
+
+    for vessel, world in zip(vessels, world_matrices):
+        # Normalize the inherited constellation back around z=0 before applying the
+        # one canonical lift. This keeps repeated script runs from stacking offsets.
+        world.translation.z += COUNCIL_LIFT_Z - current_center_z
+        vessel.parent = assembly
+        vessel.matrix_parent_inverse = Matrix.Identity(4)
+        vessel.matrix_basis = assembly.matrix_world.inverted() @ world
+
+    log(f"grouped vessels={len(vessels)} under Council_Assembly lift_z={COUNCIL_LIFT_Z}")
 
 
 def build_chamber() -> None:
@@ -369,6 +406,7 @@ def main() -> None:
     bpy.ops.import_scene.gltf(filepath=str(input_path))
     remove_old_shell_and_star()
     ensure_witness_camera()
+    group_and_raise_council()
     build_chamber()
 
     export_path.parent.mkdir(parents=True, exist_ok=True)

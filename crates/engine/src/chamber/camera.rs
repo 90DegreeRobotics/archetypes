@@ -20,7 +20,7 @@ const COUNCIL_CENTER: Vec3 = Vec3::new(0.0, 2.0, 0.0);
 /// back, looking down at the table's mid-height so both the glowing top and the
 /// arched legs read. On submit the camera sweeps up from here to the star.
 const TABLE_CAMERA_POS: Vec3 = Vec3::new(0.0, -0.8, 8.0);
-const TABLE_LOOK: Vec3 = Vec3::new(0.0, -3.4, 0.0);
+const TABLE_LOOK: Vec3 = Vec3::new(0.0, -2.55, 0.0);
 /// When an archetype speaks, the camera swings to that sphere's compass bearing at a
 /// fixed radius and height (well inside the temple walls at radius ~21, and always
 /// above the floor), then looks at the sphere with the star beyond it. Positioning by
@@ -41,11 +41,15 @@ pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_witness_camera)
-            .add_systems(
-                Update,
-                (disable_imported_cameras, gate_table_visibility, drive_camera).chain(),
-            );
+        app.add_systems(Startup, setup_witness_camera).add_systems(
+            Update,
+            (
+                disable_imported_cameras,
+                gate_table_visibility,
+                drive_camera,
+            )
+                .chain(),
+        );
     }
 }
 
@@ -63,7 +67,11 @@ fn gate_table_visibility(
     );
     for (name, mut visibility) in &mut named {
         if name.as_str() == "PortalTable" {
-            *visibility = if visible { Visibility::Visible } else { Visibility::Hidden };
+            *visibility = if visible {
+                Visibility::Visible
+            } else {
+                Visibility::Hidden
+            };
         }
     }
 }
@@ -113,7 +121,11 @@ fn drive_camera(
 
     let target = match state.get() {
         // At the table: seated over the portal where intent is placed.
-        ChamberState::Booting | ChamberState::MainMenu | ChamberState::Onboarding | ChamberState::IdleAtTable | ChamberState::ArtifactResult => {
+        ChamberState::Booting
+        | ChamberState::MainMenu
+        | ChamberState::Onboarding
+        | ChamberState::IdleAtTable
+        | ChamberState::ArtifactResult => {
             Transform::from_translation(TABLE_CAMERA_POS).looking_at(TABLE_LOOK, Vec3::Y)
         }
         // A council member holds the floor: frame that sphere.

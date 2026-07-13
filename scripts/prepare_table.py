@@ -28,7 +28,7 @@ TRIANGLE_LIMIT = 200_000
 TOP_Z = 0.28          # top surface height (local); world ~ +0.3
 FOOT_Z = -0.786       # feet height (local) -> sits on chamber floor
 TOP_RADIUS = 0.95
-PORTAL_RADIUS = 0.31
+PORTAL_RADIUS = 0.72
 PORTAL_TOP_Z = 0.30
 
 authored: list = []
@@ -237,7 +237,7 @@ def build_table():
                 bevel_res=3,
             )
 
-    # --- Stargate_Portal (approved) ---
+    # --- Stargate_Portal: the living rotation spans the full inner tabletop ---
     bpy.ops.mesh.primitive_circle_add(vertices=72, radius=PORTAL_RADIUS, fill_type="NGON",
                                       location=(0, 0, PORTAL_TOP_Z))
     disc = bpy.context.active_object

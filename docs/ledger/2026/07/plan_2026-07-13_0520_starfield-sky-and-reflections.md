@@ -1,7 +1,7 @@
 # Plan: Starfield sky + reflections (kill the black void) — 2026-07-13 05:20
 
 ## Status
-IN-PROGRESS
+COMPLETED
 
 ## Goal
 The operator confirmed the previous session's ritual/render fixes are live on the desktop launcher, then named the next look-breaker: the enforced **absolute-black void** behind the chamber. "I said black sky and it broke the whole look. We are gonna need stars to give a reflection or something. Black void won't work." Getting the look right is the explicit gate before moving on to new game mechanics. This plan replaces the black void with a procedural starfield that is both visible behind the open temple and reflective on the gilded/glass surfaces.
@@ -25,22 +25,22 @@ The title/boot screen keeps its black overlay (it covers the 3D view until revea
 ## Steps
 
 ### Step 1 — New `chamber/sky.rs`: procedural star cubemap + skybox + env map
-- [ ] Action: Add `SkyPlugin`. A Startup system builds the star cubemap `Image` and stores its handle in a resource; an `Added<WitnessCamera>` system attaches `Skybox` + `EnvironmentMapLight` to the camera the frame it appears. Register the plugin in `chamber/mod.rs`.
+- [x] Action: Add `SkyPlugin`. A Startup system builds the star cubemap `Image` and stores its handle in a resource; an `Added<WitnessCamera>` system attaches `Skybox` + `EnvironmentMapLight` to the camera the frame it appears. Register the plugin in `chamber/mod.rs`.
 - Files touched: `crates/engine/src/chamber/sky.rs` (new), `crates/engine/src/chamber/mod.rs`.
 - Expected outcome: stars render behind the chamber; gold/glass catch starlight.
 
 ### Step 2 — Lift the clear color off pure black
-- [ ] Action: Change `CEREMONIAL_VOID` in `interior.rs` from `Color::BLACK` to a deep-space navy matching the skybox base, and update the `the_render_void_is_absolute_black` test to the new intent (dark, not pure black).
+- [x] Action: Change `CEREMONIAL_VOID` in `interior.rs` from `Color::BLACK` to a deep-space navy matching the skybox base, and update the `the_render_void_is_absolute_black` test to the new intent (dark, not pure black).
 - Files touched: `crates/engine/src/chamber/interior.rs`.
 - Expected outcome: no pure-black backdrop anywhere; test reflects reality.
 
 ### Step 3 — Tune and verify on screen
-- [ ] Action: `cargo build -p engine`, run `ARCHETYPES_CAPTURE=1`, inspect the table / deliberation / council-speaking frames. Tune `SKYBOX_BRIGHTNESS` and `ENV_INTENSITY` until the stars read clearly and the gold/glass visibly catch light without washing out. Confirm no skybox/env-map validation crash in the log (fall back to skybox-only if the non-mipped specular map is rejected).
+- [x] Action: `cargo build -p engine`, run `ARCHETYPES_CAPTURE=1`, inspect the table / deliberation / council-speaking frames. Tune `SKYBOX_BRIGHTNESS` and `ENV_INTENSITY` until the stars read clearly and the gold/glass visibly catch light without washing out. Confirm no skybox/env-map validation crash in the log (fall back to skybox-only if the non-mipped specular map is rejected).
 - Files touched: `crates/engine/src/chamber/sky.rs` (constants).
 - Expected outcome: a real captured frame shows a starfield backdrop with reflective surfaces, no black void.
 
 ### Step 4 — Rebuild release, reinstall shortcut, docs, commit/push
-- [ ] Action: `cargo test`, `scripts/install_shortcut.ps1` to rebuild release + re-stage dist + shortcut, update STATUS.md, commit and push. Confirm the operator is on the new version.
+- [x] Action: `cargo test`, `scripts/install_shortcut.ps1` to rebuild release + re-stage dist + shortcut, update STATUS.md, commit and push. Confirm the operator is on the new version.
 - Files touched: `STATUS.md`, dist/ + shortcut (generated).
 - Expected outcome: the desktop launch shows the starfield; tree clean on origin/main.
 
@@ -48,4 +48,5 @@ The title/boot screen keeps its black overlay (it covers the 3D view until revea
 The ornate gilded council-chamber and the Flower-of-Life table from the operator's reference images (the Meshy "Atrium of the Seven Portals" / "Astral Convergence Council Table" models) are a separate, larger asset-pipeline task — Meshy export (~5.8M faces) → decimation → Blender prep → `.glb`, following the existing `scripts/prepare_table.py` pattern. That is the natural next chunk once the starfield look is approved; this plan deliberately does the lighting/void fix first because it's the specific thing the operator said "broke the whole look."
 
 ## Verification
-(to be filled in as steps complete)
+- Implemented and previously published by Claude in `7fe72d8`; subsequent operator review confirmed the sky was functional but visually overpopulated.
+- The 2026-07-13 framing pass reduced the field from 1,300 to 180 one-pixel stars per cubemap face while retaining the environment reflection path.

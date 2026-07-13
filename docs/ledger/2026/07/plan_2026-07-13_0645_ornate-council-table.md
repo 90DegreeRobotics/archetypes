@@ -1,7 +1,7 @@
 # Plan: Ornate council table — Claude rebuilds it — 2026-07-13 06:45
 
 ## Status
-IN-PROGRESS
+COMPLETED
 
 ## Directive
 The operator rejected the integrated table (Codex's Lane C) as low quality and re-assigned it to me directly: **"I want YOU to fix this table. You do nothing else until this table is modeled and sitting in the frame on the floor."** He also set a standing rule (saved to memory `never-self-approve-visuals`): I do NOT declare visuals good — I report mechanical facts, show the frame, and let him judge.

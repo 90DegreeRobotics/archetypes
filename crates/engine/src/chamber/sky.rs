@@ -25,8 +25,9 @@ const SKYBOX_BRIGHTNESS: f32 = 850.0;
 const ENV_INTENSITY: f32 = 430.0;
 /// Per-cube-face resolution of the generated star map.
 const FACE: usize = 512;
-/// Stars scattered on each of the six faces.
-const STARS_PER_FACE: usize = 1300;
+/// Restrained stars scattered on each face. The council assets remain the subject;
+/// the sky is sparse depth punctuation, not visual snow.
+const STARS_PER_FACE: usize = 180;
 
 pub struct SkyPlugin;
 
@@ -108,11 +109,7 @@ fn star_cubemap() -> Image {
                 _ => (brightness, brightness, brightness),                       // white
             };
             put(&mut data, layer, x, y, r as u8, g as u8, b as u8);
-            // A minority of stars are bright enough to bloom into a small cluster.
-            if roll % 23 == 0 {
-                put(&mut data, layer, (x + 1).min(FACE - 1), y, r as u8, g as u8, b as u8);
-                put(&mut data, layer, x, (y + 1).min(FACE - 1), r as u8, g as u8, b as u8);
-            }
+            // One texel only: no square two-pixel clusters at gameplay resolution.
         }
     }
 
@@ -175,7 +172,7 @@ mod tests {
         // Stars are sparse: a clear majority of texels are the dark navy base.
         assert!(bright > 0, "expected some stars");
         assert!(
-            bright * 20 < total,
+            bright * 200 < total,
             "expected stars to be sparse, got {bright} of {total}"
         );
     }
