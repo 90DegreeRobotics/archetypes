@@ -14,10 +14,13 @@ use crate::theme::Archetype;
 /// Fallback establishing pose, used only until the authored camera node is loaded.
 const ESTABLISHING_FALLBACK: Vec3 = Vec3::new(8.0, 6.2, 12.0);
 const COUNCIL_CENTER: Vec3 = Vec3::new(0.0, 2.0, 0.0);
-/// The table pose: seated above the portal table, looking down into the stargate where
-/// the Witness places intent. On submit the camera sweeps up from here to the star.
-const TABLE_CAMERA_POS: Vec3 = Vec3::new(0.0, 3.4, 6.2);
-const TABLE_LOOK: Vec3 = Vec3::new(0.0, 0.35, 0.0);
+/// The table pose: a 3/4 view that shows the ornate council table as furniture,
+/// standing on the chamber floor. The table (engine-scaled ×3) spans world y ≈ −1.8
+/// (top) down to ≈ −5 (feet on the floor); the camera sits just above the top and
+/// back, looking down at the table's mid-height so both the glowing top and the
+/// arched legs read. On submit the camera sweeps up from here to the star.
+const TABLE_CAMERA_POS: Vec3 = Vec3::new(0.0, -0.8, 8.0);
+const TABLE_LOOK: Vec3 = Vec3::new(0.0, -3.4, 0.0);
 /// When an archetype speaks, the camera swings to that sphere's compass bearing at a
 /// fixed radius and height (well inside the temple walls at radius ~21, and always
 /// above the floor), then looks at the sphere with the star beyond it. Positioning by

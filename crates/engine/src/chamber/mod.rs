@@ -65,8 +65,12 @@ fn load_authoritative_chamber(mut commands: Commands, asset_server: Res<AssetSer
     // places intent into its stargate portal; the camera then sweeps up to the star.
     commands.spawn((
         SceneRoot(asset_server.load("scenes/table.glb#Scene0")),
-        // Feet land near the authored chamber floor; the portal surface sits above it.
-        Transform::from_xyz(0.0, -1.1, 0.0).with_scale(Vec3::splat(5.0)),
+        // Furniture-scale (×2.6), not a monument. Feet authored at local z = -0.784;
+        // chamber floor top is world y = -5.03, so y offset -2.99 (= -5.03 + 0.784×2.6)
+        // lands the feet exactly on the floor. At ×2.6 the top radius is ~2.47, inside
+        // the council vessels' inner edge (they ring the centre at radius ~4, reaching
+        // in to ~2.9), so the table no longer intersects the vessels.
+        Transform::from_xyz(0.0, -2.99, 0.0).with_scale(Vec3::splat(2.6)),
         Name::new("PortalTable"),
     ));
 }

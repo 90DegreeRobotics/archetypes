@@ -549,10 +549,10 @@ fn render_ritual_ui(
     _focus: Res<CurrentFocus>,
     _time: Res<Time>,
     ui: ResMut<DialogueUiState>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    camera: Query<(&Camera, &GlobalTransform), With<WitnessCamera>>,
+    _windows: Query<&Window, With<PrimaryWindow>>,
+    _camera: Query<(&Camera, &GlobalTransform), With<WitnessCamera>>,
     _spheres: Query<(&ArchetypeSphere, &GlobalTransform)>,
-    portal: Query<&GlobalTransform, With<StargatePortal>>,
+    _portal: Query<&GlobalTransform, With<StargatePortal>>,
     mut drawer: Query<
         (&mut Text, &mut Node, &mut TextFont),
         (With<TranscriptDrawer>, Without<SpeakerBubble>),
@@ -682,22 +682,13 @@ fn render_ritual_ui(
         state.get(),
         ChamberState::Onboarding | ChamberState::IdleAtTable
     ) {
-        // Smaller footprint here so it hovers beside the portal without covering it
-        // — the bigger top panel below is for the deliberation/render stages only.
-        drawer_node.width = Val::Px(340.0);
-        drawer_font.font_size = 15.0;
-        if let (Ok(window), Ok((camera, camera_transform)), Ok(portal_transform)) =
-            (windows.single(), camera.single(), portal.single())
-        {
-            if let Ok(viewport) =
-                camera.world_to_viewport(camera_transform, portal_transform.translation())
-            {
-                drawer_node.left =
-                    Val::Px((viewport.x - 170.0).clamp(24.0, window.width() - 364.0));
-                drawer_node.top =
-                    Val::Px((viewport.y - 170.0).clamp(24.0, window.height() - 390.0));
-            }
-        }
+        // Dock the input panel to the left so the ornate table stays unobstructed
+        // in the centre of frame (the 3/4 table camera puts the portal centre-frame,
+        // so a portal-following panel would sit right on top of the tabletop).
+        drawer_node.width = Val::Px(360.0);
+        drawer_font.font_size = 16.0;
+        drawer_node.left = Val::Px(40.0);
+        drawer_node.top = Val::Percent(30.0);
     } else {
         drawer_node.width = Val::Px(620.0);
         drawer_font.font_size = 19.0;
