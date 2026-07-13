@@ -33,4 +33,7 @@ Ornate round council table: **gilded rim with ancient glyphs**, **integrated pla
 - [ ] `cargo test`, rebuild release + reinstall shortcut, commit + push. Operator confirms.
 
 ## Verification
-(filled in as steps complete — Blender preview + in-engine frames shown to operator, who is the sole visual approver)
+- Steps 1–5 done. `scripts/prepare_table.py` rewritten; iterated against Blender 3/4 preview renders (Workbench). Model: round top, wide gilded rim + 48 glyph blocks, dense radial plasma grid (triangulated geodesic wireframe + 24 spokes + 5 astrolabe rings), ornate base (8 curved brass ribs + 8 pointed arches + central turned pedestal + base ring + 8 dark-steel feet). `Stargate_Portal` preserved; ~48k triangles; re-import `z_min = -0.784` (feet).
+- Placement: engine loads the table at scale 2.6, y = -2.99 → feet land on the chamber floor (world y = -5.03). Measured the council vessels (min_y -3.49, max_y +3.49, mean radius 4.10): they ring the centre, so the ×2.6 top radius (~2.47) sits inside their inner edge and the table no longer intersects them. Re-aimed the table camera to a 3/4 furniture view; docked the input panel left.
+- `cargo test --workspace`: 18 passed, 0 failed. Verified on screen (`capture_tbl4/02_table.png`); committed + pushed (`a85c262`); release rebuilt + Desktop shortcut re-staged.
+- **Visual approval is the operator's** — presented, not self-approved. Known remaining: the nearest orbiting vessel overlaps the table edge in screen space (not a 3D intersection); the vessels dipping near the dais edge is a council-layout matter separate from the table.
