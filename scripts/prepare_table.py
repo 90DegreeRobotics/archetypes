@@ -11,6 +11,7 @@ Run: blender --background --python scripts/prepare_table.py
 
 import math
 import bpy
+from mathutils import Vector
 
 SRC = r"C:\Users\m\Desktop\table.glb"
 OUT = r"C:\archetypes\assets\scenes\table.glb"
@@ -28,6 +29,19 @@ def log(*a):
 
 def emission_input_name(bsdf):
     return "Emission Color" if "Emission Color" in bsdf.inputs else "Emission"
+
+
+def cylinder_between(name, start, end, radius, material):
+    start, end = Vector(start), Vector(end)
+    delta = end - start
+    bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=radius, depth=delta.length,
+                                        location=(start + end) / 2)
+    obj = bpy.context.active_object
+    obj.name = name
+    obj.rotation_mode = "QUATERNION"
+    obj.rotation_quaternion = delta.to_track_quat("Z", "Y")
+    obj.data.materials.append(material)
+    return obj
 
 
 def main():
@@ -61,6 +75,18 @@ def main():
     if "Emission Strength" in bsdf.inputs:
         bsdf.inputs["Emission Strength"].default_value = 2.2
     log("material upgraded", mat.name)
+
+    # --- physical support: pedestal and four splayed legs ---
+    cylinder_between("Table_Pedestal", (0, 0, -0.82), (0, 0, -0.12), 0.16, mat)
+    for i in range(4):
+        angle = math.radians(45 + i * 90)
+        foot = (0.72 * math.cos(angle), 0.72 * math.sin(angle), -0.88)
+        hip = (0.18 * math.cos(angle), 0.18 * math.sin(angle), -0.18)
+        cylinder_between(f"Table_Leg_{i + 1}", foot, hip, 0.075, mat)
+        bpy.ops.mesh.primitive_uv_sphere_add(segments=20, ring_count=10, radius=0.12, location=foot)
+        bpy.context.active_object.name = f"Table_Foot_{i + 1}"
+        bpy.context.active_object.data.materials.append(mat)
+    log("pedestal and four legs added")
 
     # --- stargate portal disc at the table centre ---
     bpy.ops.mesh.primitive_circle_add(

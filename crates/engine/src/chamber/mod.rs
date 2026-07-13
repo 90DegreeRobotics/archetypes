@@ -4,6 +4,7 @@ pub mod boot;
 pub mod camera;
 pub mod council;
 pub mod interior;
+pub mod panels;
 pub mod portal;
 pub mod ritual;
 pub mod speech;
@@ -15,6 +16,7 @@ pub enum ChamberState {
     /// scene has loaded.
     #[default]
     Booting,
+    MainMenu,
     Onboarding,
     IdleAtTable,
     Deliberating,
@@ -40,6 +42,7 @@ impl Plugin for CouncilChamberPlugin {
                 boot::BootPlugin,
                 camera::CameraPlugin,
                 spheres::SpheresPlugin,
+                panels::PanelsPlugin,
                 portal::PortalPlugin,
                 interior::InteriorPlugin,
                 council::CouncilPlugin,
@@ -58,7 +61,8 @@ fn load_authoritative_chamber(mut commands: Commands, asset_server: Res<AssetSer
     // places intent into its stargate portal; the camera then sweeps up to the star.
     commands.spawn((
         SceneRoot(asset_server.load("scenes/table.glb#Scene0")),
-        Transform::from_xyz(0.0, -5.5, 0.0).with_scale(Vec3::splat(5.0)),
+        // Feet land near the authored chamber floor; the portal surface sits above it.
+        Transform::from_xyz(0.0, -1.1, 0.0).with_scale(Vec3::splat(5.0)),
         Name::new("PortalTable"),
     ));
 }

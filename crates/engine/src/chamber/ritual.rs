@@ -83,6 +83,7 @@ struct WitnessProfile {
 pub(super) struct RitualSession {
     profile: Option<WitnessProfile>,
     draft: String,
+    cursor: usize,
     offering: String,
     pub(super) verdict: String,
     artifact: Option<ArtifactOutcome>,
@@ -224,15 +225,17 @@ fn receive_text_input(
     mut session: ResMut<RitualSession>,
 ) {
     for key in keyboard.get_just_pressed() {
+        let editing = matches!(state.get(), ChamberState::Onboarding | ChamberState::IdleAtTable);
         match key {
-            Key::Backspace
-                if matches!(
-                    state.get(),
-                    ChamberState::Onboarding | ChamberState::IdleAtTable
-                ) =>
-            {
-                session.draft.pop();
+            Key::Backspace if editing => backspace_at_cursor(&mut session),
+            Key::Delete if editing => delete_at_cursor(&mut session),
+            Key::ArrowLeft if editing => session.cursor = session.cursor.saturating_sub(1),
+            Key::ArrowRight if editing => {
+                session.cursor = (session.cursor + 1).min(session.draft.chars().count())
             }
+            Key::Home if editing => session.cursor = 0,
+            Key::End if editing => session.cursor = session.draft.chars().count(),
+            Key::Space if editing => insert_at_cursor(&mut session, " "),
             Key::Enter => match state.get() {
                 ChamberState::Onboarding => seal_profile(&mut session, &mut next_state),
                 ChamberState::IdleAtTable => submit_offering(&mut session, &mut next_state),
@@ -245,26 +248,56 @@ fn receive_text_input(
                 }
                 ChamberState::ArtifactResult => {
                     session.draft.clear();
+                    session.cursor = 0;
                     next_state.set(ChamberState::IdleAtTable);
                 }
                 _ => {}
             },
-            Key::Character(text)
-                if matches!(
-                    state.get(),
-                    ChamberState::Onboarding | ChamberState::IdleAtTable
-                ) =>
+            Key::Character(text) if editing =>
             {
                 let room = 600usize.saturating_sub(session.draft.chars().count());
-                session.draft.extend(
-                    text.chars()
-                        .filter(|character| !character.is_control())
-                        .take(room),
-                );
+                let filtered: String = text.chars()
+                    .filter(|character| !character.is_control())
+                    .take(room)
+                    .collect();
+                insert_at_cursor(&mut session, &filtered);
             }
             _ => {}
         }
     }
+}
+
+fn byte_index(text: &str, char_index: usize) -> usize {
+    text.char_indices().nth(char_index).map(|(index, _)| index).unwrap_or(text.len())
+}
+
+fn insert_at_cursor(session: &mut RitualSession, text: &str) {
+    let cursor = session.cursor.min(session.draft.chars().count());
+    let byte = byte_index(&session.draft, cursor);
+    session.draft.insert_str(byte, text);
+    session.cursor = cursor + text.chars().count();
+}
+
+fn backspace_at_cursor(session: &mut RitualSession) {
+    if session.cursor == 0 { return; }
+    let end = byte_index(&session.draft, session.cursor);
+    let start = byte_index(&session.draft, session.cursor - 1);
+    session.draft.replace_range(start..end, "");
+    session.cursor -= 1;
+}
+
+fn delete_at_cursor(session: &mut RitualSession) {
+    if session.cursor >= session.draft.chars().count() { return; }
+    let start = byte_index(&session.draft, session.cursor);
+    let end = byte_index(&session.draft, session.cursor + 1);
+    session.draft.replace_range(start..end, "");
+}
+
+fn draft_with_caret(session: &RitualSession) -> String {
+    let byte = byte_index(&session.draft, session.cursor.min(session.draft.chars().count()));
+    let mut rendered = session.draft.clone();
+    rendered.insert_str(byte, "▌");
+    rendered
 }
 
 fn seal_profile(session: &mut RitualSession, next_state: &mut NextState<ChamberState>) {
@@ -278,6 +311,7 @@ fn seal_profile(session: &mut RitualSession, next_state: &mut NextState<ChamberS
     if persist_json(&profile_path(), &profile).is_ok() {
         session.profile = Some(profile);
         session.draft.clear();
+        session.cursor = 0;
         next_state.set(ChamberState::IdleAtTable);
     }
 }
@@ -289,6 +323,7 @@ fn submit_offering(session: &mut RitualSession, next_state: &mut NextState<Chamb
     }
     session.offering = offering.to_owned();
     session.draft.clear();
+    session.cursor = 0;
     next_state.set(ChamberState::Deliberating);
 }
 
@@ -440,13 +475,14 @@ fn render_ritual_ui(
         .unwrap_or("Witness");
     let ritual_text = match state.get() {
         ChamberState::Booting => String::new(),
+        ChamberState::MainMenu => String::new(),
         ChamberState::Onboarding => format!(
-            "YOU ARE THE WITNESS\n\nSeven minds convene in this chamber, and they answer to one\nseat only — yours. Before the council will speak, it must know\nwho holds that seat.\n\nType your name, then press Enter:\n\n  {}▌\n\nThe council will address you by this name. It is sealed here.",
-            session.draft
+            "YOU ARE THE WITNESS\n\nSeven minds convene in this chamber, and they answer to one\nseat only — yours. Before the council will speak, it must know\nwho holds that seat.\n\nType your name, then press Enter:\n\n  {}\n\nThe council will address you by this name. It is sealed here.",
+            draft_with_caret(&session)
         ),
         ChamberState::IdleAtTable => format!(
-            "{witness}, THE COUNCIL IS SEATED\n\nOffer a thought, a question, or a fear to the seven:\n\n  {}▌\n\nEnter sends it into deliberation.",
-            session.draft
+            "{witness}, THE COUNCIL IS SEATED\n\nOffer a thought, a question, or a fear to the seven:\n\n  {}\n\nEnter sends it into deliberation.",
+            draft_with_caret(&session)
         ),
         ChamberState::Deliberating => match &council.status {
             CouncilStatus::Failed(reason) => format!(
@@ -492,7 +528,9 @@ fn render_ritual_ui(
         }
     };
     drawer_text.0 = ritual_text;
-    drawer_node.display = if ui.drawer_open { Display::Flex } else { Display::None };
+    drawer_node.display = if ui.drawer_open
+        && !matches!(state.get(), ChamberState::Booting | ChamberState::MainMenu)
+    { Display::Flex } else { Display::None };
     if matches!(state.get(), ChamberState::Onboarding | ChamberState::IdleAtTable) {
         if let (Ok(window), Ok((camera, camera_transform)), Ok(portal_transform)) =
             (windows.single(), camera.single(), portal.single())
@@ -512,6 +550,7 @@ fn render_ritual_ui(
         } else { speech.line.as_str() },
         ChamberState::Deliberating => "The council is forming its response…",
         ChamberState::ArtifactPending => "Chronos is painting locally…",
+        ChamberState::Booting | ChamberState::MainMenu => "",
         _ => "ENTER  CONTINUE",
     }.to_owned();
 
@@ -702,12 +741,11 @@ fn present_artifact_image(
     ));
 }
 
-/// On-screen size of the returned artifact, shown at the Witness sphere.
-const ARTIFACT_DISPLAY_SIZE: f32 = 320.0;
+/// On-screen size of the returned artifact, manifested over the portal table.
+const ARTIFACT_DISPLAY_SIZE: f32 = 390.0;
 
-/// Keep the returned image pinned over the Witness (user) sphere — the empty eighth
-/// vessel is where a created work manifests. Tracks the sphere's screen position so the
-/// image reads as living in the user's own sphere rather than as a floating HUD panel.
+/// Keep the returned image pinned over the portal. ArtifactResult returns the camera
+/// downward to the table, so creation visibly lands where the Witness placed intent.
 fn position_artifact_image(
     windows: Query<&Window, With<PrimaryWindow>>,
     camera: Query<(&Camera, &GlobalTransform), With<WitnessCamera>>,
@@ -719,7 +757,7 @@ fn position_artifact_image(
     else {
         return;
     };
-    let Some((_, witness)) = named.iter().find(|(name, _)| name.as_str() == "Witness") else {
+    let Some((_, witness)) = named.iter().find(|(name, _)| name.as_str() == "Stargate_Portal") else {
         return;
     };
     if let Ok(viewport) = camera.world_to_viewport(camera_transform, witness.translation()) {
@@ -879,6 +917,7 @@ fn run_capture(
             CaptureKind::Onboard => {
                 session.profile = None;
                 session.draft = CAPTURE_NAME.to_owned();
+                session.cursor = session.draft.chars().count();
                 next_state.set(ChamberState::Onboarding);
             }
             CaptureKind::Seal => {
@@ -886,11 +925,13 @@ fn run_capture(
                     name: CAPTURE_NAME.to_owned(),
                 });
                 session.draft = CAPTURE_OFFERING.to_owned();
+                session.cursor = session.draft.chars().count();
                 next_state.set(ChamberState::IdleAtTable);
             }
             CaptureKind::Submit => {
                 session.offering = CAPTURE_OFFERING.to_owned();
                 session.draft.clear();
+                session.cursor = 0;
                 next_state.set(ChamberState::Deliberating);
             }
             CaptureKind::Shot(stem) => capture.shot(&mut commands, stem),
@@ -985,5 +1026,19 @@ mod tests {
         assert!(excerpt.chars().count() <= 193);
         assert!(excerpt.ends_with("..."));
         assert!(excerpt.trim_end_matches("...").ends_with("word"));
+    }
+
+    #[test]
+    fn ritual_editor_inserts_spaces_and_edits_at_character_cursor() {
+        let mut session = RitualSession { draft: "helloworld".to_owned(), cursor: 5, ..default() };
+        insert_at_cursor(&mut session, " ");
+        assert_eq!(session.draft, "hello world");
+        assert_eq!(session.cursor, 6);
+        backspace_at_cursor(&mut session);
+        assert_eq!(session.draft, "helloworld");
+        assert_eq!(session.cursor, 5);
+        delete_at_cursor(&mut session);
+        assert_eq!(session.draft, "helloorld");
+        assert_eq!(draft_with_caret(&session), "hello▌orld");
     }
 }

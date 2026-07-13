@@ -4,16 +4,17 @@ Archetypes is a council-driven world engine based on the Mirrorborn architecture
 
 ## Current Prototype
 
-The Bevy engine loads the Director's Blender-authored chamber scene — an enclosed faceted temple, suspended glass star tetrahedron, altar rings, runtime-safe lights, Witness at the sovereign center, and seven enlarged glass council spheres locked to the star's tips. Each council sphere now encloses a continuously rotating double-faced panel built from the repository's archetype icon and portrait assets. The star tetrahedron and its spheres remain fixed; only the internal panels, camera, and environment move.
+The Bevy engine loads the Director's Blender-authored chamber scene — an enclosed faceted temple, suspended glass star tetrahedron, altar rings, runtime-safe lights, Witness at the sovereign center, and seven enlarged glass council spheres locked to the star's tips. Each sphere encloses a fixed double-faced archetype panel that stays upright and camera-readable.
 
-A title/loading screen holds until the authored scene is ready — nothing of the chamber shows before then. Then typing and `Enter` advance the loop:
+A black loading veil plays the supplied `blackflame` motion while `ARCHETYPES` and `A GAME BY MICHAEL HOLT` fade in. It remains until the menu and chamber assets are ready, then fades to the settled portal-table main menu:
 
-1. **Onboarding** — the Witness names the sovereign center, sealing a persistent profile.
-2. **The portal table** — the Witness types an offering over a decimated, metallic-gold astrolabe table. Its emissive stargate vortex rotates and pulses beneath the intent surface; submitting sweeps the camera from the portal up to the council star.
-3. **Deliberation** — three council members (a framer, a counter, a deepener, chosen so all seven surface over time) answer **in character** through a local Ollama model (`qwen2.5:7b-instruct`); the exchange collapses into a Witness verdict. Nothing is templated — if Ollama is down, deliberation fails visibly.
-4. **The council speaks** — each member takes the floor in turn: the camera glides to that sphere, its Kokoro voice plays, its double-faced icon/portrait panel turns clockwise, and the world tints to that archetype's environment.
-5. **Witness verdict** — the council resolves into one heavy verdict under the Witness's retained authority.
-6. **Artifact return** — the authorized brief is sent to the local [Chronos](../chronos) Director's direct canvas-image endpoint. Chronos generates the standalone painting with its bounded SDXL workflow without rendering a museum/easel wrapper or invoking Blender. The verified PNG returns and is **displayed in-game** with its sealed completion event.
+1. **Choose mode** — `START STANDARD MODE` explicitly begins the current ritual. Future play modes now have a real main-menu boundary.
+2. **Onboarding** — the Witness names the sovereign center, sealing a persistent profile.
+3. **The portal table** — the Witness types an offering over a supported metallic-gold astrolabe table. Its emissive stargate rotates and pulses beneath the intent surface; submitting hides the table and reveals the council star.
+4. **Deliberation** — three council members (a framer, a counter, a deepener, chosen so all seven surface over time) answer **in character** through a local Ollama model (`qwen2.5:7b-instruct`); the exchange collapses into a Witness verdict. Nothing is templated — if Ollama is down, deliberation fails visibly.
+5. **The council speaks** — each member takes the floor in turn: the camera glides to that sphere, its Kokoro voice plays, its upright icon/portrait panel remains readable, and the world tints to that archetype's environment.
+6. **Witness verdict** — the council resolves into one heavy verdict under the Witness's retained authority.
+7. **Artifact return** — the authorized brief is sent to the local [Chronos](../chronos) Director's direct canvas-image endpoint. Chronos generates the standalone painting with its bounded SDXL workflow without rendering a museum/easel wrapper or invoking Blender. The verified PNG returns to the portal table with its sealed completion event.
 
 Launch it via the desktop/Start-Menu shortcut created by `scripts/install_shortcut.ps1` (after `scripts/setup_windows.ps1` installs Ollama + the model + the offline voices). The shortcut runs the `launcher`, which enforces a single instance, checks readiness, and starts the engine.
 

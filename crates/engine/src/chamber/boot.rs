@@ -2,9 +2,8 @@
 //!
 //! The chamber is a heavy GPU scene; on launch nothing of it should be shown until it
 //! is ready. A full-screen title overlay covers everything from the first frame and is
-//! only lifted once the authored council geometry has actually loaded (all seven vessels
-//! bound), at which point the ritual begins — at the table for a returning Witness, or
-//! at onboarding for a new one.
+//! only lifted once the authored council geometry and loading-film frames are ready.
+//! The reveal lands on a real table-based main menu; Standard Mode never starts itself.
 
 use bevy::prelude::*;
 
@@ -12,7 +11,10 @@ use super::{ritual::RitualSession, spheres::ArchetypeSphere, ChamberState};
 
 /// Minimum time the title holds — long enough that the heavy scene textures finish
 /// uploading behind it, so the reveal does not hitch.
-const MIN_BOOT_SECS: f32 = 3.0;
+const MIN_BOOT_SECS: f32 = 3.2;
+const BOOT_FADE_SECS: f32 = 1.4;
+const LOADING_FPS: f32 = 8.0;
+const LOADING_FRAMES: usize = 162;
 /// The seven council vessels; when all are bound the scene is ready.
 const READY_SPHERES: usize = 7;
 
@@ -21,15 +23,50 @@ pub struct BootPlugin;
 impl Plugin for BootPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_boot_ui)
-            .add_systems(Update, boot_ready.run_if(in_state(ChamberState::Booting)))
-            .add_systems(OnExit(ChamberState::Booting), despawn_boot_ui);
+            .init_resource::<BootSequence>()
+            .add_systems(Update, (animate_loading_veil, boot_ready).chain().run_if(in_state(ChamberState::Booting)))
+            .add_systems(OnExit(ChamberState::Booting), despawn_boot_ui)
+            .add_systems(OnEnter(ChamberState::MainMenu), spawn_main_menu)
+            .add_systems(Update, activate_standard_mode.run_if(in_state(ChamberState::MainMenu)))
+            .add_systems(OnExit(ChamberState::MainMenu), despawn_main_menu);
     }
 }
 
 #[derive(Component)]
 struct BootUi;
 
-fn spawn_boot_ui(mut commands: Commands) {
+#[derive(Component)]
+struct BootFrame;
+
+#[derive(Component)]
+struct BootTitle;
+
+#[derive(Component)]
+struct BootSubtitle;
+
+#[derive(Resource, Default)]
+struct BootSequence {
+    frames: Vec<Handle<Image>>,
+    ready_at: Option<f32>,
+}
+
+#[derive(Component)]
+struct MainMenuUi;
+
+#[derive(Component)]
+struct StandardModeButton;
+
+fn spawn_boot_ui(mut commands: Commands, asset_server: Res<AssetServer>, mut sequence: ResMut<BootSequence>) {
+    sequence.frames = (1..=LOADING_FRAMES)
+        .map(|index| asset_server.load(format!("loading/blackflame/frame_{index:03}.jpg")))
+        .collect();
+    let first = sequence.frames[0].clone();
+    commands.spawn((
+        AudioPlayer::new(asset_server.load("loading/blackflame.wav")),
+        PlaybackSettings::LOOP,
+        BootUi,
+        Name::new("BlackflameLoadingAudio"),
+    ));
     commands
         .spawn((
             Node {
@@ -44,51 +81,93 @@ fn spawn_boot_ui(mut commands: Commands) {
                 row_gap: Val::Px(18.0),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.015, 0.016, 0.022)),
+            BackgroundColor(Color::BLACK),
             GlobalZIndex(1000),
             BootUi,
         ))
         .with_children(|parent| {
+            parent.spawn((
+                ImageNode::new(first),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0), top: Val::Px(0.0),
+                    width: Val::Percent(100.0), height: Val::Percent(100.0),
+                    ..default()
+                },
+                ZIndex(-1),
+                BootFrame,
+            ));
             parent.spawn((
                 Text::new("ARCHETYPES"),
                 TextFont {
                     font_size: 74.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.95, 0.95, 0.96)),
+                TextColor(Color::srgba(0.95, 0.95, 0.96, 0.0)),
+                BootTitle,
             ));
             parent.spawn((
-                Text::new("Council Chamber"),
+                Text::new("A GAME BY MICHAEL HOLT"),
                 TextFont {
                     font_size: 30.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.62, 0.66, 0.78)),
-            ));
-            parent.spawn((
-                Text::new("Awakening the chamber..."),
-                TextFont {
-                    font_size: 22.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.42, 0.45, 0.55)),
+                TextColor(Color::srgba(0.78, 0.80, 0.86, 0.0)),
+                BootSubtitle,
             ));
         });
+}
+
+fn animate_loading_veil(
+    time: Res<Time>,
+    sequence: Res<BootSequence>,
+    mut frame: Query<&mut ImageNode, With<BootFrame>>,
+    mut title: Query<&mut TextColor, (With<BootTitle>, Without<BootSubtitle>)>,
+    mut subtitle: Query<&mut TextColor, (With<BootSubtitle>, Without<BootTitle>)>,
+) {
+    let elapsed = time.elapsed_secs();
+    if let Ok(mut image) = frame.single_mut() {
+        let index = ((elapsed * LOADING_FPS) as usize) % sequence.frames.len().max(1);
+        if let Some(handle) = sequence.frames.get(index) { image.image = handle.clone(); }
+    }
+    if let Ok(mut color) = title.single_mut() {
+        color.0 = Color::srgba(0.95, 0.95, 0.96, (elapsed / 2.2).clamp(0.0, 1.0));
+    }
+    if let Ok(mut color) = subtitle.single_mut() {
+        color.0 = Color::srgba(0.78, 0.80, 0.86, ((elapsed - 0.8) / 2.6).clamp(0.0, 1.0));
+    }
 }
 
 fn boot_ready(
     time: Res<Time>,
     spheres: Query<&ArchetypeSphere>,
-    session: Res<RitualSession>,
+    portal: Query<&Name>,
+    asset_server: Res<AssetServer>,
+    mut sequence: ResMut<BootSequence>,
+    mut overlay: Query<&mut BackgroundColor, With<BootUi>>,
+    mut frame: Query<&mut ImageNode, With<BootFrame>>,
+    mut title: Query<&mut TextColor, (With<BootTitle>, Without<BootSubtitle>)>,
+    mut subtitle: Query<&mut TextColor, (With<BootSubtitle>, Without<BootTitle>)>,
     mut next_state: ResMut<NextState<ChamberState>>,
 ) {
-    if time.elapsed_secs() < MIN_BOOT_SECS || spheres.iter().count() < READY_SPHERES {
+    let elapsed = time.elapsed_secs();
+    let frames_ready = !sequence.frames.is_empty()
+        && sequence.frames.iter().all(|handle| asset_server.is_loaded_with_dependencies(handle.id()));
+    let chamber_ready = spheres.iter().count() >= READY_SPHERES
+        && portal.iter().any(|name| name.as_str() == "Stargate_Portal");
+    if elapsed < MIN_BOOT_SECS || !frames_ready || !chamber_ready {
         return;
     }
-    if session.has_profile() {
-        next_state.set(ChamberState::IdleAtTable);
-    } else {
-        next_state.set(ChamberState::Onboarding);
+    let ready_at = *sequence.ready_at.get_or_insert(elapsed);
+    let fade = ((elapsed - ready_at) / BOOT_FADE_SECS).clamp(0.0, 1.0);
+    if let Ok(mut background) = overlay.single_mut() {
+        background.0 = Color::srgba(0.0, 0.0, 0.0, 1.0 - fade);
+    }
+    if let Ok(mut image) = frame.single_mut() { image.color = Color::srgba(1.0, 1.0, 1.0, 1.0 - fade); }
+    if let Ok(mut color) = title.single_mut() { color.0 = color.0.with_alpha(1.0 - fade); }
+    if let Ok(mut color) = subtitle.single_mut() { color.0 = color.0.with_alpha(1.0 - fade); }
+    if fade >= 1.0 {
+        next_state.set(ChamberState::MainMenu);
     }
 }
 
@@ -96,4 +175,49 @@ fn despawn_boot_ui(mut commands: Commands, query: Query<Entity, With<BootUi>>) {
     for entity in &query {
         commands.entity(entity).despawn();
     }
+}
+
+fn spawn_main_menu(mut commands: Commands) {
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Percent(35.0), top: Val::Percent(28.0),
+            width: Val::Percent(30.0),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            row_gap: Val::Px(22.0),
+            padding: UiRect::all(Val::Px(26.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.01, 0.015, 0.025, 0.86)),
+        GlobalZIndex(900),
+        MainMenuUi,
+    )).with_children(|parent| {
+        parent.spawn((Text::new("ARCHETYPES"), TextFont { font_size: 48.0, ..default() }, TextColor(Color::WHITE)));
+        parent.spawn((Text::new("CHOOSE GAME MODE"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::srgb(0.55, 0.72, 0.9))));
+        parent.spawn((
+            Button,
+            Node { padding: UiRect::axes(Val::Px(28.0), Val::Px(14.0)), border: UiRect::all(Val::Px(2.0)), ..default() },
+            BackgroundColor(Color::srgba(0.04, 0.10, 0.16, 0.94)),
+            BorderColor::all(Color::srgb(0.25, 0.78, 1.0)),
+            StandardModeButton,
+        )).with_children(|button| {
+            button.spawn((Text::new("START STANDARD MODE"), TextFont { font_size: 22.0, ..default() }, TextColor(Color::WHITE)));
+        });
+    });
+}
+
+fn activate_standard_mode(
+    interaction: Query<&Interaction, (Changed<Interaction>, With<StandardModeButton>)>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    session: Res<RitualSession>,
+    mut next_state: ResMut<NextState<ChamberState>>,
+) {
+    let clicked = interaction.iter().any(|value| *value == Interaction::Pressed);
+    if !clicked && !keyboard.just_pressed(KeyCode::Enter) { return; }
+    next_state.set(if session.has_profile() { ChamberState::IdleAtTable } else { ChamberState::Onboarding });
+}
+
+fn despawn_main_menu(mut commands: Commands, query: Query<Entity, With<MainMenuUi>>) {
+    for entity in &query { commands.entity(entity).despawn(); }
 }
