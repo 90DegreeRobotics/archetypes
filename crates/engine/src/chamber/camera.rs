@@ -41,8 +41,7 @@ impl Plugin for CameraPlugin {
         app.add_systems(Startup, setup_witness_camera)
             .add_systems(
                 Update,
-                (disable_imported_cameras, gate_star_visibility, gate_table_visibility, drive_camera)
-                    .chain(),
+                (disable_imported_cameras, gate_table_visibility, drive_camera).chain(),
             );
     }
 }
@@ -62,25 +61,6 @@ fn gate_table_visibility(
     for (name, mut visibility) in &mut named {
         if name.as_str() == "PortalTable" {
             *visibility = if visible { Visibility::Visible } else { Visibility::Hidden };
-        }
-    }
-}
-
-fn gate_star_visibility(
-    state: Res<State<ChamberState>>,
-    mut named: Query<(&Name, &mut Visibility)>,
-) {
-    let hidden = matches!(
-        state.get(),
-        ChamberState::Booting
-            | ChamberState::MainMenu
-            | ChamberState::Onboarding
-            | ChamberState::IdleAtTable
-            | ChamberState::ArtifactResult
-    );
-    for (name, mut visibility) in &mut named {
-        if name.as_str().starts_with("Merkaba_") {
-            *visibility = if hidden { Visibility::Hidden } else { Visibility::Visible };
         }
     }
 }

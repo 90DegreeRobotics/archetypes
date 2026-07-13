@@ -151,17 +151,11 @@ struct RitualPrompt;
 #[derive(Resource)]
 struct DialogueUiState {
     drawer_open: bool,
-    bubble_key: String,
-    bubble_age: f32,
 }
 
 impl Default for DialogueUiState {
     fn default() -> Self {
-        Self {
-            drawer_open: true,
-            bubble_key: String::new(),
-            bubble_age: 0.0,
-        }
+        Self { drawer_open: true }
     }
 }
 
@@ -550,14 +544,14 @@ fn render_ritual_ui(
     state: Res<State<ChamberState>>,
     session: Res<RitualSession>,
     council: Res<CouncilTranscript>,
-    speech: Res<SpeechStatus>,
+    _speech: Res<SpeechStatus>,
     voice: Res<CouncilVoiceState>,
-    focus: Res<CurrentFocus>,
-    time: Res<Time>,
-    mut ui: ResMut<DialogueUiState>,
+    _focus: Res<CurrentFocus>,
+    _time: Res<Time>,
+    ui: ResMut<DialogueUiState>,
     windows: Query<&Window, With<PrimaryWindow>>,
     camera: Query<(&Camera, &GlobalTransform), With<WitnessCamera>>,
-    spheres: Query<(&ArchetypeSphere, &GlobalTransform)>,
+    _spheres: Query<(&ArchetypeSphere, &GlobalTransform)>,
     portal: Query<&GlobalTransform, With<StargatePortal>>,
     mut drawer: Query<
         (&mut Text, &mut Node, &mut TextFont),
@@ -567,7 +561,7 @@ fn render_ritual_ui(
         (&mut Node, &mut BackgroundColor, &mut BorderColor),
         (With<SpeakerBubble>, Without<TranscriptDrawer>),
     >,
-    mut bubble_text: Query<
+    _bubble_text: Query<
         (&mut Text, &mut TextColor),
         (
             With<SpeakerBubbleText>,
@@ -670,9 +664,16 @@ fn render_ritual_ui(
         }
     };
     drawer_text.0 = ritual_text;
-    drawer_node.display = if ui.drawer_open
-        && !matches!(state.get(), ChamberState::Booting | ChamberState::MainMenu)
-    {
+    // Per the operator directive, do not show the ritual text over the scene while
+    // the Witness is only watching. The panel appears solely where typing is
+    // required (naming the Witness, offering at the table); every other state plays
+    // out on the voice + the scene alone, uncluttered.
+    let show_drawer = ui.drawer_open
+        && matches!(
+            state.get(),
+            ChamberState::Onboarding | ChamberState::IdleAtTable
+        );
+    drawer_node.display = if show_drawer {
         Display::Flex
     } else {
         Display::None
@@ -703,75 +704,19 @@ fn render_ritual_ui(
         drawer_node.left = Val::Px(24.0);
         drawer_node.top = Val::Px(24.0);
     }
-    // Only shown when it adds information the main panel doesn't already state
-    // inline (every other branch already ends with its own explicit instruction).
-    prompt_text.0 = match state.get() {
-        ChamberState::CouncilSpeaking => {
-            if speech.line.is_empty() {
-                if ui.drawer_open {
-                    "TAB  CLOSE TRANSCRIPT"
-                } else {
-                    "TAB  OPEN TRANSCRIPT"
-                }
-            } else {
-                speech.line.as_str()
-            }
-        }
-        _ => "",
-    }
-    .to_owned();
+    // Per the "just don't show it" directive, no ritual status text is drawn over
+    // the scene. (Kept as a single sink so the node exists but stays empty/hidden.)
+    prompt_text.0 = String::new();
     prompt_node.display = if prompt_text.0.is_empty() {
         Display::None
     } else {
         Display::Flex
     };
 
-    // The bubble only ever shows a line once its voice is actually audible — this
-    // is the fix for text appearing before (or well ahead of) the matching speech.
-    let active = (*state.get() == ChamberState::CouncilSpeaking
-        && voice.line_audible(council.cursor))
-    .then(|| council.lines.get(council.cursor))
-    .flatten();
-    let key = active
-        .map(|line| format!("{:?}:{}", line.archetype, line.text))
-        .unwrap_or_default();
-    if key != ui.bubble_key {
-        ui.bubble_key = key;
-        ui.bubble_age = 0.0;
-    } else {
-        ui.bubble_age += time.delta_secs();
-    }
-    let (Ok((mut bubble_node, mut bubble_bg, mut bubble_border)), Ok((mut text, mut text_color))) =
-        (bubble.single_mut(), bubble_text.single_mut())
-    else {
-        return;
-    };
-    let Some(line) = active else {
+    // The floating speaker bubble is suppressed entirely per the "just don't show
+    // it" directive — the council speaks through voice and the scene, not text.
+    if let Ok((mut bubble_node, _, _)) = bubble.single_mut() {
         bubble_node.display = Display::None;
-        return;
-    };
-    bubble_node.display = Display::Flex;
-    let theme = line.archetype.theme();
-    let alpha = (ui.bubble_age / 0.35).clamp(0.0, 1.0);
-    *bubble_bg = BackgroundColor(theme.bg_void.with_alpha(0.92 * alpha));
-    *bubble_border = BorderColor::all(theme.accent_primary.with_alpha(alpha));
-    text_color.0 = theme.text_primary.with_alpha(alpha);
-    text.0 = format!("{:?}  -  {}\n\n{}", line.archetype, line.role, line.text);
-
-    if let (Ok(window), Ok((camera, camera_transform)), Some(archetype)) =
-        (windows.single(), camera.single(), focus.0)
-    {
-        if let Some((_, sphere)) = spheres.iter().find(|(item, _)| item.archetype == archetype) {
-            if let Ok(viewport) = camera.world_to_viewport(camera_transform, sphere.translation()) {
-                let fly = (1.0 - alpha) * 28.0;
-                bubble_node.left = Val::Px(
-                    (viewport.x + 42.0 + fly)
-                        .min(window.width() - 390.0)
-                        .max(380.0),
-                );
-                bubble_node.top = Val::Px((viewport.y - 90.0).clamp(70.0, window.height() - 250.0));
-            }
-        }
     }
 }
 

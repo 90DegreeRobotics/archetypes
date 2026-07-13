@@ -7,8 +7,10 @@ pub mod interior;
 pub mod panels;
 pub mod portal;
 pub mod ritual;
+pub mod sky;
 pub mod speech;
 pub mod spheres;
+pub mod star;
 
 #[derive(States, Default, Debug, Clone, Eq, PartialEq, Hash)]
 pub enum ChamberState {
@@ -45,6 +47,8 @@ impl Plugin for CouncilChamberPlugin {
                 panels::PanelsPlugin,
                 portal::PortalPlugin,
                 interior::InteriorPlugin,
+                sky::SkyPlugin,
+                star::StarPlugin,
                 council::CouncilPlugin,
                 ritual::RitualPlugin,
                 speech::SpeechPlugin,

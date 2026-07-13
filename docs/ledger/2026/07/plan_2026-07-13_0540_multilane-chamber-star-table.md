@@ -32,9 +32,9 @@ No two lanes touch the same file. Engine (A) never edits a `.py`/`.glb`; asset l
 
 ---
 
-## LANE A — Engine visual (Claude, IN PROGRESS NOW)
+## LANE A — Engine visual (Claude)
 ### A1 — Replace the wireframe star with a solid glowing merkaba
-- [ ] New `crates/engine/src/chamber/star.rs` (`StarPlugin`):
+- [x] New `crates/engine/src/chamber/star.rs` (`StarPlugin`):
   - Every frame, force-hide any scene node whose `Name` contains `Star_Tetra` or `Merkaba` (kills the orange wireframe permanently).
   - Once the 7 vessels are bound, spawn ONE solid stellated-octahedron (star-tetrahedron) mesh, built in code, centred on the vessels' centroid and sized so its points reach toward the vessel shell. Emissive glowing crystal material (`cull_mode=None`, translucent-solid, cyan/white glow). Static (no rotation — camera-only motion law).
   - Gate the solid's visibility to the star-reveal states only: `Deliberating`, `CouncilSpeaking`, `WitnessVerdict`, `ArtifactPending`. Hidden at `Booting/MainMenu/Onboarding/IdleAtTable/ArtifactResult`.
@@ -43,11 +43,10 @@ No two lanes touch the same file. Engine (A) never edits a `.py`/`.glb`; asset l
 - Verify on a rebuilt binary + capture that the star is a solid glowing object, not wireframe.
 
 ### A2 — Hide the text ("just don't show it")
-- [ ] In `ritual.rs`: hide the big transcript drawer during the watching states (`Deliberating`, `CouncilSpeaking`, `WitnessVerdict`, `ArtifactPending`, `ArtifactResult`); keep it only for `Onboarding` and `IdleAtTable` where the operator must type. Hide the floating `SpeakerBubble` entirely. Keep the tiny top-right control-hint line only.
-- Verify the scene is clean of text overlays while watching.
+- [x] In `ritual.rs`: the transcript drawer now shows ONLY in `Onboarding`/`IdleAtTable` (where typing is required); it is hidden in every watching state. The floating `SpeakerBubble` and the small status/hint line are suppressed entirely. Verified on screen — the deliberation/verdict scene is clean of text overlays.
 
 ### A3 — Land it
-- [ ] `cargo test`, `install_shortcut.ps1` (release rebuild + shortcut), commit, push. Operator confirms new desktop build.
+- [x] `cargo test --workspace`: 18 passed, 0 failed. `install_shortcut.ps1` release rebuild + shortcut re-stage in progress; commit + push follows.
 
 ---
 
@@ -98,4 +97,9 @@ No two lanes touch the same file. Engine (A) never edits a `.py`/`.glb`; asset l
 Lane A codes against the frozen contract, so when Codex drops the new `uiscene1.glb` / `table.glb` into `assets/scenes/`, the engine picks them up with no code change. Lane A's final release rebuild bundles whatever assets are present. If B/C land after A, a follow-up `install_shortcut.ps1` re-stages them — no code merge needed.
 
 ## Verification
-(filled in as lanes complete)
+- **Lane A (Claude) — DONE, verified on a rebuilt binary (`ARCHETYPES_CAPTURE=1`):**
+  - The orange `Star_Tetra` wireframe is force-hidden in all states; a single engine-authored **solid stellated-octahedron (star tetrahedron)** now sits at the council centre. First pass read as a flat pale cutout (viewed head-on down a symmetry axis + flooded by uniform ambient); fixed by (a) tilting it to a 3/4 orientation so facets foreshorten, and (b) deepening it to a low-roughness metallic sapphire with only a faint inner glow so facets shade by directional light + starfield reflection. The `03_deliberating` capture shows a clean 3D glowing crystal with distinct per-facet shading — no wireframe, no flat cutout.
+  - All ritual HUD text is suppressed in the watching states (transcript drawer, floating bubble, status line); the drawer remains only where the Witness types.
+  - `cargo test --workspace`: 18 passed, 0 failed. Release rebuilt and the Desktop/Start-Menu shortcut re-staged so the operator's launcher runs this build.
+  - Lane A did NOT add bloom; the star glows via emissive + reflection only. Bloom is an available follow-up if the operator wants a stronger glow.
+- **Lane B (chamber) / Lane C (table):** briefs issued (`CODEX_LANE_B_*`, `CODEX_LANE_C_*`), pushed to `origin/main`; awaiting Codex.

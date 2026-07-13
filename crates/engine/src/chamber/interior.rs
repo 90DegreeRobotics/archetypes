@@ -15,8 +15,12 @@ use bevy::prelude::*;
 
 use super::{ChamberState, CurrentFocus};
 
-/// Near-black ceremonial void — the resting law of the chamber.
-const CEREMONIAL_VOID: Color = Color::BLACK;
+/// Deep-space navy — the resting backdrop of the chamber. Deliberately not pure
+/// black: an absolute-black void left every shiny surface with nothing to catch and
+/// "broke the whole look." The starfield skybox ([`super::sky`]) renders over this,
+/// so this tone only shows in any seam the skybox does not cover — matched to the
+/// star map's base navy so the seam is invisible.
+const CEREMONIAL_VOID: Color = Color::srgb(0.02, 0.028, 0.06);
 /// Cool, dim ambient so the authored Blender lights carry the resting scene.
 const CEREMONIAL_AMBIENT: Color = Color::srgb(0.60, 0.65, 0.82);
 const CEREMONIAL_BRIGHTNESS: f32 = 90.0;
@@ -99,8 +103,12 @@ mod tests {
     }
 
     #[test]
-    fn the_render_void_is_absolute_black() {
+    fn the_render_backdrop_is_deep_space_not_pure_black() {
+        // The resting backdrop is intentionally dark but never pure black: an
+        // absolute-black void gave reflective surfaces nothing to catch. It must
+        // stay dark enough to sit behind the starfield without competing with it.
         let void = CEREMONIAL_VOID.to_linear();
-        assert!(void.red == 0.0 && void.green == 0.0 && void.blue == 0.0);
+        assert!(void.red > 0.0 || void.green > 0.0 || void.blue > 0.0);
+        assert!(void.red < 0.1 && void.green < 0.1 && void.blue < 0.1);
     }
 }
