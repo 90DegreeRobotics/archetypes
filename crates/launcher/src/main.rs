@@ -39,7 +39,7 @@ fn main() {
     }
     if !ready.tts {
         eprintln!("\n[required] The offline voices are not installed.");
-        eprintln!("           Run scripts\\setup_windows.ps1 to install them, then relaunch.");
+        eprintln!("           Re-run the Archetypes installer to repair the voice bundle.");
         pause_briefly();
         return;
     }
@@ -102,12 +102,26 @@ fn port_open(port: u16) -> bool {
 }
 
 fn tts_installed() -> bool {
-    let Some(root) = std::env::var_os("ProgramFiles")
-        .map(PathBuf::from)
-        .map(|program_files| program_files.join("Archetypes").join("speech"))
-    else {
-        return false;
-    };
+    speech_roots().into_iter().any(|root| speech_root_ready(&root))
+}
+
+fn speech_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(explicit) = std::env::var_os("ARCHETYPES_SPEECH_ROOT") {
+        roots.push(PathBuf::from(explicit));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            roots.push(dir.join("speech"));
+        }
+    }
+    if let Some(program_files) = std::env::var_os("ProgramFiles") {
+        roots.push(PathBuf::from(program_files).join("Archetypes").join("speech"));
+    }
+    roots
+}
+
+fn speech_root_ready(root: &std::path::Path) -> bool {
     root.join("sherpa-onnx-v1.13.4-win-x64-shared-MD-Release")
         .join("bin")
         .join("sherpa-onnx-offline-tts.exe")
@@ -135,4 +149,21 @@ fn pause_briefly() {
     let _ = std::io::stdout().flush();
     let mut buffer = String::new();
     let _ = std::io::stdin().read_line(&mut buffer);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn portable_speech_root_contract_checks_runtime_and_model() {
+        let root = std::env::temp_dir().join("archetypes-launcher-speech-contract");
+        let exe = root.join("sherpa-onnx-v1.13.4-win-x64-shared-MD-Release/bin/sherpa-onnx-offline-tts.exe");
+        let model = root.join("kokoro-en-v0_19/model.onnx");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(model.parent().unwrap()).unwrap();
+        std::fs::write(&exe, b"runtime").unwrap();
+        std::fs::write(&model, b"model").unwrap();
+        assert!(speech_root_ready(&root));
+    }
 }

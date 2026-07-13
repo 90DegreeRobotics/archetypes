@@ -26,6 +26,13 @@ if (-not $SkipBuild) {
 $DistRoot = [System.IO.Path]::GetFullPath($DistRoot)
 New-Item -ItemType Directory -Force -Path $DistRoot | Out-Null
 
+# Install the pinned offline speech runtime and multi-speaker Kokoro model directly
+# beside the installed binaries. The launcher and engine prefer this portable root,
+# so a Desktop launch never depends on repository or proof-directory paths.
+Write-Host "Installing/verifying offline council voices in $DistRoot..."
+& (Join-Path $RepoRoot "scripts\setup_windows.ps1") -InstallRoot $DistRoot -NonInteractive
+if ($LASTEXITCODE -ne 0) { throw "offline voice bootstrap failed" }
+
 Copy-Item (Join-Path $RepoRoot "target\release\engine.exe") $DistRoot -Force
 Copy-Item (Join-Path $RepoRoot "target\release\launcher.exe") $DistRoot -Force
 
@@ -71,4 +78,4 @@ foreach ($dir in $targets) {
     Write-Host "Shortcut created: $lnk"
 }
 
-Write-Host "`nDone. Launch Archetypes from your Desktop or Start Menu."
+Write-Host "`nDone. All council voices are installed. Launch Archetypes from your Desktop or Start Menu."

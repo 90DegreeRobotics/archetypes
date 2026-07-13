@@ -213,11 +213,7 @@ impl SpeechPaths {
         ) {
             (Some(exe), Some(model)) => (PathBuf::from(exe), PathBuf::from(model)),
             (None, None) => {
-                let root = std::env::var_os("ProgramFiles")
-                    .map(PathBuf::from)
-                    .ok_or("ProgramFiles is unavailable")?
-                    .join("Archetypes")
-                    .join("speech");
+                let root = default_speech_root().ok_or("no installed speech runtime found")?;
                 (
                     root.join("sherpa-onnx-v1.13.4-win-x64-shared-MD-Release")
                         .join("bin")
@@ -243,6 +239,23 @@ impl SpeechPaths {
             cache_dir,
         })
     }
+}
+
+fn default_speech_root() -> Option<PathBuf> {
+    if let Some(explicit) = std::env::var_os("ARCHETYPES_SPEECH_ROOT") {
+        return Some(PathBuf::from(explicit));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let portable = dir.join("speech");
+            if portable.is_dir() {
+                return Some(portable);
+            }
+        }
+    }
+    std::env::var_os("ProgramFiles")
+        .map(PathBuf::from)
+        .map(|root| root.join("Archetypes").join("speech"))
 }
 
 fn synthesize(request: VoiceRequest) -> Result<Vec<u8>, String> {
