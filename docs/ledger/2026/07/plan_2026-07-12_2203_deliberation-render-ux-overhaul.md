@@ -54,7 +54,7 @@ The operator played the freshly-built desktop shortcut (`dist/engine.exe`, stage
 - Expected outcome: table matches the reference and is clearly visible; portal untouched.
 
 ### Step 8 — End-to-end verification and truth docs
-- [ ] Action: `cargo build -p engine`, run `ARCHETYPES_CAPTURE=1` deterministic walkthrough, visually confirm each fix against a fresh screenshot set, rebuild release + reinstall the desktop shortcut, update `STATUS.md`/`README.md` to match what's actually true, commit and push each completed unit as it lands (not batched at the end).
+- [x] Action: `cargo build -p engine`, run `ARCHETYPES_CAPTURE=1` deterministic walkthrough, visually confirm each fix against a fresh screenshot set, rebuild release + reinstall the desktop shortcut, update `STATUS.md`/`README.md` to match what's actually true, commit and push each completed unit as it lands (not batched at the end).
 - Files touched: `STATUS.md`, `README.md`, build/install scripts as needed.
 - Expected outcome: the live desktop shortcut reflects every fix; docs match reality; tree is clean on `origin/main`.
 
@@ -67,5 +67,5 @@ The operator played the freshly-built desktop shortcut (`dist/engine.exe`, stage
   - The art-style fix was confirmed via a real generated artifact: a warm, detailed, modern digital painting, not the previous dark low-detail sketch.
   - Fixing Step 2's panel resize surfaced a possible regression (the enlarged panel appearing to overlap the portal on the Onboarding/IdleAtTable screens); a per-state width/font split was added so those two states keep the original 340px/15px sizing while Deliberating/CouncilSpeaking/WitnessVerdict/ArtifactPending/ArtifactResult get the larger 620px/19px panel. Screenshot comparison then showed the portal overlap is **pre-existing, unchanged behavior** at the original size too — not a regression — so it was left alone as out of scope for this pass.
   - Observed (not yet fixed): with real TTS, a line's voice can take longer than ~4.5s to start (each call spawns a fresh `sherpa-onnx-offline-tts.exe` process and reloads the model — there's no persistent TTS server), so the Step 1 gate can mean a few seconds of "forming speech…" with no text. This is honest behavior given the fix's intent, but the underlying per-call TTS latency is a separate, pre-existing performance characteristic not addressed here.
-- Step 7 (table) remains blocked on the operator's reference image.
-- Step 8 (reinstall shortcut, update STATUS.md/README.md, final commit/push) not yet done.
+- Step 7 (table) remains blocked on the operator's reference image — the plan stays IN-PROGRESS until that lands.
+- Step 8: `scripts\install_shortcut.ps1` rebuilt the **release** workspace and re-staged `dist/` plus the Desktop/Start Menu shortcuts with all six fixes; `STATUS.md` was updated with a dated operator-playtest-audit entry (Current State, Blockers, Verification). `README.md` reviewed — no correction needed, it doesn't make any claim these fixes contradict.
