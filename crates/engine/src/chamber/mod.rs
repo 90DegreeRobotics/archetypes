@@ -30,9 +30,19 @@ pub enum ChamberState {
 
 use crate::theme::Archetype;
 
-/// Canonical world-space center of the raised council constellation. The authored
-/// `Council_Assembly`, runtime solid star, and deliberation camera all share it.
-pub(super) const COUNCIL_CENTER: Vec3 = Vec3::new(0.0, 2.0, 0.0);
+/// Canonical world-space center of the raised council constellation — the single
+/// source of truth for its height. The authored `Council_Assembly` node (baked into
+/// `uiscene1.glb` at [`AUTHORED_COUNCIL_Y`]) is re-pinned to this at runtime by
+/// `spheres::raise_council_constellation`; the runtime solid star and the
+/// deliberation camera share it too. Raise this one value to lift the whole star
+/// tetrahedron — vessels, portrait panels, and crystal core — as a group above the
+/// table. At y = 6.0 the vessel tips span ≈ 2.5..9.5, clearing the table top (≈ −1.8).
+pub(super) const COUNCIL_CENTER: Vec3 = Vec3::new(0.0, 6.0, 0.0);
+
+/// The y at which `Council_Assembly` and the seven `*_PanelSpinner` roots were baked
+/// into `uiscene1.glb`. The runtime lift applied to the constellation is
+/// `COUNCIL_CENTER.y - AUTHORED_COUNCIL_Y`.
+pub(super) const AUTHORED_COUNCIL_Y: f32 = 2.0;
 
 #[derive(Resource, Default, Debug, Clone)]
 pub struct CurrentFocus(pub Option<Archetype>);
