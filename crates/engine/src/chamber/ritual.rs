@@ -13,7 +13,7 @@ use bevy::{
     window::PrimaryWindow,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use crate::services::chronos::ArtifactOutcome;
 
 use super::{
     council::{CouncilStatus, CouncilTranscript},
@@ -25,18 +25,7 @@ use super::{
 use crate::chamber::camera::WitnessCamera;
 use crate::theme::Archetype;
 
-const DIRECTOR_URL: &str = "http://127.0.0.1:7777";
 
-/// Comfy-only image backend. The Chronos Foundry supervisor keeps ComfyUI alive on
-/// this port; the game always requests the fast Comfy path, never the slow Blender path.
-fn comfyui_url() -> String {
-    std::env::var("ARCHETYPES_COMFYUI_URL").unwrap_or_else(|_| "http://127.0.0.1:8000".to_owned())
-}
-
-fn comfyui_output_dir() -> String {
-    std::env::var("ARCHETYPES_COMFYUI_OUTPUT_DIR")
-        .unwrap_or_else(|_| r"C:\Users\m\Documents\ComfyUI\output".to_owned())
-}
 
 pub struct RitualPlugin;
 
@@ -76,9 +65,18 @@ impl Plugin for RitualPlugin {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WitnessProfile {
+    pub name: String,
+    #[serde(default)]
+    pub mode_stats: std::collections::HashMap<String, ModeStats>,
+    #[serde(default)]
+    pub arrow_signal: f32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct WitnessProfile {
-    name: String,
+pub struct ModeStats {
+    pub completed_runs: u32,
 }
 
 #[derive(Resource, Default)]
@@ -111,16 +109,6 @@ impl RitualSession {
     pub(super) fn has_profile(&self) -> bool {
         self.profile.is_some()
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ArtifactOutcome {
-    status: String,
-    job_id: Option<String>,
-    artifact_id: Option<String>,
-    png_path: Option<String>,
-    proof_receipt_id: Option<String>,
-    detail: String,
 }
 
 #[derive(Resource, Default)]
@@ -389,6 +377,8 @@ fn seal_profile(session: &mut RitualSession, next_state: &mut NextState<ChamberS
     }
     let profile = WitnessProfile {
         name: name.to_owned(),
+        mode_stats: std::collections::HashMap::new(),
+        arrow_signal: 0.0,
     };
     if persist_json(&profile_path(), &profile).is_ok() {
         session.profile = Some(profile);
@@ -432,7 +422,7 @@ fn begin_chronos_request(
     let (sender, receiver) = mpsc::channel();
     *bridge.receiver.lock().expect("Chronos receiver lock") = Some(receiver);
     thread::spawn(move || {
-        let _ = sender.send(request_chronos_artifact(&prompt));
+        let _ = sender.send(crate::services::chronos::request_chronos_artifact(&prompt));
     });
 }
 
@@ -459,84 +449,6 @@ fn poll_chronos_result(
         let _ = persist_json(&artifact_receipt_path(), &result);
         session.artifact = Some(result);
         next_state.set(ChamberState::ArtifactResult);
-    }
-}
-
-fn request_chronos_artifact(prompt: &str) -> ArtifactOutcome {
-    let status: Value = match response_json(
-        ureq::get(&format!("{DIRECTOR_URL}/api/v1/status"))
-            .timeout(Duration::from_secs(4))
-            .call(),
-    ) {
-        Ok(status) => status,
-        Err(error) => return failed_outcome(format!("Chronos Director is unreachable: {error}")),
-    };
-    if status.get("readiness").and_then(Value::as_str) != Some("ready") {
-        return failed_outcome(format!(
-            "Chronos is not ready: {}",
-            status
-                .get("readiness_reasons")
-                .cloned()
-                .unwrap_or(Value::Null)
-        ));
-    }
-
-    // Match Chronos's proven museum-canvas metabolism on the 12 GB Forge: the
-    // council's Ollama model has finished its work, so release its VRAM before
-    // Flux loads. This is best-effort; the Director response remains fail-closed.
-    let _ = ureq::post("http://127.0.0.1:11434/api/generate")
-        .timeout(Duration::from_secs(20))
-        .send_json(json!({
-            "model": std::env::var("ARCHETYPES_OLLAMA_MODEL")
-                .unwrap_or_else(|_| "qwen2.5:7b-instruct".to_owned()),
-            "prompt": "",
-            "keep_alive": 0,
-        }));
-
-    // Direct canvas-image route: Chronos reuses the same Flux generator that paints
-    // its museum-wall canvas, returning the painting PNG without a Blender wrapper.
-    let submit: Value = match response_json(
-        ureq::post(&format!("{DIRECTOR_URL}/api/v1/pipeline/concept-thumbnail"))
-            .timeout(Duration::from_secs(480))
-            .send_json(json!({
-                "prompt": prompt,
-                "style": "modern realistic digital painting, natural lighting and color, crisp detail, readable silhouette, no text",
-                // Chronos's `storyboard_prompt_from_req` only recognizes "refined";
-                // anything else (this used to send "final") silently falls back to
-                // its rough-sketch default, which is why every artifact came back
-                // as a dark, low-detail sketch regardless of the `style` above.
-                "fidelity": "refined",
-                "comfyui_url": comfyui_url(),
-                "comfyui_output_dir": comfyui_output_dir(),
-                "session_id": "archetypes-council",
-            })),
-    ) {
-        Ok(body) => body,
-        Err(error) => {
-            return failed_outcome(format!(
-                "Chronos rejected the Comfy request: {error}. Is the Chronos Foundry (ComfyUI on :8000) running?"
-            ))
-        }
-    };
-    let png_path = string_field(&submit, "png_path");
-    let verified_path = png_path.as_deref().map(resolve_chronos_path);
-    if verified_path.as_ref().is_none_or(|path| !path.is_file()) {
-        return ArtifactOutcome {
-            status: "failed".to_owned(),
-            job_id: None,
-            artifact_id: string_field(&submit, "concept_id"),
-            png_path,
-            proof_receipt_id: string_field(&submit, "completion_event_id"),
-            detail: "Chronos reported completion without a readable canvas PNG".to_owned(),
-        };
-    }
-    ArtifactOutcome {
-        status: "complete".to_owned(),
-        job_id: None,
-        artifact_id: string_field(&submit, "concept_id"),
-        png_path: verified_path.map(|path| path.display().to_string()),
-        proof_receipt_id: string_field(&submit, "completion_event_id"),
-        detail: "Chronos returned a verified direct canvas image".to_owned(),
     }
 }
 
@@ -749,25 +661,7 @@ fn artifact_prompt(offering: &str, verdict: &str) -> String {
     )
 }
 
-fn failed_outcome(detail: String) -> ArtifactOutcome {
-    ArtifactOutcome {
-        status: "failed".to_owned(),
-        job_id: None,
-        artifact_id: None,
-        png_path: None,
-        proof_receipt_id: None,
-        detail,
-    }
-}
 
-fn string_field(value: &Value, field: &str) -> Option<String> {
-    value.get(field).and_then(Value::as_str).map(str::to_owned)
-}
-
-fn response_json(response: Result<ureq::Response, ureq::Error>) -> Result<Value, String> {
-    let response = response.map_err(|error| error.to_string())?;
-    response.into_json().map_err(|error| error.to_string())
-}
 
 fn resolve_chronos_path(path: &str) -> PathBuf {
     let path = PathBuf::from(path);
@@ -1064,6 +958,8 @@ fn run_capture(
             CaptureKind::Seal => {
                 session.profile = Some(WitnessProfile {
                     name: CAPTURE_NAME.to_owned(),
+                    mode_stats: std::collections::HashMap::new(),
+                    arrow_signal: 0.0,
                 });
                 session.draft = CAPTURE_OFFERING.to_owned();
                 session.cursor = session.draft.chars().count();

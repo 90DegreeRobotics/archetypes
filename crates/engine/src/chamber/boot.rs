@@ -34,7 +34,7 @@ impl Plugin for BootPlugin {
             .add_systems(OnEnter(ChamberState::MainMenu), spawn_main_menu)
             .add_systems(
                 Update,
-                activate_standard_mode.run_if(in_state(ChamberState::MainMenu)),
+                activate_mode.run_if(in_state(ChamberState::MainMenu)),
             )
             .add_systems(OnExit(ChamberState::MainMenu), despawn_main_menu);
     }
@@ -62,7 +62,7 @@ struct BootSequence {
 struct MainMenuUi;
 
 #[derive(Component)]
-struct StandardModeButton;
+struct ModeButton(crate::modes::game_mode::GameMode);
 
 fn spawn_boot_ui(
     mut commands: Commands,
@@ -230,48 +230,63 @@ fn spawn_main_menu(mut commands: Commands) {
                 },
                 TextColor(Color::srgb(0.66, 0.88, 1.0)),
             ));
-            parent
-                .spawn((
-                    Button,
-                    Node {
-                        padding: UiRect::axes(Val::Px(34.0), Val::Px(12.0)),
-                        border: UiRect::all(Val::Px(1.0)),
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgba(0.01, 0.04, 0.10, 0.58)),
-                    BorderColor::all(Color::srgba(0.30, 0.84, 1.0, 0.86)),
-                    StandardModeButton,
-                ))
-                .with_children(|button| {
-                    button.spawn((
-                        Text::new("STANDARD MODE"),
-                        TextFont {
-                            font_size: 20.0,
+            let modes = vec![
+                (crate::modes::game_mode::GameMode::Standard, "STANDARD MODE"),
+            ];
+            for (mode, label) in modes {
+                parent
+                    .spawn((
+                        Button,
+                        Node {
+                            padding: UiRect::axes(Val::Px(34.0), Val::Px(12.0)),
+                            border: UiRect::all(Val::Px(1.0)),
                             ..default()
                         },
-                        TextColor(Color::WHITE),
-                    ));
-                });
+                        BackgroundColor(Color::srgba(0.01, 0.04, 0.10, 0.58)),
+                        BorderColor::all(Color::srgba(0.30, 0.84, 1.0, 0.86)),
+                        ModeButton(mode),
+                    ))
+                    .with_children(|button| {
+                        button.spawn((
+                            Text::new(label),
+                            TextFont {
+                                font_size: 20.0,
+                                ..default()
+                            },
+                            TextColor(Color::WHITE),
+                        ));
+                    });
+            }
         });
 }
 
-fn activate_standard_mode(
-    interaction: Query<&Interaction, (Changed<Interaction>, With<StandardModeButton>)>,
+fn activate_mode(
+    mut commands: Commands,
+    interaction: Query<(&Interaction, &ModeButton), Changed<Interaction>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     session: Res<RitualSession>,
     mut next_state: ResMut<NextState<ChamberState>>,
 ) {
-    let clicked = interaction
-        .iter()
-        .any(|value| *value == Interaction::Pressed);
-    if !clicked && !keyboard.just_pressed(KeyCode::Enter) {
-        return;
+    let mut selected_mode = None;
+    for (val, button) in &interaction {
+        if *val == Interaction::Pressed {
+            selected_mode = Some(button.0);
+        }
     }
-    next_state.set(if session.has_profile() {
-        ChamberState::IdleAtTable
-    } else {
-        ChamberState::Onboarding
-    });
+    
+    // For now, Enter selects Standard
+    if selected_mode.is_none() && keyboard.just_pressed(KeyCode::Enter) {
+        selected_mode = Some(crate::modes::game_mode::GameMode::Standard);
+    }
+    
+    if let Some(mode) = selected_mode {
+        commands.insert_resource(crate::chamber::ActiveGameMode(mode));
+        next_state.set(if session.has_profile() {
+            ChamberState::IdleAtTable
+        } else {
+            ChamberState::Onboarding
+        });
+    }
 }
 
 fn despawn_main_menu(mut commands: Commands, query: Query<Entity, With<MainMenuUi>>) {

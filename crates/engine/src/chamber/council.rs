@@ -22,11 +22,7 @@ use serde_json::{json, Value};
 use super::{ritual::RitualSession, speech::CouncilVoiceState, ChamberState, CurrentFocus};
 use crate::theme::Archetype;
 
-const OLLAMA_CHAT_URL: &str = "http://127.0.0.1:11434/api/chat";
 
-fn ollama_model() -> String {
-    std::env::var("ARCHETYPES_OLLAMA_MODEL").unwrap_or_else(|_| "qwen2.5:7b-instruct".to_owned())
-}
 
 pub struct CouncilPlugin;
 
@@ -168,7 +164,7 @@ fn advance_speakers(
 // ---------------------------------------------------------------------------
 
 fn deliberate(offering: &str, witness: &str) -> Result<CouncilOutcome, String> {
-    let model = ollama_model();
+    let model = crate::services::llm::ollama_model();
     let mut lines = Vec::new();
     for (archetype, role, instruction) in select_participants(offering) {
         let user = format!(
@@ -176,7 +172,7 @@ fn deliberate(offering: &str, witness: &str) -> Result<CouncilOutcome, String> {
              As the {role}, {instruction} Respond in your own voice in two or three \
              sentences. Do not narrate stage directions; speak.",
         );
-        let text = ollama_chat(&model, persona(archetype), &user)?;
+        let text = crate::services::llm::ollama_chat(&model, persona(archetype), &user)?;
         lines.push(CouncilLine {
             archetype,
             role,
@@ -194,39 +190,12 @@ fn deliberate(offering: &str, witness: &str) -> Result<CouncilOutcome, String> {
          Collapse this deliberation into the Witness's verdict: one or two sentences, simple and \
          heavy, a clear direction. No preamble, no lists.",
     );
-    let verdict = ollama_chat(&model, WITNESS_VERDICT_PERSONA, &verdict_user)?;
+    let verdict = crate::services::llm::ollama_chat(&model, WITNESS_VERDICT_PERSONA, &verdict_user)?;
 
     Ok(CouncilOutcome { lines, verdict })
 }
 
-fn ollama_chat(model: &str, system: &str, user: &str) -> Result<String, String> {
-    let response = ureq::post(OLLAMA_CHAT_URL)
-        .timeout(Duration::from_secs(90))
-        .send_json(json!({
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "stream": false,
-            "options": {"temperature": 0.85, "num_predict": 200},
-        }))
-        .map_err(|error| format!("Ollama is unreachable ({error}). Is `ollama serve` running?"))?;
-    let body: Value = response
-        .into_json()
-        .map_err(|error| format!("Ollama returned invalid JSON: {error}"))?;
-    let text = body
-        .get("message")
-        .and_then(|message| message.get("content"))
-        .and_then(Value::as_str)
-        .ok_or("Ollama returned no message content")?
-        .trim()
-        .to_owned();
-    if text.is_empty() {
-        return Err("Ollama returned an empty council voice".to_owned());
-    }
-    Ok(text)
-}
+
 
 /// Choose one framer, one counter, and one deepener. Seeding by the offering keeps
 /// each deliberation stable but surfaces all seven archetypes across offerings.

@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 
 pub mod chamber;
+pub mod modes;
+pub mod services;
 pub mod theme;
 
 use chamber::CouncilChamberPlugin;

@@ -10,7 +10,11 @@ Lane 0 freezes the contract first. Before any mode lane writes code, Lane 0 publ
 - `crates/engine/src/modes/mod.rs` (new)
 - `crates/engine/src/services/**` (new/modified)
 - `crates/engine/src/chamber/mod.rs` (modify for agreed insertion point)
-- `crates/engine/src/boot.rs` (modify for agreed insertion point)
+- `crates/engine/src/chamber/boot.rs` (modify for agreed insertion point)
+- `crates/engine/src/chamber/council.rs` (modify for extraction)
+- `crates/engine/src/chamber/ritual.rs` (modify for extraction)
+- `crates/engine/src/main.rs` (modify for services/modes registration)
+- `crates/engine/Cargo.toml` (modify as needed)
 - `crates/engine/src/theme/constants.rs` (for canon reconciliation)
 
 ## Build spec

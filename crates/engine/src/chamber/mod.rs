@@ -47,6 +47,9 @@ pub(super) const AUTHORED_COUNCIL_Y: f32 = 2.0;
 #[derive(Resource, Default, Debug, Clone)]
 pub struct CurrentFocus(pub Option<Archetype>);
 
+#[derive(Resource, Debug, Clone)]
+pub struct ActiveGameMode(pub crate::modes::game_mode::GameMode);
+
 pub struct CouncilChamberPlugin;
 
 impl Plugin for CouncilChamberPlugin {

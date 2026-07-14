@@ -1,10 +1,12 @@
 # Archetypes Status
 
-**Last Updated: 2026-07-12 (evening operator playtest pass)**
+**Last Updated: 2026-07-13 (Multilane Lane 0 Spine implementation)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Lane 0 (Spine) implemented (2026-07-13):** The foundation for multilane modes is laid down. Introduced `GameMode` framework (`modes/mod.rs`), extracted domain services (`services::{llm, chronos, paths, ledger}`), and centralized paths. `WitnessProfile` is now public with `mode_stats` and `arrow_signal` accumulator. Added `Difficulty` type based on interpretive distance.
+- **Canon alignment (2026-07-13):** Reconciled `theme_codex()` to use the Lexis name and perfect fifth C-G harmonic signature, and verified Viren Flamebearer obedience to the Ember Covenant timing.
 - **Phase 0:** Repository and dual-binary Rust workspace initialized with NeuroCognica governance protocols.
 - **Chamber prototype:** The engine loads `assets/scenes/uiscene1.glb`, exported from the isolated Blender working copy `uiscene1.codex-temple.blend` without modifying the operator's original. It contains an enclosed basalt temple and vault, altar rings, a fixed cyan/magenta glass star tetrahedron with warm metal edges, glTF-compatible authored lighting, the Witness, and seven enlarged council vessels locked to the star's tips.
 - **Archetype vessels (new 2026-07-12):** All seven council spheres use deliberately art-directed translucent glass. Each encloses a fixed double-faced icon/portrait panel built from repository artwork. Panel roots face the Witness camera with world-up locked, so they remain upright and never spin or invert.

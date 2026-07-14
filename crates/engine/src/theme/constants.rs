@@ -182,7 +182,7 @@ pub fn theme_empath() -> ArchetypeTheme {
 pub fn theme_codex() -> ArchetypeTheme {
     ArchetypeTheme {
         archetype: Archetype::Codex,
-        name: "Midnight Manuscript",
+        name: "Lexis",
         bg_void: hex_color(26, 29, 63), // #1a1d3f
         bg_elevated: rgba_color(255, 255, 255, 0.05),
         text_primary: hex_color(245, 245, 220), // Pale parchment
@@ -199,7 +199,7 @@ pub fn theme_codex() -> ArchetypeTheme {
             slow: Duration::from_millis(800),
             easing: (0.25, 0.1, 0.25, 1.0), // Deliberate inscription
         },
-        harmonic_signature: "Inscriptive Scratch",
+        harmonic_signature: "Perfect Fifth C-G",
     }
 }
 
