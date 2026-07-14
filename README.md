@@ -8,7 +8,7 @@ The Bevy engine loads the Director's Blender-authored chamber scene — an enclo
 
 A black loading veil plays the supplied `blackflame` motion while `ARCHETYPES` and `A GAME BY MICHAEL HOLT` fade in. It remains until the menu and chamber assets are ready, then fades to the settled portal-table main menu:
 
-1. **Choose mode** — `STANDARD MODE` explicitly begins the current ritual. `ORACLE RIDDLE` is the first non-standard playable mode, a reverse-prompt puzzle driven by `services::llm::embed`. `INNER CHAMBERS` and `LIVING ENGINE` remain registered as locked future contracts; they are not playable stubs.
+1. **Choose mode** — `STANDARD MODE` explicitly begins the current ritual. `ORACLE RIDDLE` is the first non-standard playable mode: a reverse-prompt puzzle with semantic-distance difficulty tiers, visible 3-word input validation, replay, and scoring driven by `services::llm::embed`. `INNER CHAMBERS` and `LIVING ENGINE` remain registered as locked future contracts; they are not playable stubs.
 2. **Onboarding** — the Witness names the sovereign center, sealing a persistent profile.
 3. **The portal table** — the Witness types an offering over a supported metallic-gold astrolabe table. Its emissive stargate rotates and pulses beneath the intent surface; submitting hides the table and reveals the council star.
 4. **Deliberation** — three council members (a framer, a counter, a deepener, chosen so all seven surface over time) answer **in character** through a local Ollama model (`qwen2.5:7b-instruct`); the exchange collapses into a Witness verdict. Nothing is templated — if Ollama is down, deliberation fails visibly.

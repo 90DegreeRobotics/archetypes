@@ -1,5 +1,6 @@
-use bevy::prelude::*;
 use bevy::input::keyboard::Key;
+use bevy::prelude::*;
+use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
 
@@ -8,7 +9,6 @@ use crate::chamber::boot::spawn_main_menu;
 use crate::modes::game_mode::GameMode;
 use crate::modes::ModeRegistry;
 use crate::services::ledger::append_to_ledger;
-use serde_json::json;
 
 pub struct OracleUiPlugin;
 
@@ -17,7 +17,10 @@ impl Plugin for OracleUiPlugin {
         app.add_systems(OnEnter(OracleState::Generating), setup_generating)
             .add_systems(OnExit(OracleState::Generating), despawn_oracle_ui)
             .add_systems(OnEnter(OracleState::Guessing), setup_guessing)
-            .add_systems(Update, handle_guessing.run_if(in_state(OracleState::Guessing)))
+            .add_systems(
+                Update,
+                handle_guessing.run_if(in_state(OracleState::Guessing)),
+            )
             .add_systems(Update, render_draft.run_if(in_state(OracleState::Guessing)))
             .add_systems(OnExit(OracleState::Guessing), despawn_oracle_ui)
             .add_systems(OnEnter(OracleState::Scoring), setup_scoring)
@@ -33,6 +36,9 @@ struct OracleUiNode;
 
 #[derive(Component)]
 struct OracleDraftText;
+
+#[derive(Component)]
+struct OracleFeedbackText;
 
 fn despawn_oracle_ui(mut commands: Commands, query: Query<Entity, With<OracleUiNode>>) {
     for entity in &query {
@@ -128,7 +134,10 @@ fn setup_guessing(
                 ));
             }
             p.spawn((
-                Text::new("What 3 words prompted this vision?"),
+                Text::new(format!(
+                    "What 3 words prompted this vision?\nDifficulty: {:?}",
+                    session.difficulty
+                )),
                 TextFont {
                     font_size: 20.0,
                     ..default()
@@ -144,6 +153,15 @@ fn setup_guessing(
                 TextColor(Color::WHITE),
                 OracleDraftText,
             ));
+            p.spawn((
+                Text::new(""),
+                TextFont {
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(1.0, 0.62, 0.36)),
+                OracleFeedbackText,
+            ));
         });
 }
 
@@ -156,9 +174,11 @@ fn handle_guessing(
         match key {
             Key::Backspace => {
                 let _ = session.draft.pop();
+                session.feedback_msg = None;
             }
             Key::Space => {
                 session.draft.push(' ');
+                session.feedback_msg = None;
             }
             Key::Enter => {
                 let words: Vec<String> = session
@@ -168,23 +188,35 @@ fn handle_guessing(
                     .collect();
                 if words.len() == 3 {
                     session.guess_words = words;
+                    session.feedback_msg = None;
                     next_state.set(OracleState::Scoring);
                 } else {
-                    // Let them know they need exactly 3 words.
+                    session.feedback_msg = Some(format!(
+                        "Enter exactly 3 words. Current count: {}.",
+                        words.len()
+                    ));
                 }
             }
             Key::Character(text) => {
                 let filtered: String = text.chars().filter(|c| !c.is_control()).collect();
                 session.draft.push_str(&filtered);
+                session.feedback_msg = None;
             }
             _ => {}
         }
     }
 }
 
-fn render_draft(session: Res<OracleSession>, mut query: Query<&mut Text, With<OracleDraftText>>) {
-    if let Ok(mut text) = query.single_mut() {
+fn render_draft(
+    session: Res<OracleSession>,
+    mut draft: Query<&mut Text, (With<OracleDraftText>, Without<OracleFeedbackText>)>,
+    mut feedback: Query<&mut Text, (With<OracleFeedbackText>, Without<OracleDraftText>)>,
+) {
+    if let Ok(mut text) = draft.single_mut() {
         text.0 = format!("{}_", session.draft);
+    }
+    if let Ok(mut text) = feedback.single_mut() {
+        text.0 = session.feedback_msg.clone().unwrap_or_default();
     }
 }
 
@@ -216,19 +248,11 @@ fn setup_scoring(mut commands: Commands) {
 }
 
 fn setup_result(mut commands: Commands, session: Res<OracleSession>) {
-    // Seal to ledger
-    let kind = if session.error_msg.is_none() {
-        "oracle_round_completed"
-    } else {
-        "oracle_round_failed"
-    };
-    let payload = json!({
-        "target": session.target_words,
-        "guess": session.guess_words,
-        "scores": session.scores,
-        "error": session.error_msg,
-    });
-    let _ = append_to_ledger(GameMode::OracleRiddle, kind, payload);
+    let kind = oracle_round_kind(&session);
+    let payload = oracle_round_payload(&session);
+    if let Err(error) = append_to_ledger(GameMode::OracleRiddle, kind, payload) {
+        warn!("oracle ledger seal failed: {error}");
+    }
 
     commands
         .spawn((
@@ -269,8 +293,8 @@ fn setup_result(mut commands: Commands, session: Res<OracleSession>) {
                 for i in 0..3 {
                     results_text.push_str(&format!(
                         "Target: '{}' vs Guess: '{}' - Score: {:.2}\n",
-                        session.target_words.get(i).unwrap_or(&"".to_owned()),
-                        session.guess_words.get(i).unwrap_or(&"".to_owned()),
+                        word_at(&session.target_words, i),
+                        word_at(&session.guess_words, i),
                         session.scores.get(i).unwrap_or(&0.0)
                     ));
                 }
@@ -284,7 +308,7 @@ fn setup_result(mut commands: Commands, session: Res<OracleSession>) {
                 ));
             }
             p.spawn((
-                Text::new("Press ENTER to return to menu"),
+                Text::new("ENTER starts another riddle. Type M to return to menu."),
                 TextFont {
                     font_size: 16.0,
                     ..default()
@@ -302,10 +326,75 @@ fn handle_result(
 ) {
     for key in keyboard.get_just_pressed() {
         if matches!(key, Key::Enter) {
+            next_state.set(OracleState::Generating);
+            return;
+        }
+        if matches!(key, Key::Character(text) if text.eq_ignore_ascii_case("m")) {
             commands.remove_resource::<crate::chamber::ActiveGameMode>();
             next_state.set(OracleState::Inactive);
             spawn_main_menu(commands, registry);
             return;
         }
+    }
+}
+
+pub fn oracle_round_kind(session: &OracleSession) -> &'static str {
+    if session.error_msg.is_none() {
+        "oracle_round_completed"
+    } else {
+        "oracle_round_failed"
+    }
+}
+
+pub fn oracle_round_payload(session: &OracleSession) -> serde_json::Value {
+    json!({
+        "difficulty": format!("{:?}", session.difficulty),
+        "target": session.target_words.clone(),
+        "guess": session.guess_words.clone(),
+        "scores": session.scores.clone(),
+        "error": session.error_msg.clone(),
+    })
+}
+
+fn word_at(words: &[String], index: usize) -> &str {
+    words.get(index).map(String::as_str).unwrap_or("")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modes::difficulty::Difficulty;
+
+    #[test]
+    fn ledger_payload_shape_records_difficulty_words_scores_and_error() {
+        let session = OracleSession {
+            difficulty: Difficulty::Abyssal,
+            target_words: vec!["Entropy".into(), "Memory".into(), "Bloom".into()],
+            guess_words: vec!["Chaos".into(), "Recall".into(), "Flower".into()],
+            scores: vec![0.72, 0.66, 0.81],
+            ..default()
+        };
+
+        let payload = oracle_round_payload(&session);
+        assert_eq!(oracle_round_kind(&session), "oracle_round_completed");
+        assert_eq!(payload["difficulty"], "Abyssal");
+        assert_eq!(payload["target"].as_array().unwrap().len(), 3);
+        assert_eq!(payload["guess"].as_array().unwrap().len(), 3);
+        assert_eq!(payload["scores"].as_array().unwrap().len(), 3);
+        assert!(payload["error"].is_null());
+    }
+
+    #[test]
+    fn failed_round_payload_uses_failure_kind() {
+        let session = OracleSession {
+            difficulty: Difficulty::Literal,
+            target_words: vec!["Dog".into(), "Red".into(), "Running".into()],
+            error_msg: Some("Chronos unavailable".into()),
+            ..default()
+        };
+
+        let payload = oracle_round_payload(&session);
+        assert_eq!(oracle_round_kind(&session), "oracle_round_failed");
+        assert_eq!(payload["error"], "Chronos unavailable");
     }
 }
