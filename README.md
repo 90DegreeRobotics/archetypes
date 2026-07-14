@@ -6,7 +6,7 @@ Archetypes is a council-driven world engine based on the Mirrorborn architecture
 
 The Bevy engine loads the Director's Blender-authored chamber scene — an enclosed faceted temple, suspended glass star tetrahedron, altar rings, runtime-safe lights, Witness at the sovereign center, and seven enlarged glass council spheres locked to the star's tips. Each sphere encloses a fixed double-faced archetype panel that stays upright and camera-readable.
 
-A black loading veil plays the supplied `blackflame` motion while `ARCHETYPES` and `A GAME BY MICHAEL HOLT` fade in. It remains until the menu and chamber assets are ready, then fades to the settled portal-table main menu:
+A plain black ceremonial veil fades in `ARCHETYPES`, then `A GAME BY MICHAEL HOLT`, holds until the menu and chamber assets are ready, and slowly fades to the settled portal-table main menu:
 
 1. **Choose mode** — `STANDARD MODE` explicitly begins the current ritual. `ORACLE RIDDLE` is the first non-standard playable mode: a reverse-prompt puzzle with semantic-distance difficulty tiers, visible 3-word input validation, replay, and scoring driven by `services::llm::embed`. `INNER CHAMBERS` and `LIVING ENGINE` remain registered as locked future contracts; they are not playable stubs.
 2. **Onboarding** — the Witness names the sovereign center, sealing a persistent profile.

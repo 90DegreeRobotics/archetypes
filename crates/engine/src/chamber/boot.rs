@@ -2,7 +2,7 @@
 //!
 //! The chamber is a heavy GPU scene; on launch nothing of it should be shown until it
 //! is ready. A full-screen title overlay covers everything from the first frame and is
-//! only lifted once the authored council geometry and loading-film frames are ready.
+//! only lifted once the authored council geometry is ready.
 //! The reveal lands on a real table-based main menu; Standard Mode never starts itself.
 
 use bevy::prelude::*;
@@ -12,10 +12,12 @@ use crate::modes::{game_mode::GameMode, ModeRegistry};
 
 /// Minimum time the title holds — long enough that the heavy scene textures finish
 /// uploading behind it, so the reveal does not hitch.
-const MIN_BOOT_SECS: f32 = 3.2;
-const BOOT_FADE_SECS: f32 = 1.4;
-const LOADING_FPS: f32 = 8.0;
-const LOADING_FRAMES: usize = 162;
+const MIN_BOOT_SECS: f32 = 8.0;
+const BOOT_FADE_SECS: f32 = 3.4;
+const TITLE_FADE_START_SECS: f32 = 0.8;
+const TITLE_FADE_SECS: f32 = 2.6;
+const SUBTITLE_FADE_START_SECS: f32 = 3.2;
+const SUBTITLE_FADE_SECS: f32 = 2.8;
 /// The seven council vessels; when all are bound the scene is ready.
 const READY_SPHERES: usize = 7;
 
@@ -45,9 +47,6 @@ impl Plugin for BootPlugin {
 struct BootUi;
 
 #[derive(Component)]
-struct BootFrame;
-
-#[derive(Component)]
 struct BootTitle;
 
 #[derive(Component)]
@@ -55,7 +54,6 @@ struct BootSubtitle;
 
 #[derive(Resource, Default)]
 struct BootSequence {
-    frames: Vec<Handle<Image>>,
     ready_at: Option<f32>,
 }
 
@@ -68,21 +66,8 @@ struct ModeButton {
     available: bool,
 }
 
-fn spawn_boot_ui(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut sequence: ResMut<BootSequence>,
-) {
-    sequence.frames = (1..=LOADING_FRAMES)
-        .map(|index| asset_server.load(format!("loading/blackflame/frame_{index:03}.jpg")))
-        .collect();
-    let first = sequence.frames[0].clone();
-    commands.spawn((
-        AudioPlayer::new(asset_server.load("loading/blackflame.wav")),
-        PlaybackSettings::LOOP,
-        BootUi,
-        Name::new("BlackflameLoadingAudio"),
-    ));
+fn spawn_boot_ui(mut commands: Commands, mut sequence: ResMut<BootSequence>) {
+    sequence.ready_at = None;
     commands
         .spawn((
             Node {
@@ -102,19 +87,6 @@ fn spawn_boot_ui(
             BootUi,
         ))
         .with_children(|parent| {
-            parent.spawn((
-                ImageNode::new(first),
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(0.0),
-                    top: Val::Px(0.0),
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    ..default()
-                },
-                ZIndex(-1),
-                BootFrame,
-            ));
             parent.spawn((
                 Text::new("ARCHETYPES"),
                 TextFont {
@@ -136,25 +108,31 @@ fn spawn_boot_ui(
         });
 }
 
+fn timed_alpha(elapsed: f32, start: f32, duration: f32) -> f32 {
+    ((elapsed - start) / duration).clamp(0.0, 1.0)
+}
+
 fn animate_loading_veil(
     time: Res<Time>,
-    sequence: Res<BootSequence>,
-    mut frame: Query<&mut ImageNode, With<BootFrame>>,
     mut title: Query<&mut TextColor, (With<BootTitle>, Without<BootSubtitle>)>,
     mut subtitle: Query<&mut TextColor, (With<BootSubtitle>, Without<BootTitle>)>,
 ) {
     let elapsed = time.elapsed_secs();
-    if let Ok(mut image) = frame.single_mut() {
-        let index = ((elapsed * LOADING_FPS) as usize) % sequence.frames.len().max(1);
-        if let Some(handle) = sequence.frames.get(index) {
-            image.image = handle.clone();
-        }
-    }
     if let Ok(mut color) = title.single_mut() {
-        color.0 = Color::srgba(0.95, 0.95, 0.96, (elapsed / 2.2).clamp(0.0, 1.0));
+        color.0 = Color::srgba(
+            0.95,
+            0.95,
+            0.96,
+            timed_alpha(elapsed, TITLE_FADE_START_SECS, TITLE_FADE_SECS),
+        );
     }
     if let Ok(mut color) = subtitle.single_mut() {
-        color.0 = Color::srgba(0.78, 0.80, 0.86, ((elapsed - 0.8) / 2.6).clamp(0.0, 1.0));
+        color.0 = Color::srgba(
+            0.78,
+            0.80,
+            0.86,
+            timed_alpha(elapsed, SUBTITLE_FADE_START_SECS, SUBTITLE_FADE_SECS),
+        );
     }
 }
 
@@ -162,32 +140,22 @@ fn boot_ready(
     time: Res<Time>,
     spheres: Query<&ArchetypeSphere>,
     portal: Query<&Name>,
-    asset_server: Res<AssetServer>,
     mut sequence: ResMut<BootSequence>,
     mut overlay: Query<&mut BackgroundColor, With<BootUi>>,
-    mut frame: Query<&mut ImageNode, With<BootFrame>>,
     mut title: Query<&mut TextColor, (With<BootTitle>, Without<BootSubtitle>)>,
     mut subtitle: Query<&mut TextColor, (With<BootSubtitle>, Without<BootTitle>)>,
     mut next_state: ResMut<NextState<ChamberState>>,
 ) {
     let elapsed = time.elapsed_secs();
-    let frames_ready = !sequence.frames.is_empty()
-        && sequence
-            .frames
-            .iter()
-            .all(|handle| asset_server.is_loaded_with_dependencies(handle.id()));
     let chamber_ready = spheres.iter().count() >= READY_SPHERES
         && portal.iter().any(|name| name.as_str() == "Stargate_Portal");
-    if elapsed < MIN_BOOT_SECS || !frames_ready || !chamber_ready {
+    if elapsed < MIN_BOOT_SECS || !chamber_ready {
         return;
     }
     let ready_at = *sequence.ready_at.get_or_insert(elapsed);
     let fade = ((elapsed - ready_at) / BOOT_FADE_SECS).clamp(0.0, 1.0);
     if let Ok(mut background) = overlay.single_mut() {
         background.0 = Color::srgba(0.0, 0.0, 0.0, 1.0 - fade);
-    }
-    if let Ok(mut image) = frame.single_mut() {
-        image.color = Color::srgba(1.0, 1.0, 1.0, 1.0 - fade);
     }
     if let Ok(mut color) = title.single_mut() {
         color.0 = color.0.with_alpha(1.0 - fade);
@@ -327,5 +295,38 @@ fn activate_mode(
 fn despawn_main_menu(mut commands: Commands, query: Query<Entity, With<MainMenuUi>>) {
     for entity in &query {
         commands.entity(entity).despawn();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn title_and_subtitle_enter_in_sequence() {
+        assert_eq!(
+            timed_alpha(0.0, TITLE_FADE_START_SECS, TITLE_FADE_SECS),
+            0.0
+        );
+        assert!(timed_alpha(2.0, TITLE_FADE_START_SECS, TITLE_FADE_SECS) > 0.0);
+        assert_eq!(
+            timed_alpha(2.0, SUBTITLE_FADE_START_SECS, SUBTITLE_FADE_SECS),
+            0.0
+        );
+        assert_eq!(
+            timed_alpha(
+                SUBTITLE_FADE_START_SECS + SUBTITLE_FADE_SECS,
+                SUBTITLE_FADE_START_SECS,
+                SUBTITLE_FADE_SECS
+            ),
+            1.0
+        );
+    }
+
+    #[test]
+    fn boot_hold_outlasts_the_text_fades() {
+        assert!(MIN_BOOT_SECS > TITLE_FADE_START_SECS + TITLE_FADE_SECS);
+        assert!(MIN_BOOT_SECS > SUBTITLE_FADE_START_SECS + SUBTITLE_FADE_SECS);
+        assert!(BOOT_FADE_SECS >= 3.0);
     }
 }
