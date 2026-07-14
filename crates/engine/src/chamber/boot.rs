@@ -60,7 +60,7 @@ struct BootSequence {
 }
 
 #[derive(Component)]
-struct MainMenuUi;
+pub(crate) struct MainMenuUi;
 
 #[derive(Component)]
 struct ModeButton {
@@ -206,7 +206,7 @@ fn despawn_boot_ui(mut commands: Commands, query: Query<Entity, With<BootUi>>) {
     }
 }
 
-fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry>) {
+pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry>) {
     commands
         .spawn((
             Node {
@@ -280,7 +280,14 @@ fn activate_mode(
     keyboard: Res<ButtonInput<KeyCode>>,
     session: Res<RitualSession>,
     mut next_state: ResMut<NextState<ChamberState>>,
+    oracle_state: Option<Res<State<crate::modes::oracle_riddle::OracleState>>>,
+    main_menu_entities: Query<Entity, With<MainMenuUi>>,
 ) {
+    if let Some(state) = oracle_state {
+        if *state.get() != crate::modes::oracle_riddle::OracleState::Inactive {
+            return;
+        }
+    }
     let mut selected_mode = None;
     for (val, button) in &interaction {
         if *val == Interaction::Pressed {
@@ -302,11 +309,18 @@ fn activate_mode(
 
     if let Some(mode) = selected_mode {
         commands.insert_resource(crate::chamber::ActiveGameMode(mode));
-        next_state.set(if session.has_profile() {
-            ChamberState::IdleAtTable
+        if mode == GameMode::OracleRiddle {
+            for entity in &main_menu_entities {
+                commands.entity(entity).despawn();
+            }
+            commands.insert_resource(crate::modes::oracle_riddle::TriggerOracleRiddle);
         } else {
-            ChamberState::Onboarding
-        });
+            next_state.set(if session.has_profile() {
+                ChamberState::IdleAtTable
+            } else {
+                ChamberState::Onboarding
+            });
+        }
     }
 }
 

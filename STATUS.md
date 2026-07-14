@@ -40,6 +40,7 @@ This document tracks time-sensitive status, current blockers, and recent test ru
   - **Lane B (Codex):** the boxy temple is replaced by a **circular arched, torch-lit chamber** (`assets/scenes/uiscene1.glb`), open to the starfield.
   - **Lane C (Codex):** the sparse table is replaced by an **ornate Flower-of-Life astrolabe table** with a gilded glyph rim, preserving the approved `Stargate_Portal` (`assets/scenes/table.glb`).
   - Integration verified: all 7 vessels bind, panels stay upright, the solid star auto-centres on the new geometry, the portal is intact. The Desktop/Start-Menu shortcut was rebuilt to this integrated bundle.
+- **Lane A (Oracle Riddle) implemented (2026-07-13):** The Oracle Riddle reverse-prompt mode is now fully playable from the mode selector. It runs its own isolated state machine in `modes::oracle_riddle` without breaking the Standard Mode ritual. Players are presented with a generated Chronos image derived from a 3-word prompt and must guess the prompt, scored via `services::llm::embed` cosine similarity. It seals its completion/failure records to the local Lane 0 ledger. Inner Chambers and Living Engine remain visibly locked.
 
 ## Blockers
 - The direct image route requires the Chronos Director on `:7777` and ComfyUI on `:8000`; the launcher reports their readiness but does not silently substitute a placeholder.
@@ -52,6 +53,7 @@ This document tracks time-sensitive status, current blockers, and recent test ru
 - **Table geometry:** the physical table shell (top, rims, legs — not the `Stargate_Portal` disc, which is confirmed good) still reads as thin and hard to see against the chamber's near-black lighting. Blocked on the operator's reference image.
 
 ## Verification
+- **Lane A Oracle Riddle audit (2026-07-13):** `cargo test --workspace` passed with 27 engine tests and 1 launcher test. Verified Oracle is unlocked, and B/C locked. Verified exact and partial similarity scoring, prompt shape, and ledger payload via unit tests.
 - **Lane 0 spine audit correction (2026-07-13):** `cargo test --workspace` passed with 24 engine tests and 1 launcher test, 0 failed. The corrective pass added mode-registry tests and ledger chain/tamper verification tests.
 - `cargo test --workspace` passed on 2026-07-12: 9 passed, 0 failed (engine 9, launcher 0).
 - `cargo build -p engine` rebuilt the runnable binary on 2026-07-12 before every capture.

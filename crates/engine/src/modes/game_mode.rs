@@ -28,8 +28,8 @@ impl GameMode {
         },
         ModeRegistration {
             mode: GameMode::OracleRiddle,
-            label: "ORACLE RIDDLE - LOCKED",
-            available: false,
+            label: "ORACLE RIDDLE",
+            available: true,
         },
         ModeRegistration {
             mode: GameMode::InnerChambers,
@@ -74,10 +74,13 @@ mod tests {
             .any(|entry| entry.mode == GameMode::Standard && entry.available));
         assert!(GameMode::REGISTRY
             .iter()
+            .any(|entry| entry.mode == GameMode::OracleRiddle && entry.available));
+        assert!(GameMode::REGISTRY
+            .iter()
             .filter(|entry| !entry.available)
             .all(|entry| matches!(
                 entry.mode,
-                GameMode::OracleRiddle | GameMode::InnerChambers | GameMode::LivingEngine
+                GameMode::InnerChambers | GameMode::LivingEngine
             )));
     }
 
