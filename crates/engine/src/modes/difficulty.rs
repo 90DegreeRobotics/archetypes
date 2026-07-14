@@ -1,12 +1,12 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Difficulty {
-    /// Interpretive distance: 0
+    /// Obvious subject/color/action clues.
     Literal,
-    /// Interpretive distance: 1
+    /// Concrete clues with a little composition noise.
     Metaphorical,
-    /// Interpretive distance: 2
+    /// Concrete clues that may need synonym or context credit.
     Obscured,
-    /// Interpretive distance: 3
+    /// Dramatic concrete clues, not abstract impossible ones.
     Abyssal,
 }
 

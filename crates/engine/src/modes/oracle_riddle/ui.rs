@@ -135,7 +135,7 @@ fn setup_guessing(
             }
             p.spawn((
                 Text::new(format!(
-                    "What 3 words prompted this vision?\nDifficulty: {:?}",
+                    "Guess 3 visible clues, any order.\nObject / color-or-condition / scene-or-action\nDifficulty: {:?}",
                     session.difficulty
                 )),
                 TextFont {
@@ -237,7 +237,7 @@ fn setup_scoring(mut commands: Commands) {
         ))
         .with_children(|p| {
             p.spawn((
-                Text::new("Scoring Embeddings..."),
+                Text::new("Reading your answer..."),
                 TextFont {
                     font_size: 24.0,
                     ..default()
@@ -290,12 +290,18 @@ fn setup_result(mut commands: Commands, session: Res<OracleSession>) {
                     TextColor(Color::WHITE),
                 ));
                 let mut results_text = String::new();
+                results_text.push_str(&format!(
+                    "Oracle Rank: {}\nInsight gained: +{}\nTotal score: {:.0}%\n\n",
+                    session.reward_label,
+                    session.reward_points,
+                    session.total_score * 100.0
+                ));
                 for i in 0..3 {
                     results_text.push_str(&format!(
-                        "Target: '{}' vs Guess: '{}' - Score: {:.2}\n",
+                        "{}  <-  {}    {:.0}%\n",
                         word_at(&session.target_words, i),
-                        word_at(&session.guess_words, i),
-                        session.scores.get(i).unwrap_or(&0.0)
+                        word_at(&session.matched_guess_words, i),
+                        session.scores.get(i).unwrap_or(&0.0) * 100.0
                     ));
                 }
                 p.spawn((
@@ -351,7 +357,11 @@ pub fn oracle_round_payload(session: &OracleSession) -> serde_json::Value {
         "difficulty": format!("{:?}", session.difficulty),
         "target": session.target_words.clone(),
         "guess": session.guess_words.clone(),
+        "matched_guess": session.matched_guess_words.clone(),
         "scores": session.scores.clone(),
+        "total_score": session.total_score,
+        "reward_points": session.reward_points,
+        "reward_label": session.reward_label.clone(),
         "error": session.error_msg.clone(),
     })
 }
@@ -369,9 +379,13 @@ mod tests {
     fn ledger_payload_shape_records_difficulty_words_scores_and_error() {
         let session = OracleSession {
             difficulty: Difficulty::Abyssal,
-            target_words: vec!["Entropy".into(), "Memory".into(), "Bloom".into()],
-            guess_words: vec!["Chaos".into(), "Recall".into(), "Flower".into()],
+            target_words: vec!["Dragon".into(), "Silver".into(), "Storm".into()],
+            guess_words: vec!["Wyvern".into(), "Metal".into(), "Thunder".into()],
+            matched_guess_words: vec!["Wyvern".into(), "Metal".into(), "Thunder".into()],
             scores: vec![0.72, 0.66, 0.81],
+            total_score: 0.73,
+            reward_points: 25,
+            reward_label: "Partial Read".into(),
             ..default()
         };
 
@@ -380,7 +394,10 @@ mod tests {
         assert_eq!(payload["difficulty"], "Abyssal");
         assert_eq!(payload["target"].as_array().unwrap().len(), 3);
         assert_eq!(payload["guess"].as_array().unwrap().len(), 3);
+        assert_eq!(payload["matched_guess"].as_array().unwrap().len(), 3);
         assert_eq!(payload["scores"].as_array().unwrap().len(), 3);
+        assert_eq!(payload["reward_points"], 25);
+        assert_eq!(payload["reward_label"], "Partial Read");
         assert!(payload["error"].is_null());
     }
 
