@@ -8,6 +8,7 @@
 use bevy::prelude::*;
 
 use super::{ritual::RitualSession, spheres::ArchetypeSphere, ChamberState};
+use crate::modes::{game_mode::GameMode, ModeRegistry};
 
 /// Minimum time the title holds — long enough that the heavy scene textures finish
 /// uploading behind it, so the reveal does not hitch.
@@ -62,7 +63,10 @@ struct BootSequence {
 struct MainMenuUi;
 
 #[derive(Component)]
-struct ModeButton(crate::modes::game_mode::GameMode);
+struct ModeButton {
+    mode: GameMode,
+    available: bool,
+}
 
 fn spawn_boot_ui(
     mut commands: Commands,
@@ -202,7 +206,7 @@ fn despawn_boot_ui(mut commands: Commands, query: Query<Entity, With<BootUi>>) {
     }
 }
 
-fn spawn_main_menu(mut commands: Commands) {
+fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry>) {
     commands
         .spawn((
             Node {
@@ -230,10 +234,17 @@ fn spawn_main_menu(mut commands: Commands) {
                 },
                 TextColor(Color::srgb(0.66, 0.88, 1.0)),
             ));
-            let modes = vec![
-                (crate::modes::game_mode::GameMode::Standard, "STANDARD MODE"),
-            ];
-            for (mode, label) in modes {
+            for entry in registry.registrations().iter().copied() {
+                let text_color = if entry.available {
+                    Color::WHITE
+                } else {
+                    Color::srgb(0.48, 0.56, 0.62)
+                };
+                let border_color = if entry.available {
+                    Color::srgba(0.30, 0.84, 1.0, 0.86)
+                } else {
+                    Color::srgba(0.26, 0.34, 0.40, 0.54)
+                };
                 parent
                     .spawn((
                         Button,
@@ -243,17 +254,20 @@ fn spawn_main_menu(mut commands: Commands) {
                             ..default()
                         },
                         BackgroundColor(Color::srgba(0.01, 0.04, 0.10, 0.58)),
-                        BorderColor::all(Color::srgba(0.30, 0.84, 1.0, 0.86)),
-                        ModeButton(mode),
+                        BorderColor::all(border_color),
+                        ModeButton {
+                            mode: entry.mode,
+                            available: entry.available,
+                        },
                     ))
                     .with_children(|button| {
                         button.spawn((
-                            Text::new(label),
+                            Text::new(entry.label),
                             TextFont {
                                 font_size: 20.0,
                                 ..default()
                             },
-                            TextColor(Color::WHITE),
+                            TextColor(text_color),
                         ));
                     });
             }
@@ -270,15 +284,22 @@ fn activate_mode(
     let mut selected_mode = None;
     for (val, button) in &interaction {
         if *val == Interaction::Pressed {
-            selected_mode = Some(button.0);
+            if button.available {
+                selected_mode = Some(button.mode);
+            } else {
+                info!(
+                    "{} is registered for a future lane but is not playable yet",
+                    button.mode.label()
+                );
+            }
         }
     }
-    
+
     // For now, Enter selects Standard
     if selected_mode.is_none() && keyboard.just_pressed(KeyCode::Enter) {
-        selected_mode = Some(crate::modes::game_mode::GameMode::Standard);
+        selected_mode = Some(GameMode::Standard);
     }
-    
+
     if let Some(mode) = selected_mode {
         commands.insert_resource(crate::chamber::ActiveGameMode(mode));
         next_state.set(if session.has_profile() {

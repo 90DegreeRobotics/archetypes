@@ -10,6 +10,7 @@ use std::{
 use bevy::{audio::AudioSource, prelude::*};
 
 use super::{council::CouncilTranscript, ritual::RitualSession, ChamberState, CurrentFocus};
+use crate::services::paths::app_data_root;
 use crate::theme::Archetype;
 
 pub struct SpeechPlugin;
@@ -86,7 +87,9 @@ impl CouncilVoiceState {
         self.cursor == Some(cursor)
             && matches!(
                 self.phase,
-                CouncilVoicePhase::Playing | CouncilVoicePhase::Complete | CouncilVoicePhase::Failed
+                CouncilVoicePhase::Playing
+                    | CouncilVoicePhase::Complete
+                    | CouncilVoicePhase::Failed
             )
     }
 }
@@ -394,15 +397,6 @@ fn require_file(path: &Path, label: &str) -> Result<(), String> {
     path.is_file()
         .then_some(())
         .ok_or_else(|| format!("{label} missing at {}", path.display()))
-}
-
-fn app_data_root() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join("NeuroCognica")
-        .join("Archetypes")
-        .join("data")
 }
 
 #[cfg(test)]

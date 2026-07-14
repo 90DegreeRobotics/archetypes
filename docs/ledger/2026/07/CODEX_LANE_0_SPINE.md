@@ -1,6 +1,6 @@
 # CODEX LANE 0 — The Spine
 
-**Owner: Claude. Status: READY TO START (unblocked).**
+**Owner: Claude. Status: COMPLETED (landed on `origin/main`; audit-corrected by `plan_2026-07-13_2147_lane-0-spine-audit-fix.md`).**
 **Cold-start brief — everything you need is in this file.**
 
 ## What you are building

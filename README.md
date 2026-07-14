@@ -8,13 +8,15 @@ The Bevy engine loads the Director's Blender-authored chamber scene — an enclo
 
 A black loading veil plays the supplied `blackflame` motion while `ARCHETYPES` and `A GAME BY MICHAEL HOLT` fade in. It remains until the menu and chamber assets are ready, then fades to the settled portal-table main menu:
 
-1. **Choose mode** — `START STANDARD MODE` explicitly begins the current ritual. Future play modes now have a real main-menu boundary.
+1. **Choose mode** — `STANDARD MODE` explicitly begins the current ritual. The Lane 0 spine also registers `ORACLE RIDDLE`, `INNER CHAMBERS`, and `LIVING ENGINE` as locked future contracts in the selector; they are not playable stubs.
 2. **Onboarding** — the Witness names the sovereign center, sealing a persistent profile.
 3. **The portal table** — the Witness types an offering over a supported metallic-gold astrolabe table. Its emissive stargate rotates and pulses beneath the intent surface; submitting hides the table and reveals the council star.
 4. **Deliberation** — three council members (a framer, a counter, a deepener, chosen so all seven surface over time) answer **in character** through a local Ollama model (`qwen2.5:7b-instruct`); the exchange collapses into a Witness verdict. Nothing is templated — if Ollama is down, deliberation fails visibly.
 5. **The council speaks** — each member takes the floor in turn: the camera glides to that sphere, its Kokoro voice plays, its upright icon/portrait panel remains readable, and the world tints to that archetype's environment.
 6. **Witness verdict** — the council resolves into one heavy verdict under the Witness's retained authority.
 7. **Artifact return** — the authorized brief is sent to the local [Chronos](../chronos) Director's direct canvas-image endpoint. Chronos generates the standalone painting with its bounded SDXL workflow without rendering a museum/easel wrapper or invoking Blender. The verified PNG returns to the portal table with its sealed completion event.
+
+Lane 0 has also split the shared spine into `services::{llm, chronos, paths, ledger}` and `modes::{game_mode, difficulty}`. The Standard Mode flow seals profile, offering, artifact request, and artifact result events into a local hash-chained JSONL ledger under `%LOCALAPPDATA%\NeuroCognica\Archetypes\data`.
 
 Launch it via the desktop/Start-Menu shortcut created by `scripts/install_shortcut.ps1` (after `scripts/setup_windows.ps1` installs Ollama + the model + the offline voices). The shortcut runs the `launcher`, which enforces a single instance, checks readiness, and starts the engine.
 

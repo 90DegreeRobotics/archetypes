@@ -13,11 +13,9 @@
 use std::{
     sync::{mpsc, Mutex},
     thread,
-    time::Duration,
 };
 
 use bevy::prelude::*;
-use serde_json::{json, Value};
 
 use super::{ritual::RitualSession, speech::CouncilVoiceState, ChamberState, CurrentFocus};
 use crate::theme::Archetype;

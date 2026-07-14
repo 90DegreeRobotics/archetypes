@@ -6,6 +6,7 @@ pub mod services;
 pub mod theme;
 
 use chamber::CouncilChamberPlugin;
+use modes::ModesPlugin;
 
 fn main() {
     App::new()
@@ -23,7 +24,7 @@ fn main() {
                     ..default()
                 }),
         )
-        .add_plugins(CouncilChamberPlugin)
+        .add_plugins((ModesPlugin, CouncilChamberPlugin))
         .run();
 }
 

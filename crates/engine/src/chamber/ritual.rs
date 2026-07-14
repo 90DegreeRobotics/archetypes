@@ -3,9 +3,9 @@ use std::{
     path::{Path, PathBuf},
     sync::{mpsc, Mutex},
     thread,
-    time::Duration,
 };
 
+use crate::services::chronos::ArtifactOutcome;
 use bevy::{
     input::keyboard::Key,
     prelude::*,
@@ -13,19 +13,19 @@ use bevy::{
     window::PrimaryWindow,
 };
 use serde::{Deserialize, Serialize};
-use crate::services::chronos::ArtifactOutcome;
+use serde_json::json;
 
 use super::{
     council::{CouncilStatus, CouncilTranscript},
     portal::StargatePortal,
     speech::{CouncilVoiceState, SpeechStatus},
     spheres::ArchetypeSphere,
-    ChamberState, CurrentFocus,
+    ActiveGameMode, ChamberState, CurrentFocus,
 };
 use crate::chamber::camera::WitnessCamera;
+use crate::modes::game_mode::GameMode;
+use crate::services::{ledger::append_to_ledger, paths::app_data_root};
 use crate::theme::Archetype;
-
-
 
 pub struct RitualPlugin;
 
@@ -278,9 +278,14 @@ fn load_witness_profile(mut session: ResMut<RitualSession>) {
 fn receive_text_input(
     keyboard: Res<ButtonInput<Key>>,
     state: Res<State<ChamberState>>,
+    active_mode: Option<Res<ActiveGameMode>>,
     mut next_state: ResMut<NextState<ChamberState>>,
     mut session: ResMut<RitualSession>,
 ) {
+    let mode = active_mode
+        .as_ref()
+        .map(|active| active.0)
+        .unwrap_or(GameMode::Standard);
     for key in keyboard.get_just_pressed() {
         let editing = matches!(
             state.get(),
@@ -297,8 +302,8 @@ fn receive_text_input(
             Key::End if editing => session.cursor = session.draft.chars().count(),
             Key::Space if editing => insert_at_cursor(&mut session, " "),
             Key::Enter => match state.get() {
-                ChamberState::Onboarding => seal_profile(&mut session, &mut next_state),
-                ChamberState::IdleAtTable => submit_offering(&mut session, &mut next_state),
+                ChamberState::Onboarding => seal_profile(&mut session, &mut next_state, mode),
+                ChamberState::IdleAtTable => submit_offering(&mut session, &mut next_state, mode),
                 // Enter during deliberation abandons this council and returns to the table
                 // (an escape hatch if the council is slow or has failed).
                 ChamberState::Deliberating => next_state.set(ChamberState::IdleAtTable),
@@ -370,7 +375,11 @@ fn draft_with_caret(session: &RitualSession) -> String {
     rendered
 }
 
-fn seal_profile(session: &mut RitualSession, next_state: &mut NextState<ChamberState>) {
+fn seal_profile(
+    session: &mut RitualSession,
+    next_state: &mut NextState<ChamberState>,
+    mode: GameMode,
+) {
     let name = session.draft.trim();
     if name.is_empty() {
         return;
@@ -381,6 +390,11 @@ fn seal_profile(session: &mut RitualSession, next_state: &mut NextState<ChamberS
         arrow_signal: 0.0,
     };
     if persist_json(&profile_path(), &profile).is_ok() {
+        seal_ledger_event(
+            mode,
+            "profile_sealed",
+            json!({ "name": profile.name.clone() }),
+        );
         session.profile = Some(profile);
         session.draft.clear();
         session.cursor = 0;
@@ -388,12 +402,24 @@ fn seal_profile(session: &mut RitualSession, next_state: &mut NextState<ChamberS
     }
 }
 
-fn submit_offering(session: &mut RitualSession, next_state: &mut NextState<ChamberState>) {
+fn submit_offering(
+    session: &mut RitualSession,
+    next_state: &mut NextState<ChamberState>,
+    mode: GameMode,
+) {
     let offering = session.draft.trim();
     if offering.is_empty() {
         return;
     }
     session.offering = offering.to_owned();
+    seal_ledger_event(
+        mode,
+        "offering_submitted",
+        json!({
+            "witness": session.witness_name(),
+            "offering": session.offering.clone(),
+        }),
+    );
     session.draft.clear();
     session.cursor = 0;
     next_state.set(ChamberState::Deliberating);
@@ -406,6 +432,7 @@ fn clear_focus_on_table(mut focus: ResMut<CurrentFocus>) {
 
 fn begin_chronos_request(
     state: Res<State<ChamberState>>,
+    active_mode: Option<Res<ActiveGameMode>>,
     session: Res<RitualSession>,
     mut bridge: ResMut<ChronosBridge>,
 ) {
@@ -418,6 +445,18 @@ fn begin_chronos_request(
     }
 
     bridge.started = true;
+    let mode = active_mode
+        .as_ref()
+        .map(|active| active.0)
+        .unwrap_or(GameMode::Standard);
+    seal_ledger_event(
+        mode,
+        "artifact_requested",
+        json!({
+            "offering_chars": session.offering.chars().count(),
+            "verdict_chars": session.verdict.chars().count(),
+        }),
+    );
     let prompt = artifact_prompt(&session.offering, &session.verdict);
     let (sender, receiver) = mpsc::channel();
     *bridge.receiver.lock().expect("Chronos receiver lock") = Some(receiver);
@@ -428,6 +467,7 @@ fn begin_chronos_request(
 
 fn poll_chronos_result(
     state: Res<State<ChamberState>>,
+    active_mode: Option<Res<ActiveGameMode>>,
     mut session: ResMut<RitualSession>,
     bridge: Res<ChronosBridge>,
     mut next_state: ResMut<NextState<ChamberState>>,
@@ -444,9 +484,33 @@ fn poll_chronos_result(
         // they're logged here so the receipt is still traceable for debugging.
         info!(
             "ARTIFACT status={} artifact_id={:?} png_path={:?} proof_receipt_id={:?} detail={}",
-            result.status, result.artifact_id, result.png_path, result.proof_receipt_id, result.detail
+            result.status,
+            result.artifact_id,
+            result.png_path,
+            result.proof_receipt_id,
+            result.detail
         );
         let _ = persist_json(&artifact_receipt_path(), &result);
+        let mode = active_mode
+            .as_ref()
+            .map(|active| active.0)
+            .unwrap_or(GameMode::Standard);
+        let kind = if result.status == "complete" {
+            "artifact_completed"
+        } else {
+            "artifact_failed"
+        };
+        seal_ledger_event(
+            mode,
+            kind,
+            json!({
+                "status": result.status.clone(),
+                "artifact_id": result.artifact_id.clone(),
+                "png_path": result.png_path.clone(),
+                "proof_receipt_id": result.proof_receipt_id.clone(),
+                "detail": result.detail.clone(),
+            }),
+        );
         session.artifact = Some(result);
         next_state.set(ChamberState::ArtifactResult);
     }
@@ -491,8 +555,10 @@ fn render_ritual_ui(
         ),
     >,
 ) {
-    let (Ok((mut drawer_text, mut drawer_node, mut drawer_font)), Ok((mut prompt_text, mut prompt_node))) =
-        (drawer.single_mut(), prompt.single_mut())
+    let (
+        Ok((mut drawer_text, mut drawer_node, mut drawer_font)),
+        Ok((mut prompt_text, mut prompt_node)),
+    ) = (drawer.single_mut(), prompt.single_mut())
     else {
         return;
     };
@@ -661,26 +727,6 @@ fn artifact_prompt(offering: &str, verdict: &str) -> String {
     )
 }
 
-
-
-fn resolve_chronos_path(path: &str) -> PathBuf {
-    let path = PathBuf::from(path);
-    if path.is_absolute() {
-        path
-    } else {
-        Path::new("C:\\chronos").join(path)
-    }
-}
-
-fn app_data_root() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join("NeuroCognica")
-        .join("Archetypes")
-        .join("data")
-}
-
 fn profile_path() -> PathBuf {
     app_data_root().join("witness_profile.json")
 }
@@ -694,6 +740,12 @@ fn persist_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     let body = serde_json::to_string_pretty(value).map_err(|error| error.to_string())?;
     fs::write(path, format!("{body}\n")).map_err(|error| error.to_string())
+}
+
+fn seal_ledger_event(mode: GameMode, kind: &str, payload: serde_json::Value) {
+    if let Err(error) = append_to_ledger(mode, kind, payload) {
+        warn!("ledger seal failed for {kind}: {error}");
+    }
 }
 
 /// UI node holding the returned artifact image, so it can be cleaned up on exit.
@@ -793,8 +845,8 @@ fn position_artifact_image(
     age.0 += time.delta_secs();
     let t = (age.0 / ARTIFACT_ZOOM_DURATION).clamp(0.0, 1.0);
     let eased = t * t * (3.0 - 2.0 * t); // smoothstep
-    let size =
-        ARTIFACT_DISPLAY_SIZE * (ARTIFACT_ZOOM_START_SCALE + (1.0 - ARTIFACT_ZOOM_START_SCALE) * eased);
+    let size = ARTIFACT_DISPLAY_SIZE
+        * (ARTIFACT_ZOOM_START_SCALE + (1.0 - ARTIFACT_ZOOM_START_SCALE) * eased);
     node.width = Val::Px(size);
     if let Ok(viewport) = camera.world_to_viewport(camera_transform, witness.translation()) {
         node.left = Val::Px((viewport.x - size / 2.0).clamp(8.0, window.width() - size - 8.0));
@@ -1035,7 +1087,7 @@ mod tests {
     #[test]
     fn relative_chronos_paths_resolve_under_repo_root() {
         assert_eq!(
-            resolve_chronos_path("renders\\artifact.png"),
+            crate::services::chronos::resolve_chronos_path("renders\\artifact.png"),
             PathBuf::from("C:\\chronos\\renders\\artifact.png")
         );
     }
