@@ -1,13 +1,18 @@
 # Plan: Standard Mode Visual Repair — 2026-07-15 02:48
 
 ## Status
-PENDING
+INTERRUPTED
 
 ## Goal
 Stop adding new modes and repair the main Standard Mode experience until the first playable path looks coherent on screen. The gate is not "tests pass"; the gate is fresh screenshots from the runnable app that show the menu/table, deliberation, speaking, verdict, and artifact-return frames are visually legible and worthy of another operator playtest.
 
 ## Problem Statement
 The current product blocker is visual trust. The operator's judgment is that the main mode looks bad enough to threaten the project. That overrides mechanics expansion. Inner Chambers and Living Engine stay locked while Standard Mode is repaired.
+
+## Interruption Note
+This plan was interrupted on 2026-07-15 after the operator supplied a new Standard Mode screenshot showing that the failure is structural, not just a tuning problem. The giant runtime star/crystal, detached portrait billboards, lifted dark spheres, noisy starfield, and weak chamber/table grounding are symptoms of the same issue: Standard Mode is split across authored GLBs, generated meshes, top-level panel roots, camera billboards, and runtime name-string transforms.
+
+Do not continue this as a small visual patch plan. The active direction is the rebuild study in `docs/ledger/2026/07/plan_2026-07-15_0304_standard-mode-rebuild-study.md`: ground/sky first, then star chamber, then table, then archetype chambers, with a frozen authored hierarchy.
 
 ## Ownership Boundary
 - Primary files: `crates/engine/src/chamber/camera.rs`, `crates/engine/src/chamber/star.rs`, `crates/engine/src/chamber/spheres.rs`, `crates/engine/src/chamber/portal.rs`, `crates/engine/src/chamber/ritual.rs`.
@@ -18,9 +23,9 @@ The current product blocker is visual trust. The operator's judgment is that the
 
 ## Steps
 ### Step 1 — Capture current failure frames
-- [ ] Action: Run the app/capture path from a fresh build and save frames for `02_table`, `03_deliberating`, `05_council_speaking`, `06_witness_verdict`, and `08_artifact_result` when services allow.
+- [x] Action: Run the app/capture path from a fresh build and save frames for `02_table`, `03_deliberating`, `05_council_speaking`, `06_witness_verdict`, and `08_artifact_result` when services allow.
 - Files touched: screenshot artifacts only.
-- Expected outcome: The visual repair starts from current evidence, not memory or agent claims.
+- Expected outcome: Operator supplied the current failure frame directly: a giant flat blue crystal occludes the council, portrait panels read as loose billboards, spheres are too dark, the starfield reads as white noise, and table/chamber geometry is not carrying the composition.
 
 ### Step 2 — Diagnose the visible failures
 - [ ] Action: Inspect the captured frames and classify failures: composition, scale, lighting, table readability, star/council silhouette, text placement, color/materials, and artifact presentation.
