@@ -6,9 +6,14 @@
 //! The reveal lands on a real table-based main menu; Standard Mode never starts itself.
 
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 
-use super::{ritual::RitualSession, spheres::ArchetypeSphere, ChamberState};
-use crate::modes::{game_mode::GameMode, ModeRegistry};
+use super::{
+    camera::WitnessCamera, portal::StargatePortal, spheres::ArchetypeSphere, ChamberState,
+};
+use crate::modes::{
+    game_mode::GameMode, standard_mecha::TriggerStandardMecha, ModeRegistry,
+};
 
 /// Minimum time the title holds — long enough that the heavy scene textures finish
 /// uploading behind it, so the reveal does not hitch.
@@ -37,7 +42,9 @@ impl Plugin for BootPlugin {
             .add_systems(OnEnter(ChamberState::MainMenu), spawn_main_menu)
             .add_systems(
                 Update,
-                activate_mode.run_if(in_state(ChamberState::MainMenu)),
+                (position_main_menu_on_portal, style_mode_buttons, activate_mode)
+                    .chain()
+                    .run_if(in_state(ChamberState::MainMenu)),
             )
             .add_systems(OnExit(ChamberState::MainMenu), despawn_main_menu);
     }
@@ -65,6 +72,9 @@ struct ModeButton {
     mode: GameMode,
     available: bool,
 }
+
+#[derive(Component)]
+struct MainMenuPortalPanel;
 
 fn spawn_boot_ui(mut commands: Commands, mut sequence: ResMut<BootSequence>) {
     sequence.ready_at = None;
@@ -179,80 +189,171 @@ pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Percent(32.0),
-                top: Val::Percent(29.0),
-                width: Val::Percent(36.0),
-                height: Val::Percent(25.0),
-                flex_direction: FlexDirection::Column,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                row_gap: Val::Px(12.0),
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
                 ..default()
             },
             BackgroundColor(Color::NONE),
             GlobalZIndex(900),
             MainMenuUi,
         ))
-        .with_children(|parent| {
-            parent.spawn((
-                Text::new("CHOOSE MODE"),
-                TextFont {
-                    font_size: 16.0,
+        .with_children(|root| {
+            root.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Percent(50.0),
+                    top: Val::Percent(56.0),
+                    width: Val::Px(470.0),
+                    min_height: Val::Px(270.0),
+                    flex_direction: FlexDirection::Column,
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    row_gap: Val::Px(10.0),
+                    padding: UiRect::all(Val::Px(18.0)),
+                    border: UiRect::all(Val::Px(1.0)),
                     ..default()
                 },
-                TextColor(Color::srgb(0.66, 0.88, 1.0)),
-            ));
-            for entry in registry.registrations().iter().copied() {
-                let text_color = if entry.available {
-                    Color::WHITE
-                } else {
-                    Color::srgb(0.48, 0.56, 0.62)
-                };
-                let border_color = if entry.available {
-                    Color::srgba(0.30, 0.84, 1.0, 0.86)
-                } else {
-                    Color::srgba(0.26, 0.34, 0.40, 0.54)
-                };
-                parent
-                    .spawn((
-                        Button,
-                        Node {
-                            padding: UiRect::axes(Val::Px(34.0), Val::Px(12.0)),
-                            border: UiRect::all(Val::Px(1.0)),
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgba(0.01, 0.04, 0.10, 0.58)),
-                        BorderColor::all(border_color),
-                        ModeButton {
-                            mode: entry.mode,
-                            available: entry.available,
-                        },
-                    ))
-                    .with_children(|button| {
-                        button.spawn((
-                            Text::new(entry.label),
-                            TextFont {
-                                font_size: 20.0,
+                BackgroundColor(Color::srgba(0.01, 0.025, 0.045, 0.42)),
+                BorderColor::all(Color::srgba(0.24, 0.78, 1.0, 0.46)),
+                MainMenuPortalPanel,
+            ))
+            .with_children(|panel| {
+                panel.spawn((
+                    Text::new("ARCHETYPES"),
+                    TextFont {
+                        font_size: 24.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.90, 0.96, 1.0)),
+                ));
+                for entry in registry.registrations().iter().copied() {
+                    let text_color = if entry.available {
+                        Color::WHITE
+                    } else {
+                        Color::srgb(0.42, 0.50, 0.56)
+                    };
+                    let border_color = if entry.available {
+                        Color::srgba(0.30, 0.84, 1.0, 0.78)
+                    } else {
+                        Color::srgba(0.24, 0.32, 0.38, 0.50)
+                    };
+                    panel
+                        .spawn((
+                            Button,
+                            Node {
+                                width: Val::Px(330.0),
+                                min_height: Val::Px(42.0),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                padding: UiRect::axes(Val::Px(24.0), Val::Px(10.0)),
+                                border: UiRect::all(Val::Px(1.0)),
                                 ..default()
                             },
-                            TextColor(text_color),
-                        ));
-                    });
-            }
+                            BackgroundColor(Color::srgba(0.00, 0.08, 0.15, 0.52)),
+                            BorderColor::all(border_color),
+                            ModeButton {
+                                mode: entry.mode,
+                                available: entry.available,
+                            },
+                        ))
+                        .with_children(|button| {
+                            button.spawn((
+                                Text::new(menu_label(entry.mode, entry.available)),
+                                TextFont {
+                                    font_size: 18.0,
+                                    ..default()
+                                },
+                                TextColor(text_color),
+                            ));
+                        });
+                }
+            });
         });
+}
+
+fn menu_label(mode: GameMode, available: bool) -> String {
+    match (mode, available) {
+        (GameMode::Standard, true) => "ENTER COUNCIL".to_owned(),
+        (GameMode::OracleRiddle, true) => "ORACLE RIDDLE".to_owned(),
+        (locked, false) => format!("{} - SEALED", locked.label()),
+        (other, true) => other.label().to_owned(),
+    }
+}
+
+fn position_main_menu_on_portal(
+    windows: Query<&Window, With<PrimaryWindow>>,
+    camera: Query<(&Camera, &GlobalTransform), With<WitnessCamera>>,
+    portal: Query<&GlobalTransform, With<StargatePortal>>,
+    mut panel: Query<&mut Node, With<MainMenuPortalPanel>>,
+) {
+    let (Ok(window), Ok((camera, camera_transform)), Ok(portal), Ok(mut node)) = (
+        windows.single(),
+        camera.single(),
+        portal.single(),
+        panel.single_mut(),
+    ) else {
+        return;
+    };
+    let Ok(viewport) = camera.world_to_viewport(camera_transform, portal.translation()) else {
+        return;
+    };
+    let width = 470.0;
+    let height = 270.0;
+    node.left = Val::Px((viewport.x - width / 2.0).clamp(18.0, window.width() - width - 18.0));
+    node.top = Val::Px((viewport.y - height * 0.35).clamp(18.0, window.height() - height - 18.0));
+}
+
+fn style_mode_buttons(
+    mut interactions: Query<
+        (
+            &Interaction,
+            &ModeButton,
+            &mut BackgroundColor,
+            &mut BorderColor,
+        ),
+        Changed<Interaction>,
+    >,
+) {
+    for (interaction, button, mut background, mut border) in &mut interactions {
+        if !button.available {
+            *background = BackgroundColor(Color::srgba(0.02, 0.03, 0.04, 0.42));
+            *border = BorderColor::all(Color::srgba(0.24, 0.32, 0.38, 0.50));
+            continue;
+        }
+        match *interaction {
+            Interaction::Pressed => {
+                *background = BackgroundColor(Color::srgba(0.30, 0.84, 1.0, 0.34));
+                *border = BorderColor::all(Color::WHITE);
+            }
+            Interaction::Hovered => {
+                *background = BackgroundColor(Color::srgba(0.16, 0.54, 0.86, 0.30));
+                *border = BorderColor::all(Color::srgba(0.64, 0.92, 1.0, 0.96));
+            }
+            Interaction::None => {
+                *background = BackgroundColor(Color::srgba(0.00, 0.08, 0.15, 0.52));
+                *border = BorderColor::all(Color::srgba(0.30, 0.84, 1.0, 0.78));
+            }
+        }
+    }
 }
 
 fn activate_mode(
     mut commands: Commands,
     interaction: Query<(&Interaction, &ModeButton), Changed<Interaction>>,
     keyboard: Res<ButtonInput<KeyCode>>,
-    session: Res<RitualSession>,
-    mut next_state: ResMut<NextState<ChamberState>>,
     oracle_state: Option<Res<State<crate::modes::oracle_riddle::OracleState>>>,
+    standard_state: Option<Res<State<crate::modes::standard_mecha::StandardMechaState>>>,
     main_menu_entities: Query<Entity, With<MainMenuUi>>,
 ) {
     if let Some(state) = oracle_state {
         if *state.get() != crate::modes::oracle_riddle::OracleState::Inactive {
+            return;
+        }
+    }
+    if let Some(state) = standard_state {
+        if *state.get() != crate::modes::standard_mecha::StandardMechaState::Inactive {
             return;
         }
     }
@@ -277,22 +378,28 @@ fn activate_mode(
 
     if let Some(mode) = selected_mode {
         commands.insert_resource(crate::chamber::ActiveGameMode(mode));
-        if mode == GameMode::OracleRiddle {
-            for entity in &main_menu_entities {
-                commands.entity(entity).despawn();
+        match mode {
+            GameMode::Standard => {
+                for entity in &main_menu_entities {
+                    commands.entity(entity).despawn();
+                }
+                commands.insert_resource(TriggerStandardMecha);
             }
-            commands.insert_resource(crate::modes::oracle_riddle::TriggerOracleRiddle);
-        } else if mode == GameMode::InnerChambers {
-            for entity in &main_menu_entities {
-                commands.entity(entity).despawn();
+            GameMode::OracleRiddle => {
+                for entity in &main_menu_entities {
+                    commands.entity(entity).despawn();
+                }
+                commands.insert_resource(crate::modes::oracle_riddle::TriggerOracleRiddle);
             }
-            commands.insert_resource(crate::modes::inner_chambers::TriggerInnerChambers);
-        } else {
-            next_state.set(if session.has_profile() {
-                ChamberState::IdleAtTable
-            } else {
-                ChamberState::Onboarding
-            });
+            GameMode::InnerChambers => {
+                for entity in &main_menu_entities {
+                    commands.entity(entity).despawn();
+                }
+                commands.insert_resource(crate::modes::inner_chambers::TriggerInnerChambers);
+            }
+            GameMode::LivingEngine => {
+                info!("Living Engine remains locked");
+            }
         }
     }
 }

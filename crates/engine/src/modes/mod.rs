@@ -4,10 +4,12 @@ pub mod difficulty;
 pub mod game_mode;
 pub mod inner_chambers;
 pub mod oracle_riddle;
+pub mod standard_mecha;
 
 use game_mode::{GameMode, ModeRegistration};
 use inner_chambers::InnerChambersPlugin;
 use oracle_riddle::OracleRiddlePlugin;
+use standard_mecha::StandardMechaPlugin;
 
 #[derive(Resource, Debug, Clone)]
 pub struct ModeRegistry {
@@ -34,7 +36,8 @@ impl Plugin for ModesPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ModeRegistry>()
             .add_plugins(OracleRiddlePlugin)
-            .add_plugins(InnerChambersPlugin);
+            .add_plugins(InnerChambersPlugin)
+            .add_plugins(StandardMechaPlugin);
     }
 }
 

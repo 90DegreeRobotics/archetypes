@@ -106,6 +106,7 @@ impl RitualSession {
         self.verdict = verdict;
     }
 
+    #[allow(dead_code)]
     pub(super) fn has_profile(&self) -> bool {
         self.profile.is_some()
     }

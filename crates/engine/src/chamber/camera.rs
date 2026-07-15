@@ -13,6 +13,11 @@ use crate::theme::Archetype;
 
 /// Fallback establishing pose, used only until the authored camera node is loaded.
 const ESTABLISHING_FALLBACK: Vec3 = Vec3::new(8.0, 6.2, 12.0);
+/// Main menu pose: slightly higher than the ritual table input pose, pitched down
+/// so the Flower-of-Life portal/table reads as the menu's physical surface while
+/// the chamber arches remain visible behind it.
+const MENU_CAMERA_POS: Vec3 = Vec3::new(0.0, 1.85, 7.2);
+const MENU_LOOK: Vec3 = Vec3::new(0.0, -2.65, 0.0);
 /// The table pose: a 3/4 view that shows the ornate council table as furniture,
 /// standing on the chamber floor. The table (engine-scaled ×3) spans world y ≈ −1.8
 /// (top) down to ≈ −5 (feet on the floor); the camera sits just above the top and
@@ -121,8 +126,10 @@ fn drive_camera(
     let target = match state.get() {
         // At the table: seated over the portal where intent is placed.
         ChamberState::Booting
-        | ChamberState::MainMenu
-        | ChamberState::Onboarding
+        | ChamberState::MainMenu => {
+            Transform::from_translation(MENU_CAMERA_POS).looking_at(MENU_LOOK, Vec3::Y)
+        }
+        ChamberState::Onboarding
         | ChamberState::IdleAtTable
         | ChamberState::ArtifactResult => {
             Transform::from_translation(TABLE_CAMERA_POS).looking_at(TABLE_LOOK, Vec3::Y)
