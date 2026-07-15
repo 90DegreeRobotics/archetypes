@@ -78,10 +78,7 @@ mod tests {
         assert!(GameMode::REGISTRY
             .iter()
             .filter(|entry| !entry.available)
-            .all(|entry| matches!(
-                entry.mode,
-                GameMode::InnerChambers | GameMode::LivingEngine
-            )));
+            .all(|entry| matches!(entry.mode, GameMode::InnerChambers | GameMode::LivingEngine)));
     }
 
     #[test]

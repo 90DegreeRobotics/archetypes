@@ -1,10 +1,11 @@
 # Archetypes Status
 
-**Last Updated: 2026-07-14 (Intro and desktop launch truth)**
+**Last Updated: 2026-07-15 (Inner Chambers safety gate + Standard Mode rescue plan)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Inner Chambers safety gate (2026-07-15):** The uncommitted Lane B work was not accepted as a playable mode. The code is now parked behind the existing locked menu entry while its unsafe lifecycle was corrected: exit cleanup runs when entering `InnerChambersState::Exiting`, chamber/table reload reuses the canonical table transform, and extraction requires proximity to an Architect truth node instead of accepting `E` anywhere. New pure tests cover node proximity and ledger payload shape. This is not a visual approval and was not desktop-staged as a new playable mode.
 - **Lane 0 (Spine) implemented and audit-corrected (2026-07-13):** The foundation for multilane modes is laid down. Introduced a real `GameMode` registry and selector. Standard Mode is playable, Oracle Riddle became playable in Lane A, and Inner Chambers / Living Engine remain visible as locked future contracts only. Extracted domain services (`services::{llm, chronos, paths, ledger}`), centralized app-data paths, and wired the Standard Mode loop to seal profile/offering/artifact events into the local hash-chained JSONL ledger. `WitnessProfile` is now public with `mode_stats` and `arrow_signal` accumulator. Added `Difficulty` type for visual clue complexity.
 - **Oracle Riddle fairness correction (2026-07-14):** The riddle prompt pool no longer uses abstract/impossible triples such as `Signal Ash Garden`. Rounds now use concrete visual clues, tell the player to guess any order, score with exact/alias/semantic matching, fall back to lexical scoring if embeddings are unavailable, and award player-facing Insight tiers (`Perfect Read`, `Clear Read`, `Partial Read`, `Faint Echo`) sealed into the Oracle ledger payload.
 - **Intro changed (2026-07-14):** The runtime startup no longer plays the `blackflame`/candle video frames or audio. Boot is now a plain black ceremonial veil: `ARCHETYPES` fades in first, `A GAME BY MICHAEL HOLT` fades in after it, the veil holds long enough to feel deliberate and to let the chamber load, then it slowly fades into the mode selector.
@@ -46,6 +47,7 @@ This document tracks time-sensitive status, current blockers, and recent test ru
 - **Lane A (Oracle Riddle) implemented and audit-corrected (2026-07-13; fairness corrected 2026-07-14):** The Oracle Riddle reverse-prompt mode is now playable from the mode selector. It runs its own isolated state machine in `modes::oracle_riddle` without breaking the Standard Mode ritual. Players are presented with a generated Chronos image derived from a hidden concrete 3-word visual prompt, then may guess the three clues in any order. Scoring gives exact and alias credit first, can use embeddings for softer semantic matches, and still produces a lexical score if embeddings are unavailable. Results show per-clue matches, total score, and an Insight reward tier; completion/failure records are sealed to the local Lane 0 ledger. Inner Chambers and Living Engine remain visibly locked.
 
 ## Blockers
+- **Standard Mode visual quality is the active product blocker (2026-07-15):** The operator judged the main mode as visually unacceptable. The next work is not another mode; it is a capture-led Standard Mode visual rescue with operator-visible frames as the gate.
 - The direct image route requires the Chronos Director on `:7777` and ComfyUI on `:8000`; the launcher reports their readiness but does not silently substitute a placeholder.
 - The camera frames the speaking sphere but does not yet perform the full hexagram-alignment flight (star resolving into the 2D Star-of-David silhouette behind the speaker).
 - The seven-voice council speaks and the environment tints per speaker, but the deeper "zoom into the archetype's world" immersion is only the environment tint, not a distinct interior scene; the other archetype interiors are not built.
@@ -56,6 +58,7 @@ This document tracks time-sensitive status, current blockers, and recent test ru
 - **Table geometry:** the physical table shell (top, rims, legs — not the `Stargate_Portal` disc, which is confirmed good) still reads as thin and hard to see against the chamber's near-black lighting. Blocked on the operator's reference image.
 
 ## Verification
+- **Inner Chambers safety correction (2026-07-15):** `cargo test --workspace` passed with 38 engine tests and 1 launcher test after relocking Inner Chambers, repairing its parked exit lifecycle, adding proximity-gated truth extraction, and adding focused pure tests. `dist` was not refreshed because no new playable desktop behavior was shipped.
 - **Lane A Oracle Riddle audit (2026-07-13):** `cargo test --workspace` passed with 30 engine tests and 1 launcher test after the corrective pass. Verified semantic-distance prompt tiers, exact/partial vector scoring without live Ollama, ledger payload shape, Oracle unlocked, and Inner Chambers / Living Engine locked.
 - **Lane 0 spine audit correction (2026-07-13):** `cargo test --workspace` passed with 24 engine tests and 1 launcher test, 0 failed. The corrective pass added mode-registry tests and ledger chain/tamper verification tests.
 - `cargo test --workspace` passed on 2026-07-12: 9 passed, 0 failed (engine 9, launcher 0).

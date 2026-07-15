@@ -74,6 +74,10 @@ impl Plugin for CouncilChamberPlugin {
 }
 
 fn load_authoritative_chamber(mut commands: Commands, asset_server: Res<AssetServer>) {
+    spawn_authoritative_chamber(&mut commands, &asset_server);
+}
+
+pub(crate) fn spawn_authoritative_chamber(commands: &mut Commands, asset_server: &AssetServer) {
     commands.spawn((
         SceneRoot(asset_server.load("scenes/uiscene1.glb#Scene0")),
         Name::new("AuthoritativeCouncilChamber"),

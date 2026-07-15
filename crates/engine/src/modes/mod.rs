@@ -2,9 +2,11 @@ use bevy::prelude::*;
 
 pub mod difficulty;
 pub mod game_mode;
+pub mod inner_chambers;
 pub mod oracle_riddle;
 
 use game_mode::{GameMode, ModeRegistration};
+use inner_chambers::InnerChambersPlugin;
 use oracle_riddle::OracleRiddlePlugin;
 
 #[derive(Resource, Debug, Clone)]
@@ -31,7 +33,8 @@ pub struct ModesPlugin;
 impl Plugin for ModesPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ModeRegistry>()
-           .add_plugins(OracleRiddlePlugin);
+            .add_plugins(OracleRiddlePlugin)
+            .add_plugins(InnerChambersPlugin);
     }
 }
 

@@ -282,6 +282,11 @@ fn activate_mode(
                 commands.entity(entity).despawn();
             }
             commands.insert_resource(crate::modes::oracle_riddle::TriggerOracleRiddle);
+        } else if mode == GameMode::InnerChambers {
+            for entity in &main_menu_entities {
+                commands.entity(entity).despawn();
+            }
+            commands.insert_resource(crate::modes::inner_chambers::TriggerInnerChambers);
         } else {
             next_state.set(if session.has_profile() {
                 ChamberState::IdleAtTable
