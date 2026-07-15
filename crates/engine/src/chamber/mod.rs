@@ -14,8 +14,8 @@ pub mod star;
 
 #[derive(States, Default, Debug, Clone, Eq, PartialEq, Hash)]
 pub enum ChamberState {
-    /// Title / loading screen. Nothing of the chamber is shown until the authored
-    /// scene has loaded.
+    /// Title / loading screen. The black veil owns the first frames before the
+    /// current chamber-backed main menu is revealed.
     #[default]
     Booting,
     MainMenu,
@@ -57,24 +57,23 @@ impl Plugin for CouncilChamberPlugin {
         app.init_state::<ChamberState>()
             .init_resource::<CurrentFocus>();
 
-        // Blank-slate launcher reset: the legacy council chamber/table scene is
-        // preserved below as reference code, but normal desktop launch must not
-        // spawn it before the replacement GLB/world arrives.
         if legacy_chamber_visuals_enabled() {
             app.add_systems(Startup, load_authoritative_chamber)
                 .add_plugins((
                     spheres::SpheresPlugin,
                     panels::PanelsPlugin,
                     portal::PortalPlugin,
-                    interior::InteriorPlugin,
                     sky::SkyPlugin,
                     star::StarPlugin,
                 ));
+        } else {
+            app.add_systems(Startup, load_lore_chamber);
         }
 
         app.add_plugins((
             boot::BootPlugin,
             camera::CameraPlugin,
+            interior::InteriorPlugin,
             council::CouncilPlugin,
             ritual::RitualPlugin,
             speech::SpeechPlugin,
@@ -84,6 +83,15 @@ impl Plugin for CouncilChamberPlugin {
 
 fn legacy_chamber_visuals_enabled() -> bool {
     std::env::var_os("ARCHETYPES_LEGACY_CHAMBER").is_some()
+}
+
+const LORE_CHAMBER_SCENE: &str = "scenes/lore_chamber.glb#Scene0";
+
+fn load_lore_chamber(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn((
+        SceneRoot(asset_server.load(LORE_CHAMBER_SCENE)),
+        Name::new("LoreCouncilChamber"),
+    ));
 }
 
 fn load_authoritative_chamber(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -107,4 +115,18 @@ pub(crate) fn spawn_authoritative_chamber(commands: &mut Commands, asset_server:
         Transform::from_xyz(0.0, -2.99, 0.0).with_scale(Vec3::splat(2.6)),
         Name::new("PortalTable"),
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn lore_chamber_asset_exists_in_workspace_assets() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("assets")
+            .join("scenes")
+            .join("lore_chamber.glb");
+        assert!(path.is_file(), "missing lore chamber asset at {path:?}");
+    }
 }

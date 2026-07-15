@@ -13,18 +13,15 @@ use crate::theme::Archetype;
 
 /// Fallback establishing pose, used only until the authored camera node is loaded.
 const ESTABLISHING_FALLBACK: Vec3 = Vec3::new(8.0, 6.2, 12.0);
-/// Main menu pose: slightly higher than the ritual table input pose, pitched down
-/// so the Flower-of-Life portal/table reads as the menu's physical surface while
-/// the chamber arches remain visible behind it.
-const MENU_CAMERA_POS: Vec3 = Vec3::new(0.0, 1.85, 7.2);
-const MENU_LOOK: Vec3 = Vec3::new(0.0, -2.65, 0.0);
-/// The table pose: a 3/4 view that shows the ornate council table as furniture,
-/// standing on the chamber floor. The table (engine-scaled ×3) spans world y ≈ −1.8
-/// (top) down to ≈ −5 (feet on the floor); the camera sits just above the top and
-/// back, looking down at the table's mid-height so both the glowing top and the
-/// arched legs read. On submit the camera sweeps up from here to the star.
-const TABLE_CAMERA_POS: Vec3 = Vec3::new(0.0, 0.4, 6.4);
-const TABLE_LOOK: Vec3 = Vec3::new(0.0, -2.5, 0.0);
+/// Main-menu pose for the generated lore chamber. The Blender authoring scene has
+/// proof cameras, but the runtime GLB intentionally exports none so Bevy owns the
+/// only active 3D camera from frame zero.
+const MENU_CAMERA_POS: Vec3 = Vec3::new(0.0, 2.05, 7.4);
+const MENU_LOOK: Vec3 = Vec3::new(0.0, 1.02, 0.0);
+/// The table pose stays near the Witness seat so any future prompt surface lands
+/// on the new meter-scale table instead of the parked legacy furniture.
+const TABLE_CAMERA_POS: Vec3 = Vec3::new(0.0, 1.45, 6.2);
+const TABLE_LOOK: Vec3 = Vec3::new(0.0, 0.98, 0.0);
 /// When an archetype speaks, the camera swings to that sphere's compass bearing at a
 /// fixed radius and height (well inside the temple walls at radius ~21, and always
 /// above the floor), then looks at the sphere with the star beyond it. Positioning by
@@ -92,10 +89,10 @@ fn setup_witness_camera(mut commands: Commands) {
     ));
 }
 
-/// The authored GLB cameras are part of the scene contract but not the live view;
-/// the runtime Witness camera owns framing.
+/// Imported cameras, when present in legacy/reference assets, are never the live
+/// view; the runtime Witness camera owns framing.
 fn disable_imported_cameras(
-    mut query: Query<&mut Camera, (With<Camera3d>, Without<WitnessCamera>)>,
+    mut query: Query<&mut Camera, (Without<WitnessCamera>, Without<Camera2d>)>,
 ) {
     for mut camera in &mut query {
         camera.is_active = false;
@@ -106,7 +103,10 @@ fn drive_camera(
     state: Res<State<ChamberState>>,
     focus: Res<CurrentFocus>,
     spheres: Query<(&ArchetypeSphere, &GlobalTransform)>,
-    authored: Query<(&Name, &GlobalTransform), (With<Camera3d>, Without<WitnessCamera>)>,
+    authored: Query<
+        (&Name, &GlobalTransform),
+        (With<Camera>, Without<WitnessCamera>, Without<Camera2d>),
+    >,
     mut camera: Query<&mut Transform, With<WitnessCamera>>,
     time: Res<Time>,
 ) {
@@ -120,18 +120,14 @@ fn drive_camera(
         .find(|(name, _)| name.as_str() == "Witness_Camera")
         .map(|(_, global)| global.compute_transform())
         .unwrap_or_else(|| {
-            Transform::from_translation(ESTABLISHING_FALLBACK).looking_at(COUNCIL_CENTER, Vec3::Y)
+            Transform::from_translation(MENU_CAMERA_POS).looking_at(MENU_LOOK, Vec3::Y)
         });
 
     let target = match state.get() {
-        // At the table: seated over the portal where intent is placed.
-        ChamberState::Booting
-        | ChamberState::MainMenu => {
-            Transform::from_translation(MENU_CAMERA_POS).looking_at(MENU_LOOK, Vec3::Y)
-        }
-        ChamberState::Onboarding
-        | ChamberState::IdleAtTable
-        | ChamberState::ArtifactResult => {
+        // Opening/menu: use an authored Witness camera if a legacy asset provides
+        // one, otherwise use the generated lore chamber's runtime pose.
+        ChamberState::Booting | ChamberState::MainMenu => establishing,
+        ChamberState::Onboarding | ChamberState::IdleAtTable | ChamberState::ArtifactResult => {
             Transform::from_translation(TABLE_CAMERA_POS).looking_at(TABLE_LOOK, Vec3::Y)
         }
         // A council member holds the floor: frame that sphere.

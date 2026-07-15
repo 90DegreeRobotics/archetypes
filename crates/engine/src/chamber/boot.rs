@@ -1,9 +1,8 @@
-//! Title / loading screen and the current blank-slate launcher shell.
+//! Title / loading screen and the current lore-chamber launcher shell.
 //!
-//! The old table/chamber/menu visuals are parked behind an explicit legacy gate.
-//! Default desktop launch is now deliberately simple: black title, creator credit,
-//! slow fade, and a standalone main menu that keeps the gameplay backends in
-//! standby until the replacement world asset is supplied.
+//! The old table/chamber/menu visuals are parked behind an explicit legacy gate,
+//! while default desktop launch reveals the generated lore-compliant chamber.
+//! The main menu stays in standby until the rebuilt gameplay path is approved.
 
 use std::{fs, path::PathBuf};
 
@@ -195,7 +194,7 @@ pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry
                 padding: UiRect::axes(Val::Px(64.0), Val::Px(50.0)),
                 ..default()
             },
-            BackgroundColor(Color::BLACK),
+            BackgroundColor(Color::NONE),
             GlobalZIndex(900),
             MainMenuUi,
         ))
@@ -315,7 +314,7 @@ pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry
                 }
             });
             root.spawn((
-                Text::new("NEW WORLD STANDBY"),
+                Text::new("COUNCIL CHAMBER ONLINE"),
                 TextFont {
                     font_size: 15.0,
                     ..default()
@@ -430,6 +429,7 @@ fn despawn_main_menu(mut commands: Commands, query: Query<Entity, With<MainMenuU
 #[derive(Resource)]
 struct BlankShellCaptureRun {
     dir: PathBuf,
+    menu_stem: &'static str,
     title_shot: bool,
     subtitle_shot: bool,
     menu_seen: Option<f32>,
@@ -439,15 +439,27 @@ struct BlankShellCaptureRun {
 
 impl BlankShellCaptureRun {
     fn from_env() -> Option<Self> {
-        if std::env::var_os("ARCHETYPES_BLANK_CAPTURE").is_none() {
+        let lore_capture = std::env::var_os("ARCHETYPES_LORE_CAPTURE").is_some();
+        if !lore_capture && std::env::var_os("ARCHETYPES_BLANK_CAPTURE").is_none() {
             return None;
         }
         let dir = std::env::var_os("ARCHETYPES_CAPTURE_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("artifacts/visual-proof/blank-slate-shell"));
+            .unwrap_or_else(|| {
+                if lore_capture {
+                    PathBuf::from("artifacts/visual-proof/lore-chamber-runtime")
+                } else {
+                    PathBuf::from("artifacts/visual-proof/blank-slate-shell")
+                }
+            });
         let _ = fs::create_dir_all(&dir);
         Some(Self {
             dir,
+            menu_stem: if lore_capture {
+                "02_lore_main_menu"
+            } else {
+                "02_blank_main_menu"
+            },
             title_shot: false,
             subtitle_shot: false,
             menu_seen: None,
@@ -490,7 +502,7 @@ fn run_blank_shell_capture(
     if *chamber_state.get() == ChamberState::MainMenu {
         let seen = *capture.menu_seen.get_or_insert(now);
         if !capture.menu_shot && now - seen >= 1.0 {
-            capture.shot(&mut commands, "02_blank_main_menu");
+            capture.shot(&mut commands, capture.menu_stem);
             capture.menu_shot = true;
             capture.exit_at = Some(now + 1.5);
         }
