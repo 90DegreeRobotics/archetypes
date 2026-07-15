@@ -55,22 +55,35 @@ pub struct CouncilChamberPlugin;
 impl Plugin for CouncilChamberPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<ChamberState>()
-            .init_resource::<CurrentFocus>()
-            .add_systems(Startup, load_authoritative_chamber)
-            .add_plugins((
-                boot::BootPlugin,
-                camera::CameraPlugin,
-                spheres::SpheresPlugin,
-                panels::PanelsPlugin,
-                portal::PortalPlugin,
-                interior::InteriorPlugin,
-                sky::SkyPlugin,
-                star::StarPlugin,
-                council::CouncilPlugin,
-                ritual::RitualPlugin,
-                speech::SpeechPlugin,
-            ));
+            .init_resource::<CurrentFocus>();
+
+        // Blank-slate launcher reset: the legacy council chamber/table scene is
+        // preserved below as reference code, but normal desktop launch must not
+        // spawn it before the replacement GLB/world arrives.
+        if legacy_chamber_visuals_enabled() {
+            app.add_systems(Startup, load_authoritative_chamber)
+                .add_plugins((
+                    spheres::SpheresPlugin,
+                    panels::PanelsPlugin,
+                    portal::PortalPlugin,
+                    interior::InteriorPlugin,
+                    sky::SkyPlugin,
+                    star::StarPlugin,
+                ));
+        }
+
+        app.add_plugins((
+            boot::BootPlugin,
+            camera::CameraPlugin,
+            council::CouncilPlugin,
+            ritual::RitualPlugin,
+            speech::SpeechPlugin,
+        ));
     }
+}
+
+fn legacy_chamber_visuals_enabled() -> bool {
+    std::env::var_os("ARCHETYPES_LEGACY_CHAMBER").is_some()
 }
 
 fn load_authoritative_chamber(mut commands: Commands, asset_server: Res<AssetServer>) {

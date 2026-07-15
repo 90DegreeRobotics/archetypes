@@ -1,19 +1,19 @@
-//! Title / loading screen.
+//! Title / loading screen and the current blank-slate launcher shell.
 //!
-//! The chamber is a heavy GPU scene; on launch nothing of it should be shown until it
-//! is ready. A full-screen title overlay covers everything from the first frame and is
-//! only lifted once the authored council geometry is ready.
-//! The reveal lands on a real table-based main menu; Standard Mode never starts itself.
+//! The old table/chamber/menu visuals are parked behind an explicit legacy gate.
+//! Default desktop launch is now deliberately simple: black title, creator credit,
+//! slow fade, and a standalone main menu that keeps the gameplay backends in
+//! standby until the replacement world asset is supplied.
 
-use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
+use std::{fs, path::PathBuf};
 
-use super::{
-    camera::WitnessCamera, portal::StargatePortal, spheres::ArchetypeSphere, ChamberState,
+use bevy::{
+    prelude::*,
+    render::view::window::screenshot::{save_to_disk, Screenshot},
 };
-use crate::modes::{
-    game_mode::GameMode, standard_mecha::TriggerStandardMecha, ModeRegistry,
-};
+
+use super::ChamberState;
+use crate::modes::{game_mode::GameMode, ModeRegistry};
 
 /// Minimum time the title holds — long enough that the heavy scene textures finish
 /// uploading behind it, so the reveal does not hitch.
@@ -23,8 +23,6 @@ const TITLE_FADE_START_SECS: f32 = 0.8;
 const TITLE_FADE_SECS: f32 = 2.6;
 const SUBTITLE_FADE_START_SECS: f32 = 3.2;
 const SUBTITLE_FADE_SECS: f32 = 2.8;
-/// The seven council vessels; when all are bound the scene is ready.
-const READY_SPHERES: usize = 7;
 
 pub struct BootPlugin;
 
@@ -42,11 +40,16 @@ impl Plugin for BootPlugin {
             .add_systems(OnEnter(ChamberState::MainMenu), spawn_main_menu)
             .add_systems(
                 Update,
-                (position_main_menu_on_portal, style_mode_buttons, activate_mode)
+                (style_mode_buttons, activate_mode)
                     .chain()
                     .run_if(in_state(ChamberState::MainMenu)),
             )
             .add_systems(OnExit(ChamberState::MainMenu), despawn_main_menu);
+
+        if let Some(run) = BlankShellCaptureRun::from_env() {
+            app.insert_resource(run)
+                .add_systems(Update, run_blank_shell_capture);
+        }
     }
 }
 
@@ -74,7 +77,7 @@ struct ModeButton {
 }
 
 #[derive(Component)]
-struct MainMenuPortalPanel;
+struct MainMenuNotice;
 
 fn spawn_boot_ui(mut commands: Commands, mut sequence: ResMut<BootSequence>) {
     sequence.ready_at = None;
@@ -148,8 +151,6 @@ fn animate_loading_veil(
 
 fn boot_ready(
     time: Res<Time>,
-    spheres: Query<&ArchetypeSphere>,
-    portal: Query<&Name>,
     mut sequence: ResMut<BootSequence>,
     mut overlay: Query<&mut BackgroundColor, With<BootUi>>,
     mut title: Query<&mut TextColor, (With<BootTitle>, Without<BootSubtitle>)>,
@@ -157,9 +158,7 @@ fn boot_ready(
     mut next_state: ResMut<NextState<ChamberState>>,
 ) {
     let elapsed = time.elapsed_secs();
-    let chamber_ready = spheres.iter().count() >= READY_SPHERES
-        && portal.iter().any(|name| name.as_str() == "Stargate_Portal");
-    if elapsed < MIN_BOOT_SECS || !chamber_ready {
+    if elapsed < MIN_BOOT_SECS {
         return;
     }
     let ready_at = *sequence.ready_at.get_or_insert(elapsed);
@@ -193,9 +192,10 @@ pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry
                 top: Val::Px(0.0),
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
+                padding: UiRect::axes(Val::Px(64.0), Val::Px(50.0)),
                 ..default()
             },
-            BackgroundColor(Color::NONE),
+            BackgroundColor(Color::BLACK),
             GlobalZIndex(900),
             MainMenuUi,
         ))
@@ -203,106 +203,152 @@ pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry
             root.spawn((
                 Node {
                     position_type: PositionType::Absolute,
-                    left: Val::Percent(50.0),
-                    top: Val::Percent(56.0),
-                    width: Val::Px(470.0),
-                    min_height: Val::Px(270.0),
-                    flex_direction: FlexDirection::Column,
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    row_gap: Val::Px(10.0),
-                    padding: UiRect::all(Val::Px(18.0)),
-                    border: UiRect::all(Val::Px(1.0)),
+                    left: Val::Px(64.0),
+                    top: Val::Px(56.0),
+                    width: Val::Percent(36.0),
+                    height: Val::Px(1.0),
                     ..default()
                 },
-                BackgroundColor(Color::srgba(0.01, 0.025, 0.045, 0.42)),
-                BorderColor::all(Color::srgba(0.24, 0.78, 1.0, 0.46)),
-                MainMenuPortalPanel,
+                BackgroundColor(Color::srgba(0.92, 0.88, 0.76, 0.58)),
+            ));
+            root.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(64.0),
+                    top: Val::Px(56.0),
+                    width: Val::Px(1.0),
+                    height: Val::Percent(72.0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.92, 0.88, 0.76, 0.42)),
+            ));
+            root.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(64.0),
+                    bottom: Val::Px(56.0),
+                    width: Val::Percent(30.0),
+                    height: Val::Px(1.0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.42, 0.74, 0.86, 0.44)),
+            ));
+            root.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(92.0),
+                    top: Val::Px(88.0),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(8.0),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
             ))
-            .with_children(|panel| {
-                panel.spawn((
+            .with_children(|brand| {
+                brand.spawn((
                     Text::new("ARCHETYPES"),
                     TextFont {
-                        font_size: 24.0,
+                        font_size: 42.0,
                         ..default()
                     },
-                    TextColor(Color::srgb(0.90, 0.96, 1.0)),
+                    TextColor(Color::srgb(0.94, 0.93, 0.88)),
                 ));
+                brand.spawn((
+                    Text::new("MAIN MENU"),
+                    TextFont {
+                        font_size: 16.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.45, 0.73, 0.83)),
+                ));
+            });
+            root.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(92.0),
+                    top: Val::Percent(37.0),
+                    width: Val::Px(430.0),
+                    max_width: Val::Percent(72.0),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Stretch,
+                    row_gap: Val::Px(12.0),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+            ))
+            .with_children(|menu| {
                 for entry in registry.registrations().iter().copied() {
-                    let text_color = if entry.available {
+                    let available = false;
+                    let text_color = if available {
                         Color::WHITE
                     } else {
-                        Color::srgb(0.42, 0.50, 0.56)
+                        Color::srgb(0.54, 0.58, 0.60)
                     };
-                    let border_color = if entry.available {
-                        Color::srgba(0.30, 0.84, 1.0, 0.78)
-                    } else {
-                        Color::srgba(0.24, 0.32, 0.38, 0.50)
-                    };
-                    panel
-                        .spawn((
-                            Button,
-                            Node {
-                                width: Val::Px(330.0),
-                                min_height: Val::Px(42.0),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                padding: UiRect::axes(Val::Px(24.0), Val::Px(10.0)),
-                                border: UiRect::all(Val::Px(1.0)),
+                    menu.spawn((
+                        Button,
+                        Node {
+                            width: Val::Percent(100.0),
+                            height: Val::Px(48.0),
+                            justify_content: JustifyContent::FlexStart,
+                            align_items: AlignItems::Center,
+                            padding: UiRect::axes(Val::Px(18.0), Val::Px(0.0)),
+                            border: UiRect::all(Val::Px(1.0)),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgba(0.018, 0.020, 0.022, 0.96)),
+                        BorderColor::all(Color::srgba(0.22, 0.24, 0.25, 0.92)),
+                        ModeButton {
+                            mode: entry.mode,
+                            available,
+                        },
+                    ))
+                    .with_children(|button| {
+                        button.spawn((
+                            Text::new(menu_label(entry.mode)),
+                            TextFont {
+                                font_size: 17.0,
                                 ..default()
                             },
-                            BackgroundColor(Color::srgba(0.00, 0.08, 0.15, 0.52)),
-                            BorderColor::all(border_color),
-                            ModeButton {
-                                mode: entry.mode,
-                                available: entry.available,
-                            },
-                        ))
-                        .with_children(|button| {
-                            button.spawn((
-                                Text::new(menu_label(entry.mode, entry.available)),
-                                TextFont {
-                                    font_size: 18.0,
-                                    ..default()
-                                },
-                                TextColor(text_color),
-                            ));
-                        });
+                            TextColor(text_color),
+                        ));
+                    });
                 }
             });
+            root.spawn((
+                Text::new("NEW WORLD STANDBY"),
+                TextFont {
+                    font_size: 15.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.70, 0.72, 0.70)),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(92.0),
+                    bottom: Val::Px(72.0),
+                    max_width: Val::Percent(72.0),
+                    ..default()
+                },
+                MainMenuNotice,
+            ));
         });
 }
 
-fn menu_label(mode: GameMode, available: bool) -> String {
-    match (mode, available) {
-        (GameMode::Standard, true) => "ENTER COUNCIL".to_owned(),
-        (GameMode::OracleRiddle, true) => "ORACLE RIDDLE".to_owned(),
-        (locked, false) => format!("{} - SEALED", locked.label()),
-        (other, true) => other.label().to_owned(),
+fn menu_label(mode: GameMode) -> &'static str {
+    match mode {
+        GameMode::Standard => "STANDARD MODE - STANDBY",
+        GameMode::OracleRiddle => "ORACLE RIDDLE - STANDBY",
+        GameMode::InnerChambers => "INNER CHAMBERS - LOCKED",
+        GameMode::LivingEngine => "LIVING ENGINE - LOCKED",
     }
 }
 
-fn position_main_menu_on_portal(
-    windows: Query<&Window, With<PrimaryWindow>>,
-    camera: Query<(&Camera, &GlobalTransform), With<WitnessCamera>>,
-    portal: Query<&GlobalTransform, With<StargatePortal>>,
-    mut panel: Query<&mut Node, With<MainMenuPortalPanel>>,
-) {
-    let (Ok(window), Ok((camera, camera_transform)), Ok(portal), Ok(mut node)) = (
-        windows.single(),
-        camera.single(),
-        portal.single(),
-        panel.single_mut(),
-    ) else {
-        return;
-    };
-    let Ok(viewport) = camera.world_to_viewport(camera_transform, portal.translation()) else {
-        return;
-    };
-    let width = 470.0;
-    let height = 270.0;
-    node.left = Val::Px((viewport.x - width / 2.0).clamp(18.0, window.width() - width - 18.0));
-    node.top = Val::Px((viewport.y - height * 0.35).clamp(18.0, window.height() - height - 18.0));
+fn standby_notice(mode: GameMode) -> &'static str {
+    match mode {
+        GameMode::Standard => "STANDARD MODE AWAITS THE NEW WORLD.",
+        GameMode::OracleRiddle => "ORACLE RIDDLE IS STANDING BY OFF THIS PATH.",
+        GameMode::InnerChambers => "INNER CHAMBERS REMAIN LOCKED.",
+        GameMode::LivingEngine => "LIVING ENGINE REMAINS LOCKED.",
+    }
 }
 
 fn style_mode_buttons(
@@ -318,8 +364,20 @@ fn style_mode_buttons(
 ) {
     for (interaction, button, mut background, mut border) in &mut interactions {
         if !button.available {
-            *background = BackgroundColor(Color::srgba(0.02, 0.03, 0.04, 0.42));
-            *border = BorderColor::all(Color::srgba(0.24, 0.32, 0.38, 0.50));
+            match *interaction {
+                Interaction::Pressed => {
+                    *background = BackgroundColor(Color::srgba(0.07, 0.075, 0.072, 0.98));
+                    *border = BorderColor::all(Color::srgba(0.76, 0.70, 0.54, 0.75));
+                }
+                Interaction::Hovered => {
+                    *background = BackgroundColor(Color::srgba(0.045, 0.050, 0.052, 0.98));
+                    *border = BorderColor::all(Color::srgba(0.42, 0.74, 0.86, 0.70));
+                }
+                Interaction::None => {
+                    *background = BackgroundColor(Color::srgba(0.018, 0.020, 0.022, 0.96));
+                    *border = BorderColor::all(Color::srgba(0.22, 0.24, 0.25, 0.92));
+                }
+            }
             continue;
         }
         match *interaction {
@@ -340,65 +398,24 @@ fn style_mode_buttons(
 }
 
 fn activate_mode(
-    mut commands: Commands,
     interaction: Query<(&Interaction, &ModeButton), Changed<Interaction>>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    oracle_state: Option<Res<State<crate::modes::oracle_riddle::OracleState>>>,
-    standard_state: Option<Res<State<crate::modes::standard_mecha::StandardMechaState>>>,
-    main_menu_entities: Query<Entity, With<MainMenuUi>>,
+    mut notice: Query<&mut Text, With<MainMenuNotice>>,
 ) {
-    if let Some(state) = oracle_state {
-        if *state.get() != crate::modes::oracle_riddle::OracleState::Inactive {
-            return;
-        }
-    }
-    if let Some(state) = standard_state {
-        if *state.get() != crate::modes::standard_mecha::StandardMechaState::Inactive {
-            return;
-        }
-    }
-    let mut selected_mode = None;
     for (val, button) in &interaction {
         if *val == Interaction::Pressed {
+            if let Ok(mut text) = notice.single_mut() {
+                text.0 = standby_notice(button.mode).to_owned();
+            }
             if button.available {
-                selected_mode = Some(button.mode);
-            } else {
                 info!(
-                    "{} is registered for a future lane but is not playable yet",
+                    "{} is registered but the blank-slate shell is holding mode entry in standby",
                     button.mode.label()
                 );
-            }
-        }
-    }
-
-    // For now, Enter selects Standard
-    if selected_mode.is_none() && keyboard.just_pressed(KeyCode::Enter) {
-        selected_mode = Some(GameMode::Standard);
-    }
-
-    if let Some(mode) = selected_mode {
-        commands.insert_resource(crate::chamber::ActiveGameMode(mode));
-        match mode {
-            GameMode::Standard => {
-                for entity in &main_menu_entities {
-                    commands.entity(entity).despawn();
-                }
-                commands.insert_resource(TriggerStandardMecha);
-            }
-            GameMode::OracleRiddle => {
-                for entity in &main_menu_entities {
-                    commands.entity(entity).despawn();
-                }
-                commands.insert_resource(crate::modes::oracle_riddle::TriggerOracleRiddle);
-            }
-            GameMode::InnerChambers => {
-                for entity in &main_menu_entities {
-                    commands.entity(entity).despawn();
-                }
-                commands.insert_resource(crate::modes::inner_chambers::TriggerInnerChambers);
-            }
-            GameMode::LivingEngine => {
-                info!("Living Engine remains locked");
+            } else {
+                info!(
+                    "{} remains in standby on the blank-slate shell",
+                    button.mode.label()
+                );
             }
         }
     }
@@ -407,6 +424,76 @@ fn activate_mode(
 fn despawn_main_menu(mut commands: Commands, query: Query<Entity, With<MainMenuUi>>) {
     for entity in &query {
         commands.entity(entity).despawn();
+    }
+}
+
+#[derive(Resource)]
+struct BlankShellCaptureRun {
+    dir: PathBuf,
+    title_shot: bool,
+    subtitle_shot: bool,
+    menu_seen: Option<f32>,
+    menu_shot: bool,
+    exit_at: Option<f32>,
+}
+
+impl BlankShellCaptureRun {
+    fn from_env() -> Option<Self> {
+        if std::env::var_os("ARCHETYPES_BLANK_CAPTURE").is_none() {
+            return None;
+        }
+        let dir = std::env::var_os("ARCHETYPES_CAPTURE_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("artifacts/visual-proof/blank-slate-shell"));
+        let _ = fs::create_dir_all(&dir);
+        Some(Self {
+            dir,
+            title_shot: false,
+            subtitle_shot: false,
+            menu_seen: None,
+            menu_shot: false,
+            exit_at: None,
+        })
+    }
+
+    fn shot(&self, commands: &mut Commands, stem: &str) {
+        let path = self.dir.join(format!("{stem}.png"));
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk(path));
+    }
+}
+
+fn run_blank_shell_capture(
+    time: Res<Time>,
+    chamber_state: Res<State<ChamberState>>,
+    mut capture: ResMut<BlankShellCaptureRun>,
+    mut commands: Commands,
+) {
+    let now = time.elapsed_secs();
+    if !capture.title_shot && now >= 2.6 {
+        capture.shot(&mut commands, "00_title_arch");
+        capture.title_shot = true;
+    }
+    if !capture.subtitle_shot && now >= 5.4 {
+        capture.shot(&mut commands, "01_title_subtitle");
+        capture.subtitle_shot = true;
+    }
+
+    if let Some(exit_at) = capture.exit_at {
+        if now >= exit_at {
+            std::process::exit(0);
+        }
+        return;
+    }
+
+    if *chamber_state.get() == ChamberState::MainMenu {
+        let seen = *capture.menu_seen.get_or_insert(now);
+        if !capture.menu_shot && now - seen >= 1.0 {
+            capture.shot(&mut commands, "02_blank_main_menu");
+            capture.menu_shot = true;
+            capture.exit_at = Some(now + 1.5);
+        }
     }
 }
 
@@ -440,5 +527,19 @@ mod tests {
         assert!(MIN_BOOT_SECS > TITLE_FADE_START_SECS + TITLE_FADE_SECS);
         assert!(MIN_BOOT_SECS > SUBTITLE_FADE_START_SECS + SUBTITLE_FADE_SECS);
         assert!(BOOT_FADE_SECS >= 3.0);
+    }
+
+    #[test]
+    fn blank_menu_labels_keep_modes_in_standby() {
+        assert_eq!(menu_label(GameMode::Standard), "STANDARD MODE - STANDBY");
+        assert_eq!(
+            menu_label(GameMode::OracleRiddle),
+            "ORACLE RIDDLE - STANDBY"
+        );
+        assert_eq!(
+            menu_label(GameMode::InnerChambers),
+            "INNER CHAMBERS - LOCKED"
+        );
+        assert_eq!(menu_label(GameMode::LivingEngine), "LIVING ENGINE - LOCKED");
     }
 }
