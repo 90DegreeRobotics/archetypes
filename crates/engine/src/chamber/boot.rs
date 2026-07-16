@@ -7,12 +7,13 @@
 use std::{fs, path::PathBuf};
 
 use bevy::{
+    app::AppExit,
     prelude::*,
     render::view::window::screenshot::{save_to_disk, Screenshot},
 };
 
 use super::ChamberState;
-use crate::modes::{game_mode::GameMode, ModeRegistry};
+use crate::modes::{game_mode::GameMode, standard_mecha::TriggerStandardMecha, ModeRegistry};
 
 /// Minimum time the title holds — long enough that the heavy scene textures finish
 /// uploading behind it, so the reveal does not hitch.
@@ -39,7 +40,12 @@ impl Plugin for BootPlugin {
             .add_systems(OnEnter(ChamberState::MainMenu), spawn_main_menu)
             .add_systems(
                 Update,
-                (style_mode_buttons, activate_mode)
+                (
+                    style_mode_buttons,
+                    style_quit_button,
+                    activate_mode,
+                    activate_quit,
+                )
                     .chain()
                     .run_if(in_state(ChamberState::MainMenu)),
             )
@@ -74,6 +80,9 @@ struct ModeButton {
     mode: GameMode,
     available: bool,
 }
+
+#[derive(Component)]
+struct QuitButton;
 
 #[derive(Component)]
 struct MainMenuNotice;
@@ -277,7 +286,7 @@ pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry
             ))
             .with_children(|menu| {
                 for entry in registry.registrations().iter().copied() {
-                    let available = false;
+                    let available = matches!(entry.mode, GameMode::Standard);
                     let text_color = if available {
                         Color::WHITE
                     } else {
@@ -312,6 +321,32 @@ pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry
                         ));
                     });
                 }
+                menu.spawn((
+                    Button,
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Px(48.0),
+                        justify_content: JustifyContent::FlexStart,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::axes(Val::Px(18.0), Val::Px(0.0)),
+                        border: UiRect::all(Val::Px(1.0)),
+                        margin: UiRect::top(Val::Px(8.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.022, 0.018, 0.018, 0.96)),
+                    BorderColor::all(Color::srgba(0.54, 0.24, 0.24, 0.72)),
+                    QuitButton,
+                ))
+                .with_children(|button| {
+                    button.spawn((
+                        Text::new("QUIT GAME"),
+                        TextFont {
+                            font_size: 17.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.92, 0.72, 0.70)),
+                    ));
+                });
             });
             root.spawn((
                 Text::new("COUNCIL CHAMBER ONLINE"),
@@ -334,7 +369,7 @@ pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry
 
 fn menu_label(mode: GameMode) -> &'static str {
     match mode {
-        GameMode::Standard => "STANDARD MODE - STANDBY",
+        GameMode::Standard => "STANDARD MODE",
         GameMode::OracleRiddle => "ORACLE RIDDLE - STANDBY",
         GameMode::InnerChambers => "INNER CHAMBERS - LOCKED",
         GameMode::LivingEngine => "LIVING ENGINE - LOCKED",
@@ -343,7 +378,7 @@ fn menu_label(mode: GameMode) -> &'static str {
 
 fn standby_notice(mode: GameMode) -> &'static str {
     match mode {
-        GameMode::Standard => "STANDARD MODE AWAITS THE NEW WORLD.",
+        GameMode::Standard => "STANDARD MODE OPENING.",
         GameMode::OracleRiddle => "ORACLE RIDDLE IS STANDING BY OFF THIS PATH.",
         GameMode::InnerChambers => "INNER CHAMBERS REMAIN LOCKED.",
         GameMode::LivingEngine => "LIVING ENGINE REMAINS LOCKED.",
@@ -396,26 +431,69 @@ fn style_mode_buttons(
     }
 }
 
+fn style_quit_button(
+    mut interactions: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        (Changed<Interaction>, With<QuitButton>),
+    >,
+) {
+    for (interaction, mut background, mut border) in &mut interactions {
+        match *interaction {
+            Interaction::Pressed => {
+                *background = BackgroundColor(Color::srgba(0.52, 0.07, 0.07, 0.42));
+                *border = BorderColor::all(Color::srgba(1.0, 0.72, 0.68, 0.92));
+            }
+            Interaction::Hovered => {
+                *background = BackgroundColor(Color::srgba(0.24, 0.05, 0.05, 0.34));
+                *border = BorderColor::all(Color::srgba(0.88, 0.46, 0.42, 0.84));
+            }
+            Interaction::None => {
+                *background = BackgroundColor(Color::srgba(0.022, 0.018, 0.018, 0.96));
+                *border = BorderColor::all(Color::srgba(0.54, 0.24, 0.24, 0.72));
+            }
+        }
+    }
+}
+
 fn activate_mode(
     interaction: Query<(&Interaction, &ModeButton), Changed<Interaction>>,
+    mut commands: Commands,
     mut notice: Query<&mut Text, With<MainMenuNotice>>,
+    main_menu: Query<Entity, With<MainMenuUi>>,
 ) {
     for (val, button) in &interaction {
         if *val == Interaction::Pressed {
             if let Ok(mut text) = notice.single_mut() {
                 text.0 = standby_notice(button.mode).to_owned();
             }
-            if button.available {
-                info!(
-                    "{} is registered but the blank-slate shell is holding mode entry in standby",
-                    button.mode.label()
-                );
+            if button.available && matches!(button.mode, GameMode::Standard) {
+                for entity in &main_menu {
+                    commands.entity(entity).despawn();
+                }
+                commands.insert_resource(TriggerStandardMecha);
+                info!("{} selected from main menu", button.mode.label());
             } else {
                 info!(
                     "{} remains in standby on the blank-slate shell",
                     button.mode.label()
                 );
             }
+        }
+    }
+}
+
+fn activate_quit(
+    interaction: Query<&Interaction, (Changed<Interaction>, With<QuitButton>)>,
+    mut notice: Query<&mut Text, With<MainMenuNotice>>,
+    mut app_exit: MessageWriter<AppExit>,
+) {
+    for val in &interaction {
+        if *val == Interaction::Pressed {
+            if let Ok(mut text) = notice.single_mut() {
+                text.0 = "CLOSING ARCHETYPES.".to_owned();
+            }
+            info!("Quit Game selected from main menu");
+            app_exit.write(AppExit::Success);
         }
     }
 }
@@ -542,8 +620,8 @@ mod tests {
     }
 
     #[test]
-    fn blank_menu_labels_keep_modes_in_standby() {
-        assert_eq!(menu_label(GameMode::Standard), "STANDARD MODE - STANDBY");
+    fn menu_labels_expose_standard_and_keep_unready_modes_in_standby() {
+        assert_eq!(menu_label(GameMode::Standard), "STANDARD MODE");
         assert_eq!(
             menu_label(GameMode::OracleRiddle),
             "ORACLE RIDDLE - STANDBY"

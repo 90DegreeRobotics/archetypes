@@ -29,6 +29,7 @@ use crate::{
         oracle_riddle::{OracleState, TriggerOracleRiddle},
     },
     services::{
+        chronos::{request_chronos_artifact_with_style, ArtifactOutcome},
         ledger::append_to_ledger,
         llm::{ollama_chat, ollama_model},
         paths::app_data_root,
@@ -42,6 +43,13 @@ const SELECTOR_CANVAS_HEIGHT: f32 = 1536.0;
 const SWITCHING_SECS: f32 = 0.85;
 const MAX_DRAFT_CHARS: usize = 1200;
 const HISTORY_RENDER_LIMIT: usize = 10;
+const KEYWORD_LIMIT: usize = 8;
+const KEYWORD_STOP_WORDS: &[&str] = &[
+    "about", "after", "again", "also", "and", "are", "because", "been", "before", "being",
+    "between", "but", "could", "does", "for", "from", "have", "into", "just", "like", "more",
+    "need", "not", "over", "should", "that", "the", "their", "there", "these", "they", "this",
+    "through", "want", "what", "when", "where", "which", "while", "with", "would", "you", "your",
+];
 
 pub struct StandardMechaPlugin;
 
@@ -65,13 +73,19 @@ impl Plugin for StandardMechaPlugin {
                     .chain()
                     .run_if(in_state(StandardMechaState::Selector)),
             )
-            .add_systems(OnExit(StandardMechaState::Selector), despawn_standard_mecha_ui)
+            .add_systems(
+                OnExit(StandardMechaState::Selector),
+                despawn_standard_mecha_ui,
+            )
             .add_systems(OnEnter(StandardMechaState::Switching), spawn_switching_ui)
             .add_systems(
                 Update,
                 advance_switching.run_if(in_state(StandardMechaState::Switching)),
             )
-            .add_systems(OnExit(StandardMechaState::Switching), despawn_standard_mecha_ui)
+            .add_systems(
+                OnExit(StandardMechaState::Switching),
+                despawn_standard_mecha_ui,
+            )
             .add_systems(OnEnter(StandardMechaState::Chat), enter_chat)
             .add_systems(
                 Update,
@@ -186,6 +200,27 @@ impl MechaArchetype {
                 "You are the Jester, Law 14 enforcer. You reason by breaking false symmetry and exposing hidden absurdity. Speak sharply, use wit as a scalpel, and only as the Jester.",
             Archetype::Codex | Archetype::Viren =>
                 "You are a council voice in service of the Witness. Speak briefly and in character.",
+        }
+    }
+
+    pub fn art_style(self) -> &'static str {
+        match self.archetype {
+            Archetype::Architect =>
+                "Architect signature style: blue-white sacred-geometry blueprint realism, luminous structural cutaways, precise table-scale forms, clean vanishing lines, engineered symmetry, crisp readable silhouette, no text.",
+            Archetype::Sentinel =>
+                "Sentinel signature style: crimson and obsidian threshold realism, fortress geometry, protective wards as physical light, hard rim lighting, disciplined negative space, severe readable silhouette, no text.",
+            Archetype::Mentor =>
+                "Mentor signature style: emerald and antique gold wisdom realism, lantern-lit stone, layered memory archives, quiet grove-library atmosphere, patient detail, warm readable silhouette, no text.",
+            Archetype::Explorer =>
+                "Explorer signature style: amber frontier realism, star maps as physical artifacts, open horizons, kinetic pathfinding light, weathered instruments, adventurous readable silhouette, no text.",
+            Archetype::Oracle =>
+                "Oracle signature style: violet and indigo prophetic realism, translucent pattern fields, reflective black water, astronomical geometry, soft occult glow, mysterious readable silhouette, no text.",
+            Archetype::Empath =>
+                "Empath signature style: rose and pearl emotional realism, luminous connective threads, human warmth, soft chamber light, heart-centered continuity, intimate readable silhouette, no text.",
+            Archetype::Jester =>
+                "Jester signature style: teal-violet truth-satire realism, elegant surreal juxtapositions, cracked false masks, sharp playful contrast, hidden symmetry revealed, readable silhouette, no text.",
+            Archetype::Codex | Archetype::Viren =>
+                "Council signature style: restrained mythic realism, symbolic geometry, readable silhouette, no text.",
         }
     }
 }
@@ -373,7 +408,7 @@ impl StandardMechaSession {
 
 #[derive(Resource)]
 struct ChatBridge {
-    receiver: Mutex<Option<mpsc::Receiver<Result<String, String>>>>,
+    receiver: Mutex<Option<mpsc::Receiver<ChatTurnResult>>>,
     waiting: bool,
 }
 
@@ -386,12 +421,34 @@ impl Default for ChatBridge {
     }
 }
 
+#[derive(Debug)]
+struct ChatTurnResult {
+    archetype_id: String,
+    response: Result<String, String>,
+    image: ChatImage,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct ChatImage {
+    status: String,
+    keywords: Vec<String>,
+    prompt: String,
+    art_style: String,
+    png_path: Option<String>,
+    asset_path: Option<String>,
+    artifact_id: Option<String>,
+    proof_receipt_id: Option<String>,
+    detail: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 struct ChatRecord {
     timestamp: u64,
     archetype: String,
     role: String,
     content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    image: Option<ChatImage>,
 }
 
 #[derive(Component)]
@@ -428,6 +485,12 @@ struct ChatElementText;
 
 #[derive(Component)]
 struct ChatPortrait;
+
+#[derive(Component)]
+struct ChatRenderImage;
+
+#[derive(Component)]
+struct ChatRenderStatusText;
 
 #[derive(Component)]
 struct ChatSwitchButton {
@@ -720,7 +783,10 @@ fn spawn_switching_ui(
                 BorderColor::all(archetype.selector_color.color()),
             ));
             root.spawn((
-                Text::new(format!("MANIFESTING {}", archetype.display_name.to_uppercase())),
+                Text::new(format!(
+                    "MANIFESTING {}",
+                    archetype.display_name.to_uppercase()
+                )),
                 TextFont {
                     font_size: 30.0,
                     ..default()
@@ -766,7 +832,10 @@ fn enter_chat(
 ) {
     let archetype = session.active();
     session.history = read_history(archetype.id).unwrap_or_else(|error| {
-        session.status = format!("History unavailable for {}: {error}", archetype.display_name);
+        session.status = format!(
+            "History unavailable for {}: {error}",
+            archetype.display_name
+        );
         Vec::new()
     });
     if session.status.starts_with("History unavailable") {
@@ -1016,7 +1085,7 @@ fn spawn_portrait_panel(
             ImageNode::new(asset_server.load(archetype.portrait_path)),
             Node {
                 width: Val::Percent(86.0),
-                height: Val::Percent(70.0),
+                height: Val::Percent(44.0),
                 border: UiRect::all(Val::Px(2.0)),
                 ..default()
             },
@@ -1051,6 +1120,35 @@ fn spawn_portrait_panel(
             ChatElementText,
         ));
         panel.spawn((
+            Text::new("LATEST COMFY RENDER"),
+            TextFont {
+                font_size: 12.0,
+                ..default()
+            },
+            TextColor(Color::srgb(0.76, 0.82, 0.92)),
+        ));
+        panel.spawn((
+            ImageNode::new(asset_server.load(archetype.portrait_path)),
+            Node {
+                width: Val::Percent(88.0),
+                height: Val::Percent(24.0),
+                display: Display::None,
+                border: UiRect::all(Val::Px(1.0)),
+                ..default()
+            },
+            BorderColor::all(archetype.selector_color.alpha(0.55)),
+            ChatRenderImage,
+        ));
+        panel.spawn((
+            Text::new(latest_render_status(&session.history, false)),
+            TextFont {
+                font_size: 11.0,
+                ..default()
+            },
+            TextColor(Color::srgb(0.68, 0.72, 0.80)),
+            ChatRenderStatusText,
+        ));
+        panel.spawn((
             Text::new("LLM: local Ollama route\nGPU/VRAM/RAM/CPU: unavailable in native monitor"),
             TextFont {
                 font_size: 12.0,
@@ -1070,7 +1168,8 @@ fn activate_chat_switcher(
     for (interaction, button) in &interactions {
         if *interaction == Interaction::Pressed && button.index != session.active_index {
             if bridge.waiting {
-                session.status = "A response is still forming; wait before switching archetypes.".to_owned();
+                session.status =
+                    "A response is still forming; wait before switching archetypes.".to_owned();
                 return;
             }
             session.set_active_index(button.index);
@@ -1093,7 +1192,9 @@ fn handle_chat_keyboard(
         && keyboard.just_pressed(Key::Space)
     {
         if bridge.waiting {
-            session.status = "A response is still forming; selector return is blocked until it lands.".to_owned();
+            session.status =
+                "A response is still forming; selector return is blocked until it lands."
+                    .to_owned();
         } else {
             next_state.set(StandardMechaState::Selector);
         }
@@ -1102,7 +1203,9 @@ fn handle_chat_keyboard(
 
     if keycodes.just_pressed(KeyCode::Escape) {
         if bridge.waiting {
-            session.status = "A response is still forming; selector return is blocked until it lands.".to_owned();
+            session.status =
+                "A response is still forming; selector return is blocked until it lands."
+                    .to_owned();
         } else {
             next_state.set(StandardMechaState::Selector);
         }
@@ -1150,22 +1253,34 @@ fn start_chat_send(session: &mut StandardMechaSession, bridge: &mut ChatBridge) 
         archetype: archetype.id.to_owned(),
         role: "witness".to_owned(),
         content: content.clone(),
+        image: None,
     };
     if let Err(error) = append_history_record(archetype.id, &user_record) {
         session.status = format!("Chat blocked: history could not be written ({error}).");
         return;
     }
     session.history.push(user_record);
-    let _ = append_to_ledger(
-        GameMode::Standard,
-        "mecha_chat_user",
-        json!({ "archetype": archetype.id, "chars": content.chars().count() }),
-    );
-
     session.draft.clear();
     session.cursor = 0;
+
+    let keywords = extract_keywords(&content);
+    if let Err(error) = append_to_ledger(
+        GameMode::Standard,
+        "mecha_chat_user",
+        json!({
+            "archetype": archetype.id,
+            "chars": content.chars().count(),
+            "keywords": keywords.clone(),
+            "forever_law": "history_jsonl_and_hash_chained_ledger"
+        }),
+    ) {
+        session.status = format!(
+            "Chat blocked after history write: Forever Law ledger could not be sealed ({error}). No LLM/render was started."
+        );
+        return;
+    }
     session.status = format!(
-        "Awaiting {} through local Ollama ({})...",
+        "Awaiting {} through local Ollama ({}) and Chronos/Comfy render...",
         archetype.display_name,
         ollama_model()
     );
@@ -1184,7 +1299,13 @@ fn start_chat_send(session: &mut StandardMechaSession, bridge: &mut ChatBridge) 
     *bridge.receiver.lock().expect("standard chat receiver lock") = Some(receiver);
     bridge.waiting = true;
     thread::spawn(move || {
-        let _ = sender.send(ollama_chat(&model, &system, &prompt));
+        let response = ollama_chat(&model, &system, &prompt);
+        let image = render_chat_image(archetype, &content, keywords);
+        let _ = sender.send(ChatTurnResult {
+            archetype_id: archetype.id.to_owned(),
+            response,
+            image,
+        });
     });
 }
 
@@ -1193,55 +1314,103 @@ fn poll_chat_response(mut session: ResMut<StandardMechaSession>, mut bridge: Res
         return;
     }
     let result = {
-        let guard = bridge
-            .receiver
-            .lock()
-            .expect("standard chat receiver lock");
+        let guard = bridge.receiver.lock().expect("standard chat receiver lock");
         guard.as_ref().and_then(|receiver| receiver.try_recv().ok())
     };
     let Some(result) = result else { return };
     bridge.waiting = false;
-    let archetype = session.active();
-    match result {
-        Ok(content) => {
-            let record = ChatRecord {
-                timestamp: now_millis(),
-                archetype: archetype.id.to_owned(),
-                role: archetype.id.to_owned(),
-                content: content.clone(),
-            };
-            if let Err(error) = append_history_record(archetype.id, &record) {
-                session.status = format!(
-                    "{} answered, but history persistence failed: {error}",
-                    archetype.display_name
-                );
-            } else {
-                session.status = format!("{} answered. History persisted.", archetype.display_name);
-            }
-            session.history.push(record);
-            let _ = append_to_ledger(
-                GameMode::Standard,
-                "mecha_chat_assistant",
-                json!({ "archetype": archetype.id, "chars": content.chars().count() }),
+    let ChatTurnResult {
+        archetype_id,
+        response,
+        image,
+    } = result;
+    let archetype = by_id(&archetype_id)
+        .map(|(_, archetype)| archetype)
+        .unwrap_or_else(|| session.active());
+    let (role, content, response_status, ledger_kind) = match response {
+        Ok(content) => (
+            archetype_id.clone(),
+            content,
+            "complete".to_owned(),
+            "mecha_chat_assistant",
+        ),
+        Err(error) => (
+            "system".to_owned(),
+            format!("LOCAL LLM FAILURE: {error}"),
+            "failed".to_owned(),
+            "mecha_chat_failed",
+        ),
+    };
+    let record = ChatRecord {
+        timestamp: now_millis(),
+        archetype: archetype_id.clone(),
+        role,
+        content: content.clone(),
+        image: Some(image.clone()),
+    };
+    let history_result = append_history_record(&archetype_id, &record);
+    session.history.push(record);
+    let response_ok = response_status == "complete";
+    let ledger_result = append_to_ledger(
+        GameMode::Standard,
+        ledger_kind,
+        json!({
+            "archetype": archetype_id,
+            "response_status": response_status,
+            "chars": content.chars().count(),
+            "image": image.clone(),
+            "forever_law": "history_jsonl_and_hash_chained_ledger"
+        }),
+    );
+
+    session.status = chat_completion_status(
+        archetype,
+        response_ok,
+        &image,
+        history_result,
+        ledger_result,
+    );
+}
+
+fn chat_completion_status(
+    archetype: MechaArchetype,
+    response_ok: bool,
+    image: &ChatImage,
+    history_result: Result<(), String>,
+    ledger_result: Result<(), String>,
+) -> String {
+    if let Err(error) = history_result {
+        return format!(
+            "{} responded, but history persistence failed: {error}",
+            archetype.display_name
+        );
+    }
+    if let Err(error) = ledger_result {
+        return format!(
+            "{} responded, but Forever Law ledger sealing failed: {error}",
+            archetype.display_name
+        );
+    }
+    if image.status != "complete" {
+        if response_ok {
+            return format!(
+                "{} answered, but Chronos/Comfy image failed: {}",
+                archetype.display_name,
+                compact(&image.detail, 180)
             );
         }
-        Err(error) => {
-            let visible = format!("LOCAL LLM FAILURE: {error}");
-            let record = ChatRecord {
-                timestamp: now_millis(),
-                archetype: archetype.id.to_owned(),
-                role: "system".to_owned(),
-                content: visible.clone(),
-            };
-            let _ = append_history_record(archetype.id, &record);
-            session.history.push(record);
-            session.status = visible;
-            let _ = append_to_ledger(
-                GameMode::Standard,
-                "mecha_chat_failed",
-                json!({ "archetype": archetype.id, "error": error }),
-            );
-        }
+        return format!(
+            "Local LLM failed; Chronos/Comfy image also failed: {}",
+            compact(&image.detail, 180)
+        );
+    }
+    if response_ok {
+        format!(
+            "{} answered with a Comfy image. Turn history and ledger sealed.",
+            archetype.display_name
+        )
+    } else {
+        "Local LLM failed; the Comfy image and failure were sealed visibly.".to_owned()
     }
 }
 
@@ -1257,9 +1426,23 @@ fn render_chat_ui(
             With<ChatStatusText>,
             Without<ChatTranscriptText>,
             Without<ChatInputText>,
+            Without<ChatRenderStatusText>,
         ),
     >,
-    mut portraits: Query<&mut ImageNode, With<ChatPortrait>>,
+    mut portraits: Query<&mut ImageNode, (With<ChatPortrait>, Without<ChatRenderImage>)>,
+    mut render_images: Query<
+        (&mut ImageNode, &mut Node),
+        (With<ChatRenderImage>, Without<ChatPortrait>),
+    >,
+    mut render_status: Query<
+        &mut Text,
+        (
+            With<ChatRenderStatusText>,
+            Without<ChatStatusText>,
+            Without<ChatTranscriptText>,
+            Without<ChatInputText>,
+        ),
+    >,
 ) {
     if !session.is_changed() && !bridge.is_changed() {
         return;
@@ -1276,6 +1459,25 @@ fn render_chat_ui(
     }
     if let Ok(mut portrait) = portraits.single_mut() {
         portrait.image = asset_server.load(archetype.portrait_path);
+    }
+    if let Ok((mut image_node, mut node)) = render_images.single_mut() {
+        if let Some(image) = latest_chat_image(&session.history) {
+            if image.status == "complete" {
+                if let Some(asset_path) = image.asset_path.as_deref() {
+                    image_node.image = asset_server.load(asset_path.to_owned());
+                    node.display = Display::Flex;
+                } else {
+                    node.display = Display::None;
+                }
+            } else {
+                node.display = Display::None;
+            }
+        } else {
+            node.display = Display::None;
+        }
+    }
+    if let Ok(mut text) = render_status.single_mut() {
+        text.0 = latest_render_status(&session.history, bridge.waiting);
     }
 }
 
@@ -1296,13 +1498,61 @@ fn render_history(history: &[ChatRecord], waiting: bool) -> String {
                     .map(|archetype| archetype.display_name)
                     .unwrap_or(other),
             };
-            format!("{label}: {}", compact(&record.content, 700))
+            let mut line = format!("{label}: {}", compact(&record.content, 700));
+            if let Some(image) = &record.image {
+                line.push_str(&format!("\nImage: {}", image_history_line(image)));
+            }
+            line
         })
         .collect();
     if waiting {
-        lines.push("System: local Ollama response is forming...".to_owned());
+        lines.push(
+            "System: local Ollama response and Chronos/Comfy image are forming...".to_owned(),
+        );
     }
     lines.join("\n\n")
+}
+
+fn latest_chat_image(history: &[ChatRecord]) -> Option<&ChatImage> {
+    history
+        .iter()
+        .rev()
+        .find_map(|record| record.image.as_ref())
+}
+
+fn image_history_line(image: &ChatImage) -> String {
+    let keywords = image.keywords.join(", ");
+    if image.status == "complete" {
+        format!(
+            "complete | keywords: {keywords} | artifact: {} | proof: {}",
+            image.artifact_id.as_deref().unwrap_or("unreported"),
+            image.proof_receipt_id.as_deref().unwrap_or("unreported")
+        )
+    } else {
+        format!(
+            "FAILED | keywords: {keywords} | {}",
+            compact(&image.detail, 220)
+        )
+    }
+}
+
+fn latest_render_status(history: &[ChatRecord], waiting: bool) -> String {
+    if waiting {
+        return "Chronos/Comfy render forming for this statement.".to_owned();
+    }
+    let Some(image) = latest_chat_image(history) else {
+        return "No rendered response in this chat yet.".to_owned();
+    };
+    if image.status == "complete" {
+        format!(
+            "Complete. Keywords: {}\nArtifact: {}\nProof: {}",
+            image.keywords.join(", "),
+            image.artifact_id.as_deref().unwrap_or("unreported"),
+            image.proof_receipt_id.as_deref().unwrap_or("unreported")
+        )
+    } else {
+        format!("IMAGE FAILURE: {}", compact(&image.detail, 320))
+    }
 }
 
 fn compact(text: &str, max: usize) -> String {
@@ -1325,6 +1575,121 @@ fn llm_context(history: &[ChatRecord]) -> String {
         .map(|record| format!("{}: {}", record.role, compact(&record.content, 360)))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn extract_keywords(statement: &str) -> Vec<String> {
+    let mut keywords = Vec::new();
+    for token in statement.split(|character: char| !character.is_ascii_alphanumeric()) {
+        let token = token.trim().to_ascii_lowercase();
+        if token.len() < 3 || KEYWORD_STOP_WORDS.contains(&token.as_str()) {
+            continue;
+        }
+        if keywords.iter().any(|known| known == &token) {
+            continue;
+        }
+        keywords.push(token);
+        if keywords.len() >= KEYWORD_LIMIT {
+            break;
+        }
+    }
+    if keywords.is_empty() {
+        keywords.push("witness".to_owned());
+    }
+    keywords
+}
+
+fn render_chat_image(
+    archetype: MechaArchetype,
+    witness_statement: &str,
+    keywords: Vec<String>,
+) -> ChatImage {
+    let prompt = image_prompt(archetype, witness_statement, &keywords);
+    let art_style = archetype.art_style().to_owned();
+    let outcome = request_chronos_artifact_with_style(
+        &prompt,
+        &art_style,
+        &format!("archetypes-standard-{}", archetype.id),
+    );
+    image_from_outcome(archetype, keywords, prompt, art_style, outcome)
+}
+
+fn image_prompt(archetype: MechaArchetype, witness_statement: &str, keywords: &[String]) -> String {
+    format!(
+        "Archetypes Standard Mode chat response image. Archetype: {}. Domain: {}. \
+         Extracted keywords: {}. Witness statement: {}. Build one finished image that feels like \
+         this archetype answering the statement through symbol and scene. No text, no UI, no logo. {}",
+        archetype.display_name,
+        archetype.element,
+        keywords.join(", "),
+        witness_statement,
+        archetype.art_style()
+    )
+}
+
+fn image_from_outcome(
+    archetype: MechaArchetype,
+    keywords: Vec<String>,
+    prompt: String,
+    art_style: String,
+    outcome: ArtifactOutcome,
+) -> ChatImage {
+    let mut image = ChatImage {
+        status: outcome.status.clone(),
+        keywords,
+        prompt,
+        art_style,
+        png_path: outcome.png_path.clone(),
+        asset_path: None,
+        artifact_id: outcome.artifact_id.clone(),
+        proof_receipt_id: outcome.proof_receipt_id.clone(),
+        detail: outcome.detail.clone(),
+    };
+    if outcome.status == "complete" {
+        match stage_standard_render(archetype.id, &outcome) {
+            Ok(asset_path) => image.asset_path = Some(asset_path),
+            Err(error) => {
+                image.status = "failed".to_owned();
+                image.detail = format!(
+                    "Chronos rendered, but the image could not be staged for Bevy: {error}"
+                );
+            }
+        }
+    }
+    image
+}
+
+fn stage_standard_render(archetype_id: &str, outcome: &ArtifactOutcome) -> Result<String, String> {
+    let png_path = outcome
+        .png_path
+        .as_deref()
+        .ok_or("Chronos outcome had no PNG path")?;
+    let stem = outcome
+        .artifact_id
+        .as_deref()
+        .or(outcome.proof_receipt_id.as_deref())
+        .unwrap_or("latest");
+    let file_name = format!(
+        "{}-{}-{}.png",
+        sanitize_id(archetype_id),
+        sanitize_id(stem),
+        now_millis()
+    );
+    let dir = standard_render_asset_dir();
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    fs::copy(png_path, dir.join(&file_name)).map_err(|error| error.to_string())?;
+    Ok(format!("standard_mecha/renders/{file_name}"))
+}
+
+fn standard_render_asset_dir() -> PathBuf {
+    let base = if cfg!(debug_assertions) {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("assets")
+    } else {
+        PathBuf::from("assets")
+    };
+    base.join("standard_mecha").join("renders")
 }
 
 fn byte_index(text: &str, char_index: usize) -> usize {
@@ -1450,10 +1815,7 @@ fn now_millis() -> u64 {
         .as_millis() as u64
 }
 
-fn despawn_standard_mecha_ui(
-    mut commands: Commands,
-    query: Query<Entity, With<StandardMechaUi>>,
-) {
+fn despawn_standard_mecha_ui(mut commands: Commands, query: Query<Entity, With<StandardMechaUi>>) {
     for entity in &query {
         commands.entity(entity).despawn();
     }
@@ -1712,10 +2074,7 @@ mod tests {
             .filter(|archetype| !archetype.selector_color_matches_css())
             .map(|archetype| archetype.id)
             .collect();
-        assert_eq!(
-            mismatched,
-            HashSet::from(["mentor", "oracle", "jester"])
-        );
+        assert_eq!(mismatched, HashSet::from(["mentor", "oracle", "jester"]));
     }
 
     #[test]
@@ -1752,16 +2111,57 @@ mod tests {
             archetype: "architect".to_owned(),
             role: "witness".to_owned(),
             content: "Build the bridge.".to_owned(),
+            image: None,
         };
         let second = ChatRecord {
             timestamp: 2,
             archetype: "architect".to_owned(),
             role: "architect".to_owned(),
             content: "Name the load-bearing span.".to_owned(),
+            image: None,
         };
         append_history_record_to(&path, &first).unwrap();
         append_history_record_to(&path, &second).unwrap();
         assert_eq!(read_history_from(&path).unwrap(), vec![first, second]);
+    }
+
+    #[test]
+    fn history_jsonl_round_trips_image_metadata() {
+        let path = std::env::temp_dir().join(format!(
+            "archetypes-standard-mecha-image-history-{}-{}.jsonl",
+            std::process::id(),
+            now_millis()
+        ));
+        let record = ChatRecord {
+            timestamp: 3,
+            archetype: "oracle".to_owned(),
+            role: "oracle".to_owned(),
+            content: "The pattern arrives as an image.".to_owned(),
+            image: Some(ChatImage {
+                status: "complete".to_owned(),
+                keywords: vec!["pattern".to_owned(), "image".to_owned()],
+                prompt: "oracle prompt".to_owned(),
+                art_style: "oracle style".to_owned(),
+                png_path: Some(r"C:\chronos\outputs\oracle.png".to_owned()),
+                asset_path: Some("standard_mecha/renders/oracle-proof.png".to_owned()),
+                artifact_id: Some("artifact-1".to_owned()),
+                proof_receipt_id: Some("receipt-1".to_owned()),
+                detail: "verified".to_owned(),
+            }),
+        };
+        append_history_record_to(&path, &record).unwrap();
+        assert_eq!(read_history_from(&path).unwrap(), vec![record]);
+    }
+
+    #[test]
+    fn keyword_extraction_is_local_deduped_and_bounded() {
+        let keywords = extract_keywords(
+            "When the Architect sees the bridge, the bridge should remember the load path.",
+        );
+        assert_eq!(
+            keywords,
+            vec!["architect", "sees", "bridge", "remember", "load", "path"]
+        );
     }
 
     #[test]

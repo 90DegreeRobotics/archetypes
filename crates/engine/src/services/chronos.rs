@@ -25,6 +25,18 @@ pub struct ArtifactOutcome {
 }
 
 pub fn request_chronos_artifact(prompt: &str) -> ArtifactOutcome {
+    request_chronos_artifact_with_style(
+        prompt,
+        "modern realistic digital painting, natural lighting and color, crisp detail, readable silhouette, no text",
+        "archetypes-council",
+    )
+}
+
+pub fn request_chronos_artifact_with_style(
+    prompt: &str,
+    style: &str,
+    session_id: &str,
+) -> ArtifactOutcome {
     let status: Value = match response_json(
         ureq::get(&format!("{DIRECTOR_URL}/api/v1/status"))
             .timeout(Duration::from_secs(4))
@@ -57,11 +69,11 @@ pub fn request_chronos_artifact(prompt: &str) -> ArtifactOutcome {
             .timeout(Duration::from_secs(480))
             .send_json(json!({
                 "prompt": prompt,
-                "style": "modern realistic digital painting, natural lighting and color, crisp detail, readable silhouette, no text",
+                "style": style,
                 "fidelity": "refined",
                 "comfyui_url": comfyui_url(),
                 "comfyui_output_dir": comfyui_output_dir(),
-                "session_id": "archetypes-council",
+                "session_id": session_id,
             })),
     ) {
         Ok(body) => body,
