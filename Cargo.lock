@@ -3245,6 +3245,10 @@ dependencies = [
 [[package]]
 name = "launcher"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "ureq",
+]
 
 [[package]]
 name = "lazy_static"

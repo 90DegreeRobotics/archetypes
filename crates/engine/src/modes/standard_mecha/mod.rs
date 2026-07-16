@@ -23,16 +23,21 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
-    chamber::{boot::MainMenuUi, ChamberState},
+    chamber::{
+        boot::{spawn_main_menu, MainMenuUi},
+        ChamberState,
+    },
     modes::{
         game_mode::GameMode,
         oracle_riddle::{OracleState, TriggerOracleRiddle},
+        ModeRegistry,
     },
     services::{
         chronos::{request_chronos_artifact_with_style, ArtifactOutcome},
         ledger::append_to_ledger,
         llm::{ollama_chat, ollama_model},
         paths::app_data_root,
+        readiness::probe_readiness,
     },
     theme::Archetype,
 };
@@ -41,6 +46,8 @@ const SOURCE_CANON: &str = "C:\\mecha\\aura-mechanician\\frontend\\src";
 const SELECTOR_CANVAS_WIDTH: f32 = 2816.0;
 const SELECTOR_CANVAS_HEIGHT: f32 = 1536.0;
 const SWITCHING_SECS: f32 = 0.85;
+const IMAGE_REVEAL_SECS: f32 = 0.38;
+const SERVICE_STATUS_REFRESH_SECS: f32 = 2.0;
 const MAX_DRAFT_CHARS: usize = 1200;
 const HISTORY_RENDER_LIMIT: usize = 10;
 const KEYWORD_LIMIT: usize = 8;
@@ -58,6 +65,8 @@ impl Plugin for StandardMechaPlugin {
         app.init_state::<StandardMechaState>()
             .init_resource::<StandardMechaSession>()
             .init_resource::<ChatBridge>()
+            .init_resource::<ChatImageReveal>()
+            .init_resource::<ServiceStatusClock>()
             .add_systems(
                 Update,
                 check_trigger.run_if(in_state(StandardMechaState::Inactive)),
@@ -66,6 +75,7 @@ impl Plugin for StandardMechaPlugin {
             .add_systems(
                 Update,
                 (
+                    handle_selector_escape,
                     update_selector_nodes,
                     activate_selector_node,
                     render_selector_details,
@@ -93,7 +103,9 @@ impl Plugin for StandardMechaPlugin {
                     handle_chat_keyboard,
                     activate_chat_switcher,
                     poll_chat_response,
+                    refresh_service_status_line,
                     render_chat_ui,
+                    reveal_chat_image,
                 )
                     .chain()
                     .run_if(in_state(StandardMechaState::Chat)),
@@ -408,8 +420,9 @@ impl StandardMechaSession {
 
 #[derive(Resource)]
 struct ChatBridge {
-    receiver: Mutex<Option<mpsc::Receiver<ChatTurnResult>>>,
+    receiver: Mutex<Option<mpsc::Receiver<ChatBridgeMsg>>>,
     waiting: bool,
+    phase: String,
 }
 
 impl Default for ChatBridge {
@@ -417,8 +430,15 @@ impl Default for ChatBridge {
         Self {
             receiver: Mutex::new(None),
             waiting: false,
+            phase: String::new(),
         }
     }
+}
+
+#[derive(Debug)]
+enum ChatBridgeMsg {
+    Phase(String),
+    Done(ChatTurnResult),
 }
 
 #[derive(Debug)]
@@ -426,6 +446,27 @@ struct ChatTurnResult {
     archetype_id: String,
     response: Result<String, String>,
     image: ChatImage,
+}
+
+#[derive(Resource, Default)]
+struct ChatImageReveal {
+    shown_path: Option<String>,
+    alpha: f32,
+}
+
+#[derive(Resource)]
+struct ServiceStatusClock {
+    elapsed: f32,
+    line: String,
+}
+
+impl Default for ServiceStatusClock {
+    fn default() -> Self {
+        Self {
+            elapsed: SERVICE_STATUS_REFRESH_SECS,
+            line: String::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -493,6 +534,9 @@ struct ChatRenderImage;
 struct ChatRenderStatusText;
 
 #[derive(Component)]
+struct ChatServiceStatusText;
+
+#[derive(Component)]
 struct ChatSwitchButton {
     index: usize,
 }
@@ -508,13 +552,27 @@ fn check_trigger(
     }
 }
 
+fn handle_selector_escape(
+    keycodes: Res<ButtonInput<KeyCode>>,
+    mut next_state: ResMut<NextState<StandardMechaState>>,
+    commands: Commands,
+    registry: Res<ModeRegistry>,
+) {
+    if keycodes.just_pressed(KeyCode::Escape) {
+        next_state.set(StandardMechaState::Inactive);
+        spawn_main_menu(commands, registry);
+    }
+}
+
 fn spawn_selector_ui(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut session: ResMut<StandardMechaSession>,
 ) {
     session.hovered_index = None;
-    session.status = "Select one consciousness. Ctrl+Space returns here from chat.".to_owned();
+    session.status =
+        "Select one consciousness. Esc returns to the main menu. Ctrl+Space returns here from chat."
+            .to_owned();
     commands
         .spawn((
             Node {
@@ -829,7 +887,10 @@ fn enter_chat(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut session: ResMut<StandardMechaSession>,
+    mut reveal: ResMut<ChatImageReveal>,
 ) {
+    reveal.shown_path = None;
+    reveal.alpha = 0.0;
     let archetype = session.active();
     session.history = read_history(archetype.id).unwrap_or_else(|error| {
         session.status = format!(
@@ -1009,7 +1070,7 @@ fn spawn_chat_panel(root: &mut ChildSpawnerCommands, session: &StandardMechaSess
             ChatTitleText,
         ));
         panel.spawn((
-            Text::new(render_history(&session.history, false)),
+            Text::new(render_history(&session.history, false, "")),
             TextFont {
                 font_size: 16.0,
                 ..default()
@@ -1128,7 +1189,11 @@ fn spawn_portrait_panel(
             TextColor(Color::srgb(0.76, 0.82, 0.92)),
         ));
         panel.spawn((
-            ImageNode::new(asset_server.load(archetype.portrait_path)),
+            ImageNode {
+                image: asset_server.load(archetype.portrait_path),
+                color: Color::srgba(1.0, 1.0, 1.0, 0.0),
+                ..default()
+            },
             Node {
                 width: Val::Percent(88.0),
                 height: Val::Percent(24.0),
@@ -1140,7 +1205,7 @@ fn spawn_portrait_panel(
             ChatRenderImage,
         ));
         panel.spawn((
-            Text::new(latest_render_status(&session.history, false)),
+            Text::new(latest_render_status(&session.history, false, "")),
             TextFont {
                 font_size: 11.0,
                 ..default()
@@ -1149,12 +1214,13 @@ fn spawn_portrait_panel(
             ChatRenderStatusText,
         ));
         panel.spawn((
-            Text::new("LLM: local Ollama route\nGPU/VRAM/RAM/CPU: unavailable in native monitor"),
+            Text::new(service_status_line()),
             TextFont {
                 font_size: 12.0,
                 ..default()
             },
             TextColor(Color::srgb(0.62, 0.66, 0.74)),
+            ChatServiceStatusText,
         ));
     });
 }
@@ -1280,9 +1346,8 @@ fn start_chat_send(session: &mut StandardMechaSession, bridge: &mut ChatBridge) 
         return;
     }
     session.status = format!(
-        "Awaiting {} through local Ollama ({}) and Chronos/Comfy render...",
-        archetype.display_name,
-        ollama_model()
+        "Ollama is forming {}'s reply...",
+        archetype.display_name
     );
 
     let model = ollama_model();
@@ -1298,14 +1363,22 @@ fn start_chat_send(session: &mut StandardMechaSession, bridge: &mut ChatBridge) 
     let (sender, receiver) = mpsc::channel();
     *bridge.receiver.lock().expect("standard chat receiver lock") = Some(receiver);
     bridge.waiting = true;
+    bridge.phase = format!("Ollama is forming {}'s reply...", archetype.display_name);
+    let display_name = archetype.display_name.to_owned();
     thread::spawn(move || {
+        let _ = sender.send(ChatBridgeMsg::Phase(format!(
+            "Ollama is forming {display_name}'s reply..."
+        )));
         let response = ollama_chat(&model, &system, &prompt);
+        let _ = sender.send(ChatBridgeMsg::Phase(
+            "Chronos is painting the response...".to_owned(),
+        ));
         let image = render_chat_image(archetype, &content, keywords);
-        let _ = sender.send(ChatTurnResult {
+        let _ = sender.send(ChatBridgeMsg::Done(ChatTurnResult {
             archetype_id: archetype.id.to_owned(),
             response,
             image,
-        });
+        }));
     });
 }
 
@@ -1313,12 +1386,30 @@ fn poll_chat_response(mut session: ResMut<StandardMechaSession>, mut bridge: Res
     if !bridge.waiting {
         return;
     }
-    let result = {
-        let guard = bridge.receiver.lock().expect("standard chat receiver lock");
-        guard.as_ref().and_then(|receiver| receiver.try_recv().ok())
-    };
-    let Some(result) = result else { return };
-    bridge.waiting = false;
+    loop {
+        let msg = {
+            let guard = bridge.receiver.lock().expect("standard chat receiver lock");
+            guard.as_ref().and_then(|receiver| receiver.try_recv().ok())
+        };
+        let Some(msg) = msg else {
+            break;
+        };
+        match msg {
+            ChatBridgeMsg::Phase(phase) => {
+                bridge.phase = phase.clone();
+                session.status = phase;
+            }
+            ChatBridgeMsg::Done(result) => {
+                bridge.waiting = false;
+                bridge.phase.clear();
+                finish_chat_turn(&mut session, result);
+                break;
+            }
+        }
+    }
+}
+
+fn finish_chat_turn(session: &mut StandardMechaSession, result: ChatTurnResult) {
     let ChatTurnResult {
         archetype_id,
         response,
@@ -1427,6 +1518,7 @@ fn render_chat_ui(
             Without<ChatTranscriptText>,
             Without<ChatInputText>,
             Without<ChatRenderStatusText>,
+            Without<ChatServiceStatusText>,
         ),
     >,
     mut portraits: Query<&mut ImageNode, (With<ChatPortrait>, Without<ChatRenderImage>)>,
@@ -1441,6 +1533,7 @@ fn render_chat_ui(
             Without<ChatStatusText>,
             Without<ChatTranscriptText>,
             Without<ChatInputText>,
+            Without<ChatServiceStatusText>,
         ),
     >,
 ) {
@@ -1449,7 +1542,7 @@ fn render_chat_ui(
     }
     let archetype = session.active();
     if let Ok(mut text) = transcript.single_mut() {
-        text.0 = render_history(&session.history, bridge.waiting);
+        text.0 = render_history(&session.history, bridge.waiting, &bridge.phase);
     }
     if let Ok(mut text) = input.single_mut() {
         text.0 = draft_with_caret(&session);
@@ -1477,11 +1570,67 @@ fn render_chat_ui(
         }
     }
     if let Ok(mut text) = render_status.single_mut() {
-        text.0 = latest_render_status(&session.history, bridge.waiting);
+        text.0 = latest_render_status(&session.history, bridge.waiting, &bridge.phase);
     }
 }
 
-fn render_history(history: &[ChatRecord], waiting: bool) -> String {
+fn refresh_service_status_line(
+    time: Res<Time>,
+    mut clock: ResMut<ServiceStatusClock>,
+    mut status: Query<&mut Text, With<ChatServiceStatusText>>,
+) {
+    clock.elapsed += time.delta_secs();
+    if clock.elapsed < SERVICE_STATUS_REFRESH_SECS && !clock.line.is_empty() {
+        return;
+    }
+    clock.elapsed = 0.0;
+    clock.line = service_status_line();
+    if let Ok(mut text) = status.single_mut() {
+        text.0 = clock.line.clone();
+    }
+}
+
+fn reveal_chat_image(
+    time: Res<Time>,
+    session: Res<StandardMechaSession>,
+    mut reveal: ResMut<ChatImageReveal>,
+    mut render_images: Query<&mut ImageNode, With<ChatRenderImage>>,
+) {
+    let target = latest_chat_image(&session.history)
+        .filter(|image| image.status == "complete")
+        .and_then(|image| image.asset_path.clone());
+
+    match target {
+        Some(path) => {
+            if reveal.shown_path.as_deref() != Some(path.as_str()) {
+                reveal.shown_path = Some(path);
+                reveal.alpha = 0.0;
+            } else {
+                reveal.alpha = (reveal.alpha + time.delta_secs() / IMAGE_REVEAL_SECS).min(1.0);
+            }
+            if let Ok(mut image_node) = render_images.single_mut() {
+                image_node.color = Color::srgba(1.0, 1.0, 1.0, reveal.alpha);
+            }
+        }
+        None => {
+            reveal.shown_path = None;
+            reveal.alpha = 0.0;
+            if let Ok(mut image_node) = render_images.single_mut() {
+                image_node.color = Color::srgba(1.0, 1.0, 1.0, 0.0);
+            }
+        }
+    }
+}
+
+fn service_status_line() -> String {
+    let snap = probe_readiness();
+    match snap.player_hint() {
+        Some(hint) => format!("{}\n{hint}", snap.banner_line()),
+        None => format!("{}\nCouncil chat + Chronos painting ready.", snap.banner_line()),
+    }
+}
+
+fn render_history(history: &[ChatRecord], waiting: bool, phase: &str) -> String {
     if history.is_empty() && !waiting {
         return "No prior messages for this archetype yet. Type and press Enter to send through local Ollama.".to_owned();
     }
@@ -1506,9 +1655,12 @@ fn render_history(history: &[ChatRecord], waiting: bool) -> String {
         })
         .collect();
     if waiting {
-        lines.push(
-            "System: local Ollama response and Chronos/Comfy image are forming...".to_owned(),
-        );
+        let wait_line = if phase.is_empty() {
+            "System: the reply is still forming...".to_owned()
+        } else {
+            format!("System: {phase}")
+        };
+        lines.push(wait_line);
     }
     lines.join("\n\n")
 }
@@ -1523,11 +1675,7 @@ fn latest_chat_image(history: &[ChatRecord]) -> Option<&ChatImage> {
 fn image_history_line(image: &ChatImage) -> String {
     let keywords = image.keywords.join(", ");
     if image.status == "complete" {
-        format!(
-            "complete | keywords: {keywords} | artifact: {} | proof: {}",
-            image.artifact_id.as_deref().unwrap_or("unreported"),
-            image.proof_receipt_id.as_deref().unwrap_or("unreported")
-        )
+        format!("complete | keywords: {keywords}")
     } else {
         format!(
             "FAILED | keywords: {keywords} | {}",
@@ -1536,20 +1684,18 @@ fn image_history_line(image: &ChatImage) -> String {
     }
 }
 
-fn latest_render_status(history: &[ChatRecord], waiting: bool) -> String {
+fn latest_render_status(history: &[ChatRecord], waiting: bool, phase: &str) -> String {
     if waiting {
-        return "Chronos/Comfy render forming for this statement.".to_owned();
+        if phase.is_empty() {
+            return "Reply and painting are still forming.".to_owned();
+        }
+        return phase.to_owned();
     }
     let Some(image) = latest_chat_image(history) else {
         return "No rendered response in this chat yet.".to_owned();
     };
     if image.status == "complete" {
-        format!(
-            "Complete. Keywords: {}\nArtifact: {}\nProof: {}",
-            image.keywords.join(", "),
-            image.artifact_id.as_deref().unwrap_or("unreported"),
-            image.proof_receipt_id.as_deref().unwrap_or("unreported")
-        )
+        format!("Complete. Keywords: {}", image.keywords.join(", "))
     } else {
         format!("IMAGE FAILURE: {}", compact(&image.detail, 320))
     }
@@ -2176,6 +2322,50 @@ mod tests {
         delete_at_cursor(&mut session);
         assert_eq!(session.draft, "helloorld");
         assert_eq!(draft_with_caret(&session), "> hello|orld");
+    }
+
+    #[test]
+    fn player_facing_image_lines_omit_artifact_and_proof_jargon() {
+        let image = ChatImage {
+            status: "complete".to_owned(),
+            keywords: vec!["bridge".to_owned(), "span".to_owned()],
+            prompt: "prompt".to_owned(),
+            art_style: "style".to_owned(),
+            png_path: Some(r"C:\tmp\x.png".to_owned()),
+            asset_path: Some("standard_mecha/renders/x.png".to_owned()),
+            artifact_id: Some("artifact-secret".to_owned()),
+            proof_receipt_id: Some("proof-secret".to_owned()),
+            detail: "verified".to_owned(),
+        };
+        let history_line = image_history_line(&image);
+        let status_line = latest_render_status(
+            &[ChatRecord {
+                timestamp: 1,
+                archetype: "architect".to_owned(),
+                role: "architect".to_owned(),
+                content: "ok".to_owned(),
+                image: Some(image),
+            }],
+            false,
+            "",
+        );
+        assert!(history_line.contains("keywords: bridge, span"));
+        assert!(!history_line.contains("artifact"));
+        assert!(!history_line.contains("proof"));
+        assert!(!status_line.contains("artifact-secret"));
+        assert!(!status_line.contains("proof-secret"));
+        assert!(status_line.contains("Complete. Keywords: bridge, span"));
+    }
+
+    #[test]
+    fn waiting_copy_uses_live_phase_instead_of_static_jargon() {
+        let rendered = render_history(&[], true, "Chronos is painting the response...");
+        assert!(rendered.contains("Chronos is painting the response..."));
+        assert!(!rendered.contains("artifact:"));
+        assert_eq!(
+            latest_render_status(&[], true, "Ollama is forming Architect's reply..."),
+            "Ollama is forming Architect's reply..."
+        );
     }
 
     fn workspace_assets_root() -> PathBuf {

@@ -14,6 +14,11 @@ pub fn comfyui_output_dir() -> String {
         .unwrap_or_else(|_| r"C:\Users\m\Documents\ComfyUI\output".to_owned())
 }
 
+pub fn ollama_model_name() -> String {
+    std::env::var("ARCHETYPES_OLLAMA_MODEL")
+        .unwrap_or_else(|_| "qwen2.5:7b-instruct".to_owned())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArtifactOutcome {
     pub status: String,
@@ -43,11 +48,15 @@ pub fn request_chronos_artifact_with_style(
             .call(),
     ) {
         Ok(status) => status,
-        Err(error) => return failed_outcome(format!("Chronos Director is unreachable: {error}")),
+        Err(error) => {
+            return failed_outcome(format!(
+                "Chronos Director is unreachable on :7777 ({error}). Start Chronos Foundry, then try again."
+            ))
+        }
     };
     if status.get("readiness").and_then(Value::as_str) != Some("ready") {
         return failed_outcome(format!(
-            "Chronos is not ready: {}",
+            "Chronos Foundry is not ready yet: {}",
             status
                 .get("readiness_reasons")
                 .cloned()
@@ -55,14 +64,11 @@ pub fn request_chronos_artifact_with_style(
         ));
     }
 
-    let _ = ureq::post("http://127.0.0.1:11434/api/generate")
-        .timeout(Duration::from_secs(20))
-        .send_json(json!({
-            "model": std::env::var("ARCHETYPES_OLLAMA_MODEL")
-                .unwrap_or_else(|_| "qwen2.5:7b-instruct".to_owned()),
-            "prompt": "",
-            "keep_alive": 0,
-        }));
+    if let Err(error) = unload_ollama_for_comfy() {
+        return failed_outcome(format!(
+            "Could not free the council model from VRAM before painting ({error}). Close other GPU work or restart Ollama, then try again."
+        ));
+    }
 
     let submit: Value = match response_json(
         ureq::post(&format!("{DIRECTOR_URL}/api/v1/pipeline/concept-thumbnail"))
@@ -79,7 +85,7 @@ pub fn request_chronos_artifact_with_style(
         Ok(body) => body,
         Err(error) => {
             return failed_outcome(format!(
-                "Chronos rejected the Comfy request: {error}. Is the Chronos Foundry (ComfyUI on :8000) running?"
+                "Chronos could not reach ComfyUI for painting ({error}). Is Comfy running on :8000 inside Chronos Foundry?"
             ))
         }
     };
@@ -92,7 +98,7 @@ pub fn request_chronos_artifact_with_style(
             artifact_id: string_field(&submit, "concept_id"),
             png_path,
             proof_receipt_id: string_field(&submit, "completion_event_id"),
-            detail: "Chronos reported completion without a readable canvas PNG".to_owned(),
+            detail: "Chronos reported completion without a readable painting file".to_owned(),
         };
     }
     ArtifactOutcome {
@@ -103,6 +109,23 @@ pub fn request_chronos_artifact_with_style(
         proof_receipt_id: string_field(&submit, "completion_event_id"),
         detail: "Chronos returned a verified direct canvas image".to_owned(),
     }
+}
+
+/// Ask Ollama to drop the council model so Comfy can take the RTX 3060.
+/// Fail closed — a silent unload is how shared-GPU paint failures start.
+pub fn unload_ollama_for_comfy() -> Result<(), String> {
+    let model = ollama_model_name();
+    response_json(
+        ureq::post("http://127.0.0.1:11434/api/generate")
+            .timeout(Duration::from_secs(25))
+            .send_json(json!({
+                "model": model,
+                "prompt": "",
+                "keep_alive": 0,
+            })),
+    )
+    .map(|_| ())
+    .map_err(|error| format!("Ollama unload rejected: {error}"))
 }
 
 fn failed_outcome(detail: String) -> ArtifactOutcome {
@@ -131,5 +154,26 @@ pub fn resolve_chronos_path(path: &str) -> PathBuf {
         path
     } else {
         Path::new("C:\\chronos").join(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_chronos_path_joins_relative_under_chronos_root() {
+        let path = resolve_chronos_path("renders/example.png");
+        assert_eq!(
+            path,
+            PathBuf::from(r"C:\chronos\renders\example.png")
+        );
+    }
+
+    #[test]
+    fn failed_outcome_is_explicitly_failed() {
+        let outcome = failed_outcome("test".to_owned());
+        assert_eq!(outcome.status, "failed");
+        assert!(outcome.png_path.is_none());
     }
 }

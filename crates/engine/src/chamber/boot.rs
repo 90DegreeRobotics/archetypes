@@ -2,7 +2,8 @@
 //!
 //! The old table/chamber/menu visuals are parked behind an explicit legacy gate,
 //! while default desktop launch reveals the generated lore-compliant chamber.
-//! The main menu stays in standby until the rebuilt gameplay path is approved.
+//! Standard and Oracle are playable from this menu; Inner Chambers / Living Engine
+//! remain locked.
 
 use std::{fs, path::PathBuf};
 
@@ -13,7 +14,7 @@ use bevy::{
 };
 
 use super::ChamberState;
-use crate::modes::{game_mode::GameMode, standard_mecha::TriggerStandardMecha, ModeRegistry};
+use crate::modes::{game_mode::GameMode, ModeRegistry};
 
 /// Minimum time the title holds — long enough that the heavy scene textures finish
 /// uploading behind it, so the reveal does not hitch.
@@ -286,7 +287,7 @@ pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry
             ))
             .with_children(|menu| {
                 for entry in registry.registrations().iter().copied() {
-                    let available = matches!(entry.mode, GameMode::Standard);
+                    let available = entry.available;
                     let text_color = if available {
                         Color::WHITE
                     } else {
@@ -349,7 +350,7 @@ pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry
                 });
             });
             root.spawn((
-                Text::new("COUNCIL CHAMBER ONLINE"),
+                Text::new(initial_menu_banner()),
                 TextFont {
                     font_size: 15.0,
                     ..default()
@@ -367,10 +368,18 @@ pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry
         });
 }
 
+fn initial_menu_banner() -> String {
+    let snap = crate::services::readiness::probe_readiness();
+    match snap.player_hint() {
+        Some(hint) => format!("{} — {hint}", snap.banner_line()),
+        None => format!("{} — council chamber ready", snap.banner_line()),
+    }
+}
+
 fn menu_label(mode: GameMode) -> &'static str {
     match mode {
         GameMode::Standard => "STANDARD MODE",
-        GameMode::OracleRiddle => "ORACLE RIDDLE - STANDBY",
+        GameMode::OracleRiddle => "ORACLE RIDDLE",
         GameMode::InnerChambers => "INNER CHAMBERS - LOCKED",
         GameMode::LivingEngine => "LIVING ENGINE - LOCKED",
     }
@@ -379,7 +388,7 @@ fn menu_label(mode: GameMode) -> &'static str {
 fn standby_notice(mode: GameMode) -> &'static str {
     match mode {
         GameMode::Standard => "STANDARD MODE OPENING.",
-        GameMode::OracleRiddle => "ORACLE RIDDLE IS STANDING BY OFF THIS PATH.",
+        GameMode::OracleRiddle => "ORACLE RIDDLE OPENING.",
         GameMode::InnerChambers => "INNER CHAMBERS REMAIN LOCKED.",
         GameMode::LivingEngine => "LIVING ENGINE REMAINS LOCKED.",
     }
@@ -466,17 +475,25 @@ fn activate_mode(
             if let Ok(mut text) = notice.single_mut() {
                 text.0 = standby_notice(button.mode).to_owned();
             }
-            if button.available && matches!(button.mode, GameMode::Standard) {
-                for entity in &main_menu {
-                    commands.entity(entity).despawn();
+            if !button.available {
+                info!("{} remains locked", button.mode.label());
+                continue;
+            }
+            for entity in &main_menu {
+                commands.entity(entity).despawn();
+            }
+            match button.mode {
+                GameMode::Standard => {
+                    commands.insert_resource(crate::modes::standard_mecha::TriggerStandardMecha);
+                    info!("{} selected from main menu", button.mode.label());
                 }
-                commands.insert_resource(TriggerStandardMecha);
-                info!("{} selected from main menu", button.mode.label());
-            } else {
-                info!(
-                    "{} remains in standby on the blank-slate shell",
-                    button.mode.label()
-                );
+                GameMode::OracleRiddle => {
+                    commands.insert_resource(crate::modes::oracle_riddle::TriggerOracleRiddle);
+                    info!("{} selected from main menu", button.mode.label());
+                }
+                GameMode::InnerChambers | GameMode::LivingEngine => {
+                    info!("{} remains locked", button.mode.label());
+                }
             }
         }
     }
@@ -620,12 +637,9 @@ mod tests {
     }
 
     #[test]
-    fn menu_labels_expose_standard_and_keep_unready_modes_in_standby() {
+    fn menu_labels_expose_playable_modes_and_keep_locked_modes_locked() {
         assert_eq!(menu_label(GameMode::Standard), "STANDARD MODE");
-        assert_eq!(
-            menu_label(GameMode::OracleRiddle),
-            "ORACLE RIDDLE - STANDBY"
-        );
+        assert_eq!(menu_label(GameMode::OracleRiddle), "ORACLE RIDDLE");
         assert_eq!(
             menu_label(GameMode::InnerChambers),
             "INNER CHAMBERS - LOCKED"
