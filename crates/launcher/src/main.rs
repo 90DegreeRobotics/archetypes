@@ -43,20 +43,12 @@ fn main() {
         }
     };
 
-    let legacy_allow_without_chronos =
-        std::env::var_os("ARCHETYPES_ALLOW_WITHOUT_CHRONOS").is_some();
     let engine = engine_path();
     if let Err(error) = authorize_sentinel_launch(&engine) {
-        let mut body = format!(
+        let body = format!(
             "The Archetypes game engine was not started.\n\n\
              Sentinel launch authorization failed before engine execution:\n{error}"
         );
-        if legacy_allow_without_chronos {
-            body.push_str(
-                "\n\nARCHETYPES_ALLOW_WITHOUT_CHRONOS was set, but it cannot bypass \
-                 the Sentinel launch gate.",
-            );
-        }
         fail_visible(
             "Archetypes Sentinel launch refused",
             &body,
@@ -85,9 +77,6 @@ fn main() {
         eprintln!("\n[required] Chronos Foundry is not ready for play.");
         eprintln!("           Start Chronos Foundry so Director (:7777) reports readiness");
         eprintln!("           and ComfyUI answers on :8000, then relaunch Archetypes.");
-        if legacy_allow_without_chronos {
-            eprintln!("           ARCHETYPES_ALLOW_WITHOUT_CHRONOS is ignored for launch safety.");
-        }
         if let Some(detail) = ready.chronos_detail.as_deref() {
             eprintln!("           Detail: {detail}");
         }
