@@ -1,0 +1,60 @@
+2026-07-20T05:50:28.715060Z  INFO bevy_diagnostic::system_information_diagnostics_plugin::internal: SystemInfo { os: "Windows 11 Pro", kernel: "26200", cpu: "AMD Ryzen 7 2700 Eight-Core Processor", core_count: "8", memory: "31.9 GiB" }
+2026-07-20T05:50:29.340720Z  INFO bevy_render::renderer: AdapterInfo { name: "NVIDIA GeForce RTX 3060", vendor: 4318, device: 9475, device_type: DiscreteGpu, driver: "NVIDIA", driver_info: "596.36", backend: Vulkan }
+2026-07-20T05:50:30.131954Z  INFO bevy_render::batching::gpu_preprocessing: GPU preprocessing is fully supported on this device.
+2026-07-20T05:50:30.150682Z  INFO bevy_winit::system: Creating new window Archetypes — Council Chamber (0v0)
+
+thread 'main' (28044) panicked at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\system\system_param.rs:387:5:
+error[B0001]: Query<<Enable the debug feature to see the name>, <Enable the debug feature to see the name>> in system <Enable the debug feature to see the name> accesses component(s) <Enable the debug feature to see the name> in a way that conflicts with a previous system parameter. Consider using `Without<T>` to create disjoint Queries or merging conflicting Queries into a `ParamSet`. See: https://bevy.org/learn/errors/b0001
+stack backtrace:
+   0: std::panicking::panic_handler
+             at /rustc/ed61e7d7e242494fb7057f2657300d9e77bb4fcb/library\std\src\panicking.rs:698
+   1: core::panicking::panic_fmt
+             at /rustc/ed61e7d7e242494fb7057f2657300d9e77bb4fcb/library\core\src\panicking.rs:75
+   2: bevy_ecs::system::system_param::assert_component_access_compatibility
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\system\system_param.rs:387
+   3: bevy_ecs::system::system_param::impl$1::init_access<tuple$<ref_mut$<bevy_ui::widget::image::ImageNode>,ref_mut$<bevy_ui::ui_node::Node> >,bevy_ecs::query::filter::With<engine::modes::standard_mecha::ChatPortrait> >
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\system\system_param.rs:344
+   4: bevy_ecs::system::system_param::impl$123::init_access<bevy_ecs::system::commands::Commands,bevy_ecs::change_detection::params::Res<engine::modes::standard_mecha::StandardMechaSession>,bevy_ecs::change_detection::params::Res<engine::modes::standard_mecha::C
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\system\system_param.rs:2177
+   5: bevy_ecs::system::function_system::impl$12::initialize<void (*)(bevy_ecs::system::commands::Commands,bevy_ecs::change_detection::params::Res<engine::modes::standard_mecha::StandardMechaSession>,bevy_ecs::change_detection::params::Res<engine::modes::standar
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\system\function_system.rs:743
+   6: bevy_ecs::schedule::node::Systems::initialize
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\schedule\node.rs:591
+   7: bevy_ecs::schedule::schedule::ScheduleGraph::initialize
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\schedule\schedule.rs:1107
+   8: bevy_ecs::schedule::schedule::Schedule::initialize
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\schedule\schedule.rs:571
+   9: bevy_ecs::schedule::schedule::Schedule::run
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\schedule\schedule.rs:535
+  10: bevy_ecs::world::impl$4::try_run_schedule::closure$0<bevy_ecs::intern::Interned<dyn$<bevy_ecs::schedule::set::ScheduleLabel> > >
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\world\mod.rs:3730
+  11: bevy_ecs::world::World::try_schedule_scope<tuple$<>,bevy_ecs::intern::Interned<dyn$<bevy_ecs::schedule::set::ScheduleLabel> >,bevy_ecs::world::impl$4::try_run_schedule::closure_env$0<bevy_ecs::intern::Interned<dyn$<bevy_ecs::schedule::set::ScheduleLabel> >
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\world\mod.rs:3663
+  12: bevy_ecs::world::World::try_run_schedule<bevy_ecs::intern::Interned<dyn$<bevy_ecs::schedule::set::ScheduleLabel> > >
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\world\mod.rs:3730
+  13: bevy_app::main_schedule::impl$2::run_main::closure$1
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_app-0.18.1\src\main_schedule.rs:293
+  14: bevy_ecs::world::World::try_resource_scope<bevy_app::main_schedule::MainScheduleOrder,tuple$<>,bevy_app::main_schedule::impl$2::run_main::closure_env$1>
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\world\mod.rs:2824
+  15: bevy_ecs::world::World::resource_scope<bevy_app::main_schedule::MainScheduleOrder,tuple$<>,bevy_app::main_schedule::impl$2::run_main::closure_env$1>
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\world\mod.rs:2703
+  16: bevy_app::main_schedule::Main::run_main
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_app-0.18.1\src\main_schedule.rs:291
+  17: core::ops::function::FnMut::call_mut<void (*)(ref_mut$<bevy_ecs::world::World>,bevy_ecs::system::system_param::Local<bool>),tuple$<ref_mut$<bevy_ecs::world::World>,bevy_ecs::system::system_param::Local<bool> > >
+             at /rustc/ed61e7d7e242494fb7057f2657300d9e77bb4fcb\library\core\src\ops\function.rs:166
+  18: core::ops::function::impls::impl$3::call_mut<tuple$<ref_mut$<bevy_ecs::world::World>,bevy_ecs::system::system_param::Local<bool> >,void (*)(ref_mut$<bevy_ecs::world::World>,bevy_ecs::system::system_param::Local<bool>)>
+             at /rustc/ed61e7d7e242494fb7057f2657300d9e77bb4fcb\library\core\src\ops\function.rs:298
+  19: bevy_ecs::system::exclusive_function_system::impl$5::run::call_inner<tuple$<>,bevy_ecs::system::system_param::Local<bool>,ref_mut$<void (*)(ref_mut$<bevy_ecs::world::World>,bevy_ecs::system::system_param::Local<bool>)> >
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\system\exclusive_function_system.rs:270
+  20: bevy_ecs::system::exclusive_function_system::impl$5::run<tuple$<>,void (*)(ref_mut$<bevy_ecs::world::World>,bevy_ecs::system::system_param::Local<bool>),bevy_ecs::system::system_param::Local<bool> >
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\system\exclusive_function_system.rs:273
+  21: bevy_ecs::system::exclusive_function_system::impl$2::run_unsafe::closure$0<void (*)(bevy_ecs::system::system_param::Local<bool>),tuple$<>,void (*)(ref_mut$<bevy_ecs::world::World>,bevy_ecs::system::system_param::Local<bool>)>
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\system\exclusive_function_system.rs:135
+  22: bevy_ecs::world::World::last_change_tick_scope<enum2$<core::result::Result<tuple$<>,enum2$<bevy_ecs::system::system::RunSystemError> > >,bevy_ecs::system::exclusive_function_system::impl$2::run_unsafe::closure_env$0<void (*)(bevy_ecs::system::system_param:
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\world\mod.rs:3142
+  23: bevy_ecs::system::exclusive_function_system::impl$2::run_unsafe<void (*)(bevy_ecs::system::system_param::Local<bool>),tuple$<>,void (*)(ref_mut$<bevy_ecs::world::World>,bevy_ecs::system::system_param::Local<bool>)>
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\system\exclusive_function_system.rs:113
+  24: bevy_ecs::system::system::System::run_without_applying_deferred<bevy_ecs::system::exclusive_function_system::ExclusiveFunctionSystem<void (*)(bevy_ecs::system::system_param::Local<bool>),tuple$<>,void (*)(ref_mut$<bevy_ecs::world::World>,bevy_ecs::system::
+             at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\system\system.rs:138
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+Encountered a panic in system `<Enable the debug feature to see the name>`!

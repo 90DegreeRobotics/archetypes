@@ -36,7 +36,9 @@ pub struct InteriorPlugin;
 
 impl Plugin for InteriorPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ClearColor(CEREMONIAL_VOID))
+        // Start pure black so Booting never flashes the ceremonial navy void.
+        // `drive_interior_environment` restores CEREMONIAL_VOID after the title veil.
+        app.insert_resource(ClearColor(Color::BLACK))
             .insert_resource(GlobalAmbientLight {
                 color: CEREMONIAL_AMBIENT,
                 brightness: CEREMONIAL_BRIGHTNESS,
@@ -55,6 +57,13 @@ fn drive_interior_environment(
     mut clear: ResMut<ClearColor>,
     mut ambient: ResMut<GlobalAmbientLight>,
 ) {
+    // Boot owns a pure-black veil. Never paint the ceremonial navy / chamber void
+    // underneath it — that flash of the menu world before the title was a real bug.
+    if *state.get() == ChamberState::Booting {
+        clear.0 = Color::BLACK;
+        return;
+    }
+
     // While a council member holds the floor, the world takes on that archetype's
     // environment; at all other times it rests in the ceremonial void.
     let inside_world = matches!(state.get(), ChamberState::CouncilSpeaking);

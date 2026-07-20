@@ -24,6 +24,7 @@ These are absolute. If you would violate one of them to "finish" a task, stop an
 10. **Definition of Done — wired + end-to-end, or it is NOT done.** A capability is complete ONLY when its output is reachable from a live entry point the operator actually uses, and an end-to-end test drives it.
 11. **Docs are part of Done.** Any change that adds, removes, wires, or unblocks a user-facing capability MUST update the relevant documentation in the same commit.
 12. **Windows metabolism is foundational.** User-facing code must run from the installed `%ProgramFiles%\Archetypes` layout, keep mutable/user data under `%LOCALAPPDATA%\NeuroCognica\Archetypes`, and travel through the versioned installer/update lane. External runtime dependencies must be declared once in `scripts/dependencies.json`, installed idempotently through the bootstrap scripts, and verified by real readiness probes. Never add an undeclared sidecar, repository-only runtime path, or manual prerequisite as an afterthought.
+13. **Desktop launcher surface is mandatory Done.** The operator launches from Desktop `Archetypes.lnk` → `C:\archetypes\dist\launcher.exe`. After any player-facing Rust/assets/launcher change, run `pwsh -File scripts\install_shortcut.ps1` so `dist\` and the Desktop/Start Menu shortcuts match the new build. Source-only edits that never refresh `dist` are unfinished work. See `.cursor/rules/desktop-launcher-surface.mdc`.
 
 ## 2. Branching and remotes — THE ONLY BRANCH IS MAIN
 
@@ -53,6 +54,14 @@ This gate is mandatory when touching:
 - mode routing, ledger behavior, local services, LLM/TTS/Chronos integration, UI behavior, or any player-facing runtime path.
 
 Targeted tests, `cargo check`, or focused commands are encouraged while iterating, but the full workspace test is the final Rust gate before commit.
+
+After that gate passes for player-facing work, **also** refresh the Desktop product:
+
+```pwsh
+pwsh -File scripts\install_shortcut.ps1
+```
+
+Confirm `dist\engine.exe` is newer than the changed sources. The Desktop icon is the operator's truth surface; `target\debug` is not.
 
 ### Docs-only / plan-only / status-only
 Do **not** run `cargo test --workspace` by default. Verify with:

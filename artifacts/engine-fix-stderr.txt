@@ -1,0 +1,4 @@
+2026-07-20T05:51:18.167112Z  INFO bevy_diagnostic::system_information_diagnostics_plugin::internal: SystemInfo { os: "Windows 11 Pro", kernel: "26200", cpu: "AMD Ryzen 7 2700 Eight-Core Processor", core_count: "8", memory: "31.9 GiB" }
+2026-07-20T05:51:18.778394Z  INFO bevy_render::renderer: AdapterInfo { name: "NVIDIA GeForce RTX 3060", vendor: 4318, device: 9475, device_type: DiscreteGpu, driver: "NVIDIA", driver_info: "596.36", backend: Vulkan }
+2026-07-20T05:51:19.546907Z  INFO bevy_render::batching::gpu_preprocessing: GPU preprocessing is fully supported on this device.
+2026-07-20T05:51:19.568657Z  INFO bevy_winit::system: Creating new window Archetypes — Council Chamber (0v0)

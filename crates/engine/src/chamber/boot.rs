@@ -29,8 +29,9 @@ pub struct BootPlugin;
 
 impl Plugin for BootPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_boot_ui)
+        app.insert_resource(ClearColor(Color::BLACK))
             .init_resource::<BootSequence>()
+            .add_systems(PreStartup, spawn_boot_ui)
             .add_systems(
                 Update,
                 (animate_loading_veil, boot_ready)

@@ -46,7 +46,7 @@ impl Plugin for CameraPlugin {
             Update,
             (
                 disable_imported_cameras,
-                gate_table_visibility,
+                gate_boot_and_table_visibility,
                 drive_camera,
             )
                 .chain(),
@@ -54,26 +54,49 @@ impl Plugin for CameraPlugin {
     }
 }
 
-fn gate_table_visibility(
+/// Own all boot/table Visibility + Witness camera activity in one system so it
+/// cannot B0001-conflict with a parallel boot Update system.
+fn gate_boot_and_table_visibility(
     state: Res<State<ChamberState>>,
+    mut clear: ResMut<ClearColor>,
     mut named: Query<(&Name, &mut Visibility)>,
+    mut cameras: Query<&mut Camera, With<WitnessCamera>>,
 ) {
-    let visible = matches!(
+    let booting = *state.get() == ChamberState::Booting;
+    if booting {
+        clear.0 = Color::BLACK;
+    }
+
+    let table_visible = matches!(
         state.get(),
-        ChamberState::Booting
-            | ChamberState::MainMenu
+        ChamberState::MainMenu
             | ChamberState::Onboarding
             | ChamberState::IdleAtTable
             | ChamberState::ArtifactResult
     );
+
     for (name, mut visibility) in &mut named {
-        if name.as_str() == "PortalTable" {
-            *visibility = if visible {
-                Visibility::Visible
-            } else {
-                Visibility::Hidden
-            };
+        match name.as_str() {
+            "LoreCouncilChamber" | "AuthoritativeCouncilChamber" => {
+                *visibility = if booting {
+                    Visibility::Hidden
+                } else {
+                    Visibility::Visible
+                };
+            }
+            "PortalTable" => {
+                *visibility = if table_visible {
+                    Visibility::Visible
+                } else {
+                    Visibility::Hidden
+                };
+            }
+            _ => {}
         }
+    }
+
+    if let Ok(mut camera) = cameras.single_mut() {
+        camera.is_active = !booting;
     }
 }
 

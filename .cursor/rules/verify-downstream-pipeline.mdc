@@ -1,0 +1,20 @@
+---
+description: Verify every change does not break the system or downstream pipeline stages.
+alwaysApply: true
+---
+
+# Verify before Done — no silent breakage
+
+Before calling any change done, verify it does not break the system or harm downstream pipeline stages.
+
+## Required checks
+
+1. **Compile / schedule safety** — Bevy query conflicts (B0001), missing `Without<>`, parallel Update systems that share mutable components.
+2. **Boot / launch path** — black title veil, then menu; Desktop `dist` still launches; no first-frame flash or silent exit.
+3. **Downstream pipeline** — for chat/LLM/Chronos/Comfy/ledger/TTS work, confirm later stages still run (phase wait → reply → image → history/ledger). Do not fix one stage and leave the next dead.
+4. **Operator surface** — after player-facing Rust/assets/launcher changes, refresh `dist` via `scripts\install_shortcut.ps1` (see `desktop-launcher-surface`).
+5. **Fail visible** — if something can crash, the launcher/log path must show why; never leave the operator with a silent close.
+
+## Habit
+
+Call out upstream/downstream surfaces before editing. Smoke-run or gate-test the path you touched. Source that never reaches Desktop is unfinished.

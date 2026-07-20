@@ -15,7 +15,11 @@ use std::{
 };
 
 use bevy::{
-    input::keyboard::Key,
+    input::{
+        keyboard::Key,
+        mouse::{MouseScrollUnit, MouseWheel},
+    },
+    picking::hover::HoverMap,
     prelude::*,
     render::view::window::screenshot::{save_to_disk, Screenshot},
 };
@@ -42,15 +46,35 @@ use crate::{
     theme::Archetype,
 };
 
+#[allow(dead_code)] // provenance + tests; Mecha source root kept for Forever Law audit trail
 const SOURCE_CANON: &str = "C:\\mecha\\aura-mechanician\\frontend\\src";
+/// Operator Seed-of-Life selector plate (visual contract).
+#[allow(dead_code)] // referenced by asset-existence tests
+const UI_CANON_REF: &str = "standard_mecha/canon/seed-of-life-selector.png";
+const CANON_FONT: &str = "fonts/Cinzel-Regular.ttf";
+/// Mecha canvas size kept for provenance of legacy selector_x/y fields.
 const SELECTOR_CANVAS_WIDTH: f32 = 2816.0;
 const SELECTOR_CANVAS_HEIGHT: f32 = 1536.0;
+/// Seed-of-Life ring diameter in px (canon: thin gold circles that touch).
+const SEED_RING_PX: f32 = 152.0;
+/// Center-to-center distance equals ring diameter so neighbors kiss the hub.
+const SEED_RADIUS_PX: f32 = SEED_RING_PX;
+const SEED_CLUSTER_PX: f32 = SEED_RING_PX * 3.0 + 12.0;
 const SWITCHING_SECS: f32 = 0.85;
 const IMAGE_REVEAL_SECS: f32 = 0.38;
 const SERVICE_STATUS_REFRESH_SECS: f32 = 2.0;
 const MAX_DRAFT_CHARS: usize = 1200;
 const HISTORY_RENDER_LIMIT: usize = 10;
 const KEYWORD_LIMIT: usize = 8;
+/// Most Mecha portraits are 1024x1536 (width/height).
+const PORTRAIT_ASPECT_TALL: f32 = 1024.0 / 1536.0;
+/// Sentinel and Explorer portraits are 1024x1024.
+const PORTRAIT_ASPECT_SQUARE: f32 = 1.0;
+/// Sidebar portrait display width in px; height = width / portrait_aspect.
+const PORTRAIT_DISPLAY_WIDTH: f32 = 320.0;
+const CHAT_ARTIFACT_MAX_HEIGHT: f32 = 420.0;
+const WAIT_TICK_SECS: f32 = 0.25;
+const CHAT_SCROLL_LINE_HEIGHT: f32 = 28.0;
 const KEYWORD_STOP_WORDS: &[&str] = &[
     "about", "after", "again", "also", "and", "are", "because", "been", "before", "being",
     "between", "but", "could", "does", "for", "from", "have", "into", "just", "like", "more",
@@ -66,6 +90,7 @@ impl Plugin for StandardMechaPlugin {
             .init_resource::<StandardMechaSession>()
             .init_resource::<ChatBridge>()
             .init_resource::<ChatImageReveal>()
+            .init_resource::<ChatTranscriptFingerprint>()
             .init_resource::<ServiceStatusClock>()
             .add_systems(
                 Update,
@@ -78,7 +103,6 @@ impl Plugin for StandardMechaPlugin {
                     handle_selector_escape,
                     update_selector_nodes,
                     activate_selector_node,
-                    render_selector_details,
                 )
                     .chain()
                     .run_if(in_state(StandardMechaState::Selector)),
@@ -103,13 +127,16 @@ impl Plugin for StandardMechaPlugin {
                     handle_chat_keyboard,
                     activate_chat_switcher,
                     poll_chat_response,
+                    tick_chat_wait_indicator,
                     refresh_service_status_line,
                     render_chat_ui,
                     reveal_chat_image,
+                    send_chat_scroll_events,
                 )
                     .chain()
                     .run_if(in_state(StandardMechaState::Chat)),
             )
+            .add_observer(on_chat_scroll_handler)
             .add_systems(OnExit(StandardMechaState::Chat), despawn_standard_mecha_ui);
         if let Some(capture) = MechaCaptureRun::from_env() {
             app.insert_resource(capture)
@@ -168,8 +195,11 @@ pub struct MechaArchetype {
     pub subtitle: &'static str,
     pub element: &'static str,
     pub selector_role: &'static str,
+    /// Legacy Mecha canvas coordinates (kept for provenance; unused by Seed-of-Life UI).
     pub selector_x: f32,
     pub selector_y: f32,
+    /// Seed-of-Life slot: 0 = center hub, 1..=6 clockwise from top.
+    pub seed_slot: u8,
     pub selector_color: Rgb,
     pub css_primary: Rgb,
     pub css_secondary: Rgb,
@@ -177,6 +207,8 @@ pub struct MechaArchetype {
     pub css_bg_primary: Rgb,
     pub css_bg_elevated: Rgb,
     pub portrait_path: &'static str,
+    /// Source width/height for the portrait PNG (stable layout before texture load).
+    pub portrait_aspect: f32,
     pub icon_path: &'static str,
     pub solid: &'static str,
 }
@@ -192,6 +224,12 @@ impl MechaArchetype {
 
     pub fn selector_color_matches_css(self) -> bool {
         self.selector_color == self.css_primary
+    }
+
+    /// Top-left of this archetype's Seed-of-Life ring inside the cluster box.
+    pub fn seed_ring_origin(self) -> (f32, f32) {
+        let (cx, cy) = seed_slot_center(self.seed_slot);
+        (cx - SEED_RING_PX * 0.5, cy - SEED_RING_PX * 0.5)
     }
 
     pub fn persona(self) -> &'static str {
@@ -247,6 +285,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         selector_role: "Master Watcher",
         selector_x: 1408.0,
         selector_y: 512.0,
+        seed_slot: 0,
         selector_color: Rgb::new(0xdc, 0x26, 0x26),
         css_primary: Rgb::new(0xdc, 0x26, 0x26),
         css_secondary: Rgb::new(0x99, 0x1b, 0x1b),
@@ -254,6 +293,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         css_bg_primary: Rgb::new(0x1a, 0x0a, 0x0a),
         css_bg_elevated: Rgb::new(0x2d, 0x15, 0x15),
         portrait_path: "mecha/sentinel.png",
+        portrait_aspect: PORTRAIT_ASPECT_SQUARE,
         icon_path: "mecha/sentinel-icon.png",
         solid: "octahedron",
     },
@@ -266,6 +306,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         selector_role: "Structure",
         selector_x: 1408.0,
         selector_y: 140.0,
+        seed_slot: 1,
         selector_color: Rgb::new(0x3b, 0x82, 0xf6),
         css_primary: Rgb::new(0x3b, 0x82, 0xf6),
         css_secondary: Rgb::new(0x60, 0xa5, 0xfa),
@@ -273,6 +314,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         css_bg_primary: Rgb::new(0x11, 0x16, 0x21),
         css_bg_elevated: Rgb::new(0x1a, 0x23, 0x32),
         portrait_path: "mecha/architect.png",
+        portrait_aspect: PORTRAIT_ASPECT_TALL,
         icon_path: "mecha/architect-icon.png",
         solid: "tetrahedron",
     },
@@ -285,6 +327,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         selector_role: "Wisdom",
         selector_x: 2130.0,
         selector_y: 280.0,
+        seed_slot: 2,
         selector_color: Rgb::new(0x8b, 0x5c, 0xf6),
         css_primary: Rgb::new(0x05, 0x96, 0x69),
         css_secondary: Rgb::new(0x10, 0xb9, 0x81),
@@ -292,6 +335,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         css_bg_primary: Rgb::new(0x0a, 0x18, 0x10),
         css_bg_elevated: Rgb::new(0x15, 0x28, 0x22),
         portrait_path: "mecha/mentor.png",
+        portrait_aspect: PORTRAIT_ASPECT_TALL,
         icon_path: "mecha/mentor-icon.png",
         solid: "cube",
     },
@@ -304,6 +348,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         selector_role: "Connection",
         selector_x: 2130.0,
         selector_y: 740.0,
+        seed_slot: 5,
         selector_color: Rgb::new(0xec, 0x48, 0x99),
         css_primary: Rgb::new(0xec, 0x48, 0x99),
         css_secondary: Rgb::new(0xf4, 0x72, 0xb6),
@@ -311,6 +356,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         css_bg_primary: Rgb::new(0x1a, 0x0f, 0x1f),
         css_bg_elevated: Rgb::new(0x2d, 0x1a, 0x33),
         portrait_path: "mecha/empath.png",
+        portrait_aspect: PORTRAIT_ASPECT_TALL,
         icon_path: "mecha/empath-icon.png",
         solid: "dodecahedron",
     },
@@ -323,6 +369,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         selector_role: "Foresight",
         selector_x: 1408.0,
         selector_y: 885.0,
+        seed_slot: 4,
         selector_color: Rgb::new(0x10, 0xb9, 0x81),
         css_primary: Rgb::new(0x8b, 0x5c, 0xf6),
         css_secondary: Rgb::new(0xa7, 0x8b, 0xfa),
@@ -330,6 +377,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         css_bg_primary: Rgb::new(0x14, 0x0a, 0x1f),
         css_bg_elevated: Rgb::new(0x1f, 0x13, 0x33),
         portrait_path: "mecha/oracle.png",
+        portrait_aspect: PORTRAIT_ASPECT_TALL,
         icon_path: "mecha/oracle-icon.png",
         solid: "icosahedron",
     },
@@ -342,6 +390,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         selector_role: "Discovery",
         selector_x: 685.0,
         selector_y: 740.0,
+        seed_slot: 3,
         selector_color: Rgb::new(0xf5, 0x9e, 0x0b),
         css_primary: Rgb::new(0xf5, 0x9e, 0x0b),
         css_secondary: Rgb::new(0xd9, 0x77, 0x06),
@@ -349,6 +398,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         css_bg_primary: Rgb::new(0x1a, 0x11, 0x08),
         css_bg_elevated: Rgb::new(0x2d, 0x1f, 0x10),
         portrait_path: "mecha/explorer.png",
+        portrait_aspect: PORTRAIT_ASPECT_SQUARE,
         icon_path: "mecha/explorer-icon.png",
         solid: "octahedron",
     },
@@ -361,6 +411,7 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         selector_role: "Disruption",
         selector_x: 685.0,
         selector_y: 280.0,
+        seed_slot: 6,
         selector_color: Rgb::new(0xa8, 0x55, 0xf7),
         css_primary: Rgb::new(0x10, 0xb9, 0x81),
         css_secondary: Rgb::new(0x34, 0xd3, 0x99),
@@ -368,10 +419,56 @@ pub const MECHA_ARCHETYPES: [MechaArchetype; 7] = [
         css_bg_primary: Rgb::new(0x0a, 0x1a, 0x10),
         css_bg_elevated: Rgb::new(0x13, 0x29, 0x1d),
         portrait_path: "mecha/jester.png",
+        portrait_aspect: PORTRAIT_ASPECT_TALL,
         icon_path: "mecha/jester-icon.png",
         solid: "tetrahedron",
     },
 ];
+
+fn canon_gold_rgb() -> Rgb {
+    Rgb::new(0xc5, 0xa0, 0x59)
+}
+
+fn canon_gold() -> Color {
+    canon_gold_rgb().color()
+}
+
+fn canon_gold_bright() -> Color {
+    Color::srgb(0.92, 0.80, 0.48)
+}
+
+fn canon_gold_soft() -> Color {
+    Color::srgba(0.77, 0.63, 0.35, 0.55)
+}
+
+fn canon_label() -> Color {
+    Color::srgb(0.93, 0.89, 0.80)
+}
+
+fn canon_muted() -> Color {
+    Color::srgb(0.62, 0.58, 0.50)
+}
+
+fn canon_panel_fill() -> Color {
+    Color::srgba(0.04, 0.035, 0.03, 0.82)
+}
+
+/// Center of a Seed-of-Life slot inside the cluster box (px from cluster top-left).
+fn seed_slot_center(slot: u8) -> (f32, f32) {
+    let mid = SEED_CLUSTER_PX * 0.5;
+    let r = SEED_RADIUS_PX;
+    let (dx, dy) = match slot {
+        0 => (0.0, 0.0),
+        1 => (0.0, -1.0),           // Architect — top
+        2 => (0.866_025_4, -0.5),   // Mentor — top-right
+        3 => (0.866_025_4, 0.5),    // Explorer — bottom-right
+        4 => (0.0, 1.0),            // Oracle — bottom
+        5 => (-0.866_025_4, 0.5),   // Empath — bottom-left
+        6 => (-0.866_025_4, -0.5),  // Jester — top-left
+        _ => (0.0, 0.0),
+    };
+    (mid + dx * r, mid + dy * r)
+}
 
 fn by_id(id: &str) -> Option<(usize, MechaArchetype)> {
     MECHA_ARCHETYPES
@@ -423,6 +520,9 @@ struct ChatBridge {
     receiver: Mutex<Option<mpsc::Receiver<ChatBridgeMsg>>>,
     waiting: bool,
     phase: String,
+    /// Seconds since the current turn started (honest wait clock for the player).
+    wait_elapsed_secs: f32,
+    wait_tick_accum: f32,
 }
 
 impl Default for ChatBridge {
@@ -431,6 +531,8 @@ impl Default for ChatBridge {
             receiver: Mutex::new(None),
             waiting: false,
             phase: String::new(),
+            wait_elapsed_secs: 0.0,
+            wait_tick_accum: 0.0,
         }
     }
 }
@@ -452,6 +554,16 @@ struct ChatTurnResult {
 struct ChatImageReveal {
     shown_path: Option<String>,
     alpha: f32,
+}
+
+/// Avoid rebuilding the scrollable transcript every frame; only when the visible
+/// conversation contract actually changes (critical for turn 2+ image/text reveal).
+#[derive(Resource, Default)]
+struct ChatTranscriptFingerprint {
+    history_len: usize,
+    last_timestamp: u64,
+    waiting: bool,
+    phase: String,
 }
 
 #[derive(Resource)]
@@ -501,19 +613,30 @@ struct SelectorNodeButton {
 }
 
 #[derive(Component)]
-struct SelectorDetailsText;
-
-#[derive(Component)]
 struct SwitchingText;
 
 #[derive(Component)]
-struct ChatTranscriptText;
+struct ChatTranscriptRoot;
+
+#[derive(Component)]
+struct ChatTranscriptScrollStart(Vec2);
+
+/// Mouse-wheel / trackpad scroll event that bubbles to the transcript root.
+#[derive(EntityEvent, Debug)]
+#[entity_event(propagate, auto_propagate)]
+struct ChatUiScroll {
+    entity: Entity,
+    delta: Vec2,
+}
 
 #[derive(Component)]
 struct ChatInputText;
 
 #[derive(Component)]
 struct ChatStatusText;
+
+#[derive(Component)]
+struct ChatWaitingBanner;
 
 #[derive(Component)]
 struct ChatTitleText;
@@ -527,8 +650,11 @@ struct ChatElementText;
 #[derive(Component)]
 struct ChatPortrait;
 
+/// In-chat Comfy artifact image keyed by staged asset path for soft reveal.
 #[derive(Component)]
-struct ChatRenderImage;
+struct ChatArtifactImage {
+    asset_path: String,
+}
 
 #[derive(Component)]
 struct ChatRenderStatusText;
@@ -573,6 +699,7 @@ fn spawn_selector_ui(
     session.status =
         "Select one consciousness. Esc returns to the main menu. Ctrl+Space returns here from chat."
             .to_owned();
+    let font = asset_server.load(CANON_FONT);
     commands
         .spawn((
             Node {
@@ -581,6 +708,10 @@ fn spawn_selector_ui(
                 top: Val::Px(0.0),
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                padding: UiRect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(72.0), Val::Px(36.0)),
+                row_gap: Val::Px(28.0),
                 ..default()
             },
             BackgroundColor(Color::BLACK),
@@ -589,156 +720,116 @@ fn spawn_selector_ui(
         ))
         .with_children(|root| {
             root.spawn((
-                ImageNode::new(asset_server.load("mecha/uxbacklayer.png")),
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Percent(-5.0),
-                    top: Val::Percent(-5.0),
-                    width: Val::Percent(110.0),
-                    height: Val::Percent(110.0),
-                    ..default()
-                },
-            ));
-            root.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(0.0),
-                    top: Val::Px(0.0),
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.42)),
-            ));
-            root.spawn((
-                ImageNode::new(asset_server.load("mecha/logo.png")),
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(28.0),
-                    top: Val::Px(24.0),
-                    width: Val::Px(74.0),
-                    height: Val::Px(74.0),
-                    ..default()
-                },
-            ));
-            root.spawn((
-                Text::new("AURA CONSCIOUSNESS SELECTOR"),
+                Text::new("A R C H E T Y P E S"),
                 TextFont {
-                    font_size: 25.0,
+                    font: font.clone(),
+                    font_size: 42.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.86, 0.93, 1.0)),
+                TextColor(canon_gold()),
                 Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(118.0),
-                    top: Val::Px(36.0),
+                    margin: UiRect::bottom(Val::Px(6.0)),
                     ..default()
                 },
-            ));
-            root.spawn((
-                Text::new("QSIC ONLINE"),
-                TextFont {
-                    font_size: 12.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.06, 0.73, 0.51)),
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Percent((150.0 / SELECTOR_CANVAS_WIDTH) * 100.0),
-                    top: Val::Percent((150.0 / SELECTOR_CANVAS_HEIGHT) * 100.0),
-                    ..default()
-                },
-            ));
-            root.spawn((
-                Text::new(selector_detail_text(session.active())),
-                TextFont {
-                    font_size: 16.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.83, 0.86, 0.92)),
-                Node {
-                    position_type: PositionType::Absolute,
-                    right: Val::Px(34.0),
-                    bottom: Val::Px(34.0),
-                    width: Val::Px(380.0),
-                    padding: UiRect::all(Val::Px(18.0)),
-                    border: UiRect::all(Val::Px(1.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.04, 0.04, 0.05, 0.80)),
-                BorderColor::all(Color::srgba(0.45, 0.65, 0.9, 0.40)),
-                SelectorDetailsText,
             ));
 
-            for (index, archetype) in MECHA_ARCHETYPES.iter().copied().enumerate() {
-                root.spawn((
-                    Button,
+            root.spawn((
+                Node {
+                    width: Val::Px(420.0),
+                    height: Val::Px(14.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    margin: UiRect::bottom(Val::Px(18.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+            ))
+            .with_children(|line_row| {
+                line_row.spawn((
                     Node {
                         position_type: PositionType::Absolute,
-                        left: Val::Percent(archetype.selector_left_percent()),
-                        top: Val::Percent(archetype.selector_top_percent()),
-                        width: Val::Px(146.0),
-                        height: Val::Px(132.0),
-                        flex_direction: FlexDirection::Column,
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        row_gap: Val::Px(6.0),
-                        padding: UiRect::all(Val::Px(9.0)),
-                        border: UiRect::all(Val::Px(2.0)),
+                        left: Val::Px(0.0),
+                        width: Val::Percent(100.0),
+                        height: Val::Px(1.0),
                         ..default()
                     },
-                    BackgroundColor(archetype.css_bg_primary.alpha(0.80)),
-                    BorderColor::all(archetype.selector_color.alpha(0.72)),
-                    SelectorNodeButton { index },
-                ))
-                .with_children(|node| {
-                    node.spawn((
-                        ImageNode::new(asset_server.load(archetype.icon_path)),
-                        Node {
-                            width: Val::Px(62.0),
-                            height: Val::Px(62.0),
-                            border: UiRect::all(Val::Px(1.0)),
-                            ..default()
-                        },
-                        BorderColor::all(archetype.selector_color.alpha(0.85)),
-                    ));
-                    node.spawn((
-                        Text::new(archetype.display_name.to_uppercase()),
-                        TextFont {
-                            font_size: 13.0,
-                            ..default()
-                        },
-                        TextColor(Color::WHITE),
-                    ));
-                    node.spawn((
-                        Text::new(archetype.selector_role),
-                        TextFont {
-                            font_size: 10.0,
-                            ..default()
-                        },
-                        TextColor(archetype.selector_color.color()),
-                    ));
-                });
-            }
-        });
-}
+                    BackgroundColor(canon_gold_soft()),
+                ));
+                line_row.spawn((
+                    Node {
+                        width: Val::Px(7.0),
+                        height: Val::Px(7.0),
+                        border_radius: BorderRadius::MAX,
+                        border: UiRect::all(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BackgroundColor(canon_gold_bright()),
+                    BorderColor::all(Color::srgb(1.0, 0.95, 0.82)),
+                    GlobalZIndex(921),
+                ));
+            });
 
-fn selector_detail_text(archetype: MechaArchetype) -> String {
-    let color_note = if archetype.selector_color_matches_css() {
-        "selector and CSS theme colors agree"
-    } else {
-        "selector and CSS theme colors intentionally differ"
-    };
-    format!(
-        "{}\n{}\nElement: {}\nRole: {}\nSolid: {}\n{}\nSource: {}",
-        archetype.display_name.to_uppercase(),
-        archetype.subtitle,
-        archetype.element,
-        archetype.selector_role,
-        archetype.solid,
-        color_note,
-        SOURCE_CANON
-    )
+            root.spawn((
+                Node {
+                    width: Val::Px(SEED_CLUSTER_PX),
+                    height: Val::Px(SEED_CLUSTER_PX),
+                    position_type: PositionType::Relative,
+                    flex_grow: 0.0,
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+            ))
+            .with_children(|cluster| {
+                for (index, archetype) in MECHA_ARCHETYPES.iter().copied().enumerate() {
+                    let (left, top) = archetype.seed_ring_origin();
+                    cluster
+                        .spawn((
+                            Button,
+                            Node {
+                                position_type: PositionType::Absolute,
+                                left: Val::Px(left),
+                                top: Val::Px(top),
+                                width: Val::Px(SEED_RING_PX),
+                                height: Val::Px(SEED_RING_PX),
+                                border_radius: BorderRadius::MAX,
+                                border: UiRect::all(Val::Px(1.5)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(Color::NONE),
+                            BorderColor::all(canon_gold()),
+                            SelectorNodeButton { index },
+                        ))
+                        .with_children(|ring| {
+                            ring.spawn((
+                                Text::new(archetype.display_name),
+                                TextFont {
+                                    font: font.clone(),
+                                    font_size: 18.0,
+                                    ..default()
+                                },
+                                TextColor(canon_label()),
+                            ));
+                        });
+                }
+            });
+
+            root.spawn((
+                Text::new("Select a consciousness · Esc returns to the menu"),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 14.0,
+                    ..default()
+                },
+                TextColor(canon_muted()),
+                Node {
+                    position_type: PositionType::Absolute,
+                    bottom: Val::Px(28.0),
+                    ..default()
+                },
+            ));
+        });
 }
 
 fn update_selector_nodes(
@@ -754,24 +845,23 @@ fn update_selector_nodes(
     mut session: ResMut<StandardMechaSession>,
 ) {
     for (interaction, button, mut background, mut border) in &mut interactions {
-        let archetype = MECHA_ARCHETYPES[button.index];
         match *interaction {
             Interaction::Pressed => {
                 session.hovered_index = Some(button.index);
-                *background = BackgroundColor(archetype.selector_color.alpha(0.42));
-                *border = BorderColor::all(Color::WHITE);
+                *background = BackgroundColor(canon_gold().with_alpha(0.18));
+                *border = BorderColor::all(canon_gold_bright());
             }
             Interaction::Hovered => {
                 session.hovered_index = Some(button.index);
-                *background = BackgroundColor(archetype.selector_color.alpha(0.28));
-                *border = BorderColor::all(archetype.selector_color.color());
+                *background = BackgroundColor(canon_gold().with_alpha(0.10));
+                *border = BorderColor::all(canon_gold_bright());
             }
             Interaction::None => {
                 if session.hovered_index == Some(button.index) {
                     session.hovered_index = None;
                 }
-                *background = BackgroundColor(archetype.css_bg_primary.alpha(0.80));
-                *border = BorderColor::all(archetype.selector_color.alpha(0.72));
+                *background = BackgroundColor(Color::NONE);
+                *border = BorderColor::all(canon_gold());
             }
         }
     }
@@ -791,19 +881,6 @@ fn activate_selector_node(
     }
 }
 
-fn render_selector_details(
-    session: Res<StandardMechaSession>,
-    mut details: Query<&mut Text, With<SelectorDetailsText>>,
-) {
-    if !session.is_changed() {
-        return;
-    }
-    let index = session.hovered_index.unwrap_or(session.active_index);
-    if let Ok(mut text) = details.single_mut() {
-        text.0 = selector_detail_text(MECHA_ARCHETYPES[index]);
-    }
-}
-
 fn spawn_switching_ui(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -811,6 +888,7 @@ fn spawn_switching_ui(
 ) {
     session.switch_elapsed = 0.0;
     let archetype = session.active();
+    let font = asset_server.load(CANON_FONT);
     commands
         .spawn((
             Node {
@@ -822,43 +900,59 @@ fn spawn_switching_ui(
                 flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
-                row_gap: Val::Px(18.0),
+                row_gap: Val::Px(22.0),
                 ..default()
             },
-            BackgroundColor(archetype.css_bg_void.alpha(0.94)),
+            BackgroundColor(Color::BLACK),
             GlobalZIndex(930),
             StandardMechaUi,
         ))
         .with_children(|root| {
             root.spawn((
-                ImageNode::new(asset_server.load(archetype.icon_path)),
                 Node {
-                    width: Val::Px(132.0),
-                    height: Val::Px(132.0),
-                    border: UiRect::all(Val::Px(2.0)),
+                    width: Val::Px(168.0),
+                    height: Val::Px(168.0),
+                    border_radius: BorderRadius::MAX,
+                    border: UiRect::all(Val::Px(1.5)),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
                     ..default()
                 },
-                BorderColor::all(archetype.selector_color.color()),
-            ));
+                BackgroundColor(Color::NONE),
+                BorderColor::all(canon_gold()),
+            ))
+            .with_children(|ring| {
+                ring.spawn((
+                    Text::new(archetype.display_name),
+                    TextFont {
+                        font: font.clone(),
+                        font_size: 22.0,
+                        ..default()
+                    },
+                    TextColor(canon_label()),
+                ));
+            });
             root.spawn((
                 Text::new(format!(
                     "MANIFESTING {}",
                     archetype.display_name.to_uppercase()
                 )),
                 TextFont {
-                    font_size: 30.0,
+                    font: font.clone(),
+                    font_size: 28.0,
                     ..default()
                 },
-                TextColor(archetype.selector_color.color()),
+                TextColor(canon_gold()),
                 SwitchingText,
             ));
             root.spawn((
-                Text::new(format!("{} | {}", archetype.subtitle, archetype.element)),
+                Text::new(format!("{} · {}", archetype.subtitle, archetype.element)),
                 TextFont {
-                    font_size: 16.0,
+                    font: font.clone(),
+                    font_size: 15.0,
                     ..default()
                 },
-                TextColor(Color::srgb(0.78, 0.81, 0.88)),
+                TextColor(canon_muted()),
             ));
         });
 }
@@ -888,9 +982,11 @@ fn enter_chat(
     asset_server: Res<AssetServer>,
     mut session: ResMut<StandardMechaSession>,
     mut reveal: ResMut<ChatImageReveal>,
+    mut fingerprint: ResMut<ChatTranscriptFingerprint>,
 ) {
     reveal.shown_path = None;
     reveal.alpha = 0.0;
+    *fingerprint = ChatTranscriptFingerprint::default();
     let archetype = session.active();
     session.history = read_history(archetype.id).unwrap_or_else(|error| {
         session.status = format!(
@@ -916,7 +1012,8 @@ fn spawn_chat_ui(
     asset_server: &AssetServer,
     session: &StandardMechaSession,
 ) {
-    let archetype = session.active();
+    let _archetype = session.active();
+    let font = asset_server.load(CANON_FONT);
     commands
         .spawn((
             Node {
@@ -927,46 +1024,28 @@ fn spawn_chat_ui(
                 height: Val::Percent(100.0),
                 ..default()
             },
-            BackgroundColor(archetype.css_bg_void.color()),
+            BackgroundColor(Color::BLACK),
             GlobalZIndex(925),
             StandardMechaUi,
         ))
         .with_children(|root| {
             root.spawn((
-                ImageNode::new(asset_server.load("mecha/uxbacklayer.png")),
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(0.0),
-                    top: Val::Px(0.0),
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
+                Text::new("A R C H E T Y P E S"),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 22.0,
                     ..default()
                 },
-            ));
-            root.spawn((
+                TextColor(canon_gold()),
                 Node {
                     position_type: PositionType::Absolute,
-                    left: Val::Px(0.0),
-                    top: Val::Px(0.0),
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    ..default()
-                },
-                BackgroundColor(archetype.css_bg_void.alpha(0.82)),
-            ));
-            root.spawn((
-                ImageNode::new(asset_server.load("mecha/logo.png")),
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(24.0),
-                    top: Val::Px(20.0),
-                    width: Val::Px(58.0),
-                    height: Val::Px(58.0),
+                    left: Val::Px(28.0),
+                    top: Val::Px(22.0),
                     ..default()
                 },
             ));
             spawn_chat_switcher(root, asset_server, session);
-            spawn_chat_panel(root, session);
+            spawn_chat_panel(root, asset_server, session);
             spawn_portrait_panel(root, asset_server, session);
         });
 }
@@ -976,15 +1055,16 @@ fn spawn_chat_switcher(
     asset_server: &AssetServer,
     session: &StandardMechaSession,
 ) {
+    let font = asset_server.load(CANON_FONT);
     root.spawn((
         Node {
             position_type: PositionType::Absolute,
-            left: Val::Px(98.0),
-            top: Val::Px(20.0),
-            height: Val::Px(58.0),
+            right: Val::Px(34.0),
+            top: Val::Px(18.0),
+            height: Val::Px(52.0),
             flex_direction: FlexDirection::Row,
             align_items: AlignItems::Center,
-            column_gap: Val::Px(8.0),
+            column_gap: Val::Px(10.0),
             ..default()
         },
         BackgroundColor(Color::NONE),
@@ -995,45 +1075,54 @@ fn spawn_chat_switcher(
             row.spawn((
                 Button,
                 Node {
-                    width: Val::Px(if active { 144.0 } else { 48.0 }),
-                    height: Val::Px(48.0),
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::Center,
-                    column_gap: Val::Px(7.0),
-                    padding: UiRect::all(Val::Px(5.0)),
+                    width: Val::Px(if active { 118.0 } else { 44.0 }),
+                    height: Val::Px(44.0),
+                    border_radius: BorderRadius::MAX,
                     border: UiRect::all(Val::Px(1.0)),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    padding: UiRect::axes(Val::Px(10.0), Val::Px(0.0)),
                     ..default()
                 },
                 BackgroundColor(if active {
-                    archetype.selector_color.alpha(0.32)
+                    canon_gold().with_alpha(0.14)
                 } else {
-                    archetype.css_bg_primary.alpha(0.72)
+                    Color::NONE
                 }),
                 BorderColor::all(if active {
-                    archetype.selector_color.color()
+                    canon_gold_bright()
                 } else {
-                    archetype.selector_color.alpha(0.36)
+                    canon_gold_soft()
                 }),
                 ChatSwitchButton { index },
             ))
             .with_children(|button| {
-                button.spawn((
-                    ImageNode::new(asset_server.load(archetype.icon_path)),
-                    Node {
-                        width: Val::Px(34.0),
-                        height: Val::Px(34.0),
-                        ..default()
-                    },
-                ));
                 if active {
                     button.spawn((
-                        Text::new(archetype.display_name.to_uppercase()),
+                        Text::new(archetype.display_name),
                         TextFont {
-                            font_size: 12.0,
+                            font: font.clone(),
+                            font_size: 13.0,
                             ..default()
                         },
-                        TextColor(Color::WHITE),
+                        TextColor(canon_label()),
+                    ));
+                } else {
+                    button.spawn((
+                        Text::new(
+                            archetype
+                                .display_name
+                                .chars()
+                                .next()
+                                .unwrap_or('?')
+                                .to_string(),
+                        ),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(canon_muted()),
                     ));
                 }
             });
@@ -1041,60 +1130,102 @@ fn spawn_chat_switcher(
     });
 }
 
-fn spawn_chat_panel(root: &mut ChildSpawnerCommands, session: &StandardMechaSession) {
+fn spawn_chat_panel(
+    root: &mut ChildSpawnerCommands,
+    asset_server: &AssetServer,
+    session: &StandardMechaSession,
+) {
     let archetype = session.active();
+    let font = asset_server.load(CANON_FONT);
     root.spawn((
         Node {
             position_type: PositionType::Absolute,
             left: Val::Px(30.0),
-            top: Val::Px(96.0),
+            top: Val::Px(86.0),
             width: Val::Percent(57.0),
-            height: Val::Percent(82.0),
+            height: Val::Percent(84.0),
             flex_direction: FlexDirection::Column,
             padding: UiRect::all(Val::Px(20.0)),
             border: UiRect::all(Val::Px(1.0)),
             row_gap: Val::Px(14.0),
             ..default()
         },
-        BackgroundColor(archetype.css_bg_primary.alpha(0.88)),
-        BorderColor::all(archetype.selector_color.alpha(0.58)),
+        BackgroundColor(canon_panel_fill()),
+        BorderColor::all(canon_gold_soft()),
     ))
     .with_children(|panel| {
         panel.spawn((
             Text::new(format!("{} CHANNEL", archetype.display_name.to_uppercase())),
             TextFont {
+                font: font.clone(),
                 font_size: 22.0,
                 ..default()
             },
-            TextColor(archetype.selector_color.color()),
+            TextColor(canon_gold()),
             ChatTitleText,
         ));
+        panel
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(68.0),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(14.0),
+                    padding: UiRect::all(Val::Px(14.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    overflow: Overflow::scroll_y(),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.45)),
+                BorderColor::all(canon_gold().with_alpha(0.28)),
+                ScrollPosition(Vec2::ZERO),
+                ChatTranscriptScrollStart(Vec2::ZERO),
+                ChatTranscriptRoot,
+                Pickable::default(),
+            ))
+            .observe(on_chat_transcript_drag_start)
+            .observe(on_chat_transcript_drag)
+            .with_children(|transcript| {
+                populate_chat_transcript(
+                    transcript,
+                    asset_server,
+                    &session.history,
+                    false,
+                    "",
+                    0.0,
+                    1.0,
+                    None,
+                    canon_gold_rgb(),
+                );
+            });
         panel.spawn((
-            Text::new(render_history(&session.history, false, "")),
+            Text::new(waiting_banner_text(false, "", 0.0)),
             TextFont {
-                font_size: 16.0,
+                font: font.clone(),
+                font_size: 15.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.86, 0.88, 0.92)),
+            TextColor(canon_gold()),
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Percent(68.0),
-                padding: UiRect::all(Val::Px(14.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                overflow: Overflow::clip_y(),
+                min_height: Val::Px(0.0),
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(0.0)),
+                border: UiRect::all(Val::Px(0.0)),
+                display: Display::None,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.34)),
-            BorderColor::all(archetype.selector_color.alpha(0.28)),
-            ChatTranscriptText,
+            BackgroundColor(canon_gold().with_alpha(0.12)),
+            BorderColor::all(canon_gold_soft()),
+            ChatWaitingBanner,
         ));
         panel.spawn((
             Text::new(draft_with_caret(session)),
             TextFont {
+                font: font.clone(),
                 font_size: 17.0,
                 ..default()
             },
-            TextColor(Color::WHITE),
+            TextColor(canon_label()),
             Node {
                 width: Val::Percent(100.0),
                 min_height: Val::Px(58.0),
@@ -1102,17 +1233,18 @@ fn spawn_chat_panel(root: &mut ChildSpawnerCommands, session: &StandardMechaSess
                 border: UiRect::all(Val::Px(1.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.46)),
-            BorderColor::all(archetype.selector_color.alpha(0.64)),
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
+            BorderColor::all(canon_gold_soft()),
             ChatInputText,
         ));
         panel.spawn((
             Text::new(session.status.clone()),
             TextFont {
-                font_size: 12.0,
+                font: font.clone(),
+                font_size: 13.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.68, 0.72, 0.80)),
+            TextColor(canon_muted()),
             ChatStatusText,
         ));
     });
@@ -1124,13 +1256,14 @@ fn spawn_portrait_panel(
     session: &StandardMechaSession,
 ) {
     let archetype = session.active();
+    let font = asset_server.load(CANON_FONT);
     root.spawn((
         Node {
             position_type: PositionType::Absolute,
             right: Val::Px(34.0),
-            top: Val::Px(96.0),
+            top: Val::Px(86.0),
             width: Val::Percent(33.0),
-            height: Val::Percent(82.0),
+            height: Val::Percent(84.0),
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
             padding: UiRect::all(Val::Px(20.0)),
@@ -1138,88 +1271,74 @@ fn spawn_portrait_panel(
             row_gap: Val::Px(12.0),
             ..default()
         },
-        BackgroundColor(archetype.css_bg_elevated.alpha(0.86)),
-        BorderColor::all(archetype.selector_color.alpha(0.70)),
+        BackgroundColor(canon_panel_fill()),
+        BorderColor::all(canon_gold_soft()),
     ))
     .with_children(|panel| {
         panel.spawn((
-            ImageNode::new(asset_server.load(archetype.portrait_path)),
-            Node {
-                width: Val::Percent(86.0),
-                height: Val::Percent(44.0),
-                border: UiRect::all(Val::Px(2.0)),
-                ..default()
-            },
-            BorderColor::all(archetype.selector_color.color()),
+            ImageNode::new(asset_server.load(archetype.portrait_path))
+                .with_mode(NodeImageMode::Auto),
+            portrait_node(archetype),
+            BorderColor::all(canon_gold()),
             ChatPortrait,
         ));
         panel.spawn((
             Text::new(archetype.display_name.to_uppercase()),
             TextFont {
+                font: font.clone(),
                 font_size: 28.0,
                 ..default()
             },
-            TextColor(archetype.selector_color.color()),
+            TextColor(canon_gold()),
             ChatTitleText,
         ));
         panel.spawn((
             Text::new(archetype.subtitle),
             TextFont {
+                font: font.clone(),
                 font_size: 16.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.86, 0.88, 0.92)),
+            TextColor(canon_label()),
             ChatSubtitleText,
         ));
         panel.spawn((
             Text::new(format!("Element: {}", archetype.element)),
             TextFont {
+                font: font.clone(),
                 font_size: 14.0,
                 ..default()
             },
-            TextColor(archetype.css_secondary.color()),
+            TextColor(canon_muted()),
             ChatElementText,
         ));
         panel.spawn((
-            Text::new("LATEST COMFY RENDER"),
+            Text::new("CHANNEL IMAGE STATUS"),
             TextFont {
+                font: font.clone(),
                 font_size: 12.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.76, 0.82, 0.92)),
+            TextColor(canon_gold_soft()),
         ));
         panel.spawn((
-            ImageNode {
-                image: asset_server.load(archetype.portrait_path),
-                color: Color::srgba(1.0, 1.0, 1.0, 0.0),
-                ..default()
-            },
-            Node {
-                width: Val::Percent(88.0),
-                height: Val::Percent(24.0),
-                display: Display::None,
-                border: UiRect::all(Val::Px(1.0)),
-                ..default()
-            },
-            BorderColor::all(archetype.selector_color.alpha(0.55)),
-            ChatRenderImage,
-        ));
-        panel.spawn((
-            Text::new(latest_render_status(&session.history, false, "")),
+            Text::new(latest_render_status(&session.history, false, "", 0.0)),
             TextFont {
+                font: font.clone(),
                 font_size: 11.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.68, 0.72, 0.80)),
+            TextColor(canon_muted()),
             ChatRenderStatusText,
         ));
         panel.spawn((
             Text::new(service_status_line()),
             TextFont {
+                font: font.clone(),
                 font_size: 12.0,
                 ..default()
             },
-            TextColor(Color::srgb(0.62, 0.66, 0.74)),
+            TextColor(canon_muted()),
             ChatServiceStatusText,
         ));
     });
@@ -1363,6 +1482,8 @@ fn start_chat_send(session: &mut StandardMechaSession, bridge: &mut ChatBridge) 
     let (sender, receiver) = mpsc::channel();
     *bridge.receiver.lock().expect("standard chat receiver lock") = Some(receiver);
     bridge.waiting = true;
+    bridge.wait_elapsed_secs = 0.0;
+    bridge.wait_tick_accum = 0.0;
     bridge.phase = format!("Ollama is forming {}'s reply...", archetype.display_name);
     let display_name = archetype.display_name.to_owned();
     thread::spawn(move || {
@@ -1371,7 +1492,7 @@ fn start_chat_send(session: &mut StandardMechaSession, bridge: &mut ChatBridge) 
         )));
         let response = ollama_chat(&model, &system, &prompt);
         let _ = sender.send(ChatBridgeMsg::Phase(
-            "Chronos is painting the response...".to_owned(),
+            "Chronos/Comfy is painting the response image...".to_owned(),
         ));
         let image = render_chat_image(archetype, &content, keywords);
         let _ = sender.send(ChatBridgeMsg::Done(ChatTurnResult {
@@ -1380,6 +1501,25 @@ fn start_chat_send(session: &mut StandardMechaSession, bridge: &mut ChatBridge) 
             image,
         }));
     });
+}
+
+fn tick_chat_wait_indicator(time: Res<Time>, mut bridge: ResMut<ChatBridge>) {
+    if !bridge.waiting {
+        // Do not touch the resource every idle frame — that marks ChatBridge changed,
+        // forces a full transcript rebuild, and can stick new images at alpha 0.
+        if bridge.wait_elapsed_secs != 0.0 || bridge.wait_tick_accum != 0.0 {
+            bridge.wait_elapsed_secs = 0.0;
+            bridge.wait_tick_accum = 0.0;
+        }
+        return;
+    }
+    bridge.wait_elapsed_secs += time.delta_secs();
+    bridge.wait_tick_accum += time.delta_secs();
+    if bridge.wait_tick_accum >= WAIT_TICK_SECS {
+        bridge.wait_tick_accum = 0.0;
+        // Touch the resource so render_chat_ui refreshes the live seconds counter.
+        bridge.phase = bridge.phase.clone();
+    }
 }
 
 fn poll_chat_response(mut session: ResMut<StandardMechaSession>, mut bridge: ResMut<ChatBridge>) {
@@ -1402,6 +1542,8 @@ fn poll_chat_response(mut session: ResMut<StandardMechaSession>, mut bridge: Res
             ChatBridgeMsg::Done(result) => {
                 bridge.waiting = false;
                 bridge.phase.clear();
+                bridge.wait_elapsed_secs = 0.0;
+                bridge.wait_tick_accum = 0.0;
                 finish_chat_turn(&mut session, result);
                 break;
             }
@@ -1506,72 +1648,239 @@ fn chat_completion_status(
 }
 
 fn render_chat_ui(
+    mut commands: Commands,
     session: Res<StandardMechaSession>,
     bridge: Res<ChatBridge>,
+    reveal: Res<ChatImageReveal>,
+    mut fingerprint: ResMut<ChatTranscriptFingerprint>,
     asset_server: Res<AssetServer>,
-    mut transcript: Query<&mut Text, With<ChatTranscriptText>>,
-    mut input: Query<&mut Text, (With<ChatInputText>, Without<ChatTranscriptText>)>,
+    transcript_roots: Query<Entity, With<ChatTranscriptRoot>>,
+    mut input: Query<&mut Text, With<ChatInputText>>,
     mut status: Query<
         &mut Text,
         (
             With<ChatStatusText>,
-            Without<ChatTranscriptText>,
+            Without<ChatInputText>,
+            Without<ChatRenderStatusText>,
+            Without<ChatServiceStatusText>,
+            Without<ChatWaitingBanner>,
+        ),
+    >,
+    mut waiting_banner: Query<
+        (&mut Text, &mut Node, &mut BackgroundColor, &mut BorderColor),
+        (
+            With<ChatWaitingBanner>,
+            Without<ChatPortrait>,
+            Without<ChatStatusText>,
             Without<ChatInputText>,
             Without<ChatRenderStatusText>,
             Without<ChatServiceStatusText>,
         ),
     >,
-    mut portraits: Query<&mut ImageNode, (With<ChatPortrait>, Without<ChatRenderImage>)>,
-    mut render_images: Query<
+    mut portraits: Query<
         (&mut ImageNode, &mut Node),
-        (With<ChatRenderImage>, Without<ChatPortrait>),
+        (With<ChatPortrait>, Without<ChatWaitingBanner>),
     >,
     mut render_status: Query<
         &mut Text,
         (
             With<ChatRenderStatusText>,
             Without<ChatStatusText>,
-            Without<ChatTranscriptText>,
             Without<ChatInputText>,
             Without<ChatServiceStatusText>,
+            Without<ChatWaitingBanner>,
         ),
     >,
 ) {
-    if !session.is_changed() && !bridge.is_changed() {
+    let session_changed = session.is_changed();
+    let bridge_changed = bridge.is_changed();
+    if !session_changed && !bridge_changed {
         return;
     }
+
     let archetype = session.active();
-    if let Ok(mut text) = transcript.single_mut() {
-        text.0 = render_history(&session.history, bridge.waiting, &bridge.phase);
+    let last_timestamp = session.history.last().map(|r| r.timestamp).unwrap_or(0);
+    let history_grew = session.history.len() > fingerprint.history_len
+        || last_timestamp > fingerprint.last_timestamp;
+    let transcript_changed = fingerprint.history_len != session.history.len()
+        || fingerprint.last_timestamp != last_timestamp
+        || fingerprint.waiting != bridge.waiting
+        || fingerprint.phase != bridge.phase;
+
+    if transcript_changed {
+        fingerprint.history_len = session.history.len();
+        fingerprint.last_timestamp = last_timestamp;
+        fingerprint.waiting = bridge.waiting;
+        fingerprint.phase = bridge.phase.clone();
+
+        let latest_path = latest_chat_image(&session.history)
+            .filter(|image| image.status == "complete")
+            .and_then(|image| image.asset_path.as_deref());
+        let reveal_alpha = match (&reveal.shown_path, latest_path) {
+            (Some(shown), Some(latest)) if shown == latest => reveal.alpha.max(0.05),
+            (None, Some(_)) => 1.0,
+            (_, Some(_)) => 0.05,
+            _ => 1.0,
+        };
+        if let Ok(root) = transcript_roots.single() {
+            commands.entity(root).despawn_related::<Children>();
+            commands.entity(root).with_children(|transcript| {
+                populate_chat_transcript(
+                    transcript,
+                    &asset_server,
+                    &session.history,
+                    bridge.waiting,
+                    &bridge.phase,
+                    bridge.wait_elapsed_secs,
+                    reveal_alpha,
+                    latest_path,
+                    canon_gold_rgb(),
+                );
+            });
+            // Only jump to the newest turn when history grows — never fight manual scroll
+            // during wait-phase refreshes.
+            if history_grew {
+                commands
+                    .entity(root)
+                    .insert(ScrollPosition(Vec2::new(0.0, 1_000_000.0)));
+            }
+        }
     }
+
     if let Ok(mut text) = input.single_mut() {
         text.0 = draft_with_caret(&session);
     }
     if let Ok(mut text) = status.single_mut() {
-        text.0 = session.status.clone();
-    }
-    if let Ok(mut portrait) = portraits.single_mut() {
-        portrait.image = asset_server.load(archetype.portrait_path);
-    }
-    if let Ok((mut image_node, mut node)) = render_images.single_mut() {
-        if let Some(image) = latest_chat_image(&session.history) {
-            if image.status == "complete" {
-                if let Some(asset_path) = image.asset_path.as_deref() {
-                    image_node.image = asset_server.load(asset_path.to_owned());
-                    node.display = Display::Flex;
-                } else {
-                    node.display = Display::None;
-                }
-            } else {
-                node.display = Display::None;
-            }
+        text.0 = if bridge.waiting {
+            waiting_status_line(&bridge.phase, bridge.wait_elapsed_secs)
         } else {
+            session.status.clone()
+        };
+    }
+    if let Ok((mut text, mut node, mut background, mut border)) = waiting_banner.single_mut() {
+        if bridge.waiting {
+            text.0 = waiting_banner_text(true, &bridge.phase, bridge.wait_elapsed_secs);
+            node.display = Display::Flex;
+            node.min_height = Val::Px(44.0);
+            node.padding = UiRect::all(Val::Px(12.0));
+            node.border = UiRect::all(Val::Px(1.0));
+            *background = BackgroundColor(canon_gold().with_alpha(0.14));
+            *border = BorderColor::all(canon_gold());
+        } else {
+            text.0.clear();
             node.display = Display::None;
+            node.min_height = Val::Px(0.0);
+            node.padding = UiRect::axes(Val::Px(12.0), Val::Px(0.0));
+            node.border = UiRect::all(Val::Px(0.0));
+        }
+    }
+    if session_changed {
+        if let Ok((mut portrait, mut node)) = portraits.single_mut() {
+            portrait.image = asset_server.load(archetype.portrait_path);
+            portrait.image_mode = NodeImageMode::Auto;
+            *node = portrait_node(archetype);
         }
     }
     if let Ok(mut text) = render_status.single_mut() {
-        text.0 = latest_render_status(&session.history, bridge.waiting, &bridge.phase);
+        text.0 = latest_render_status(
+            &session.history,
+            bridge.waiting,
+            &bridge.phase,
+            bridge.wait_elapsed_secs,
+        );
     }
+}
+
+fn send_chat_scroll_events(
+    mut mouse_wheel_reader: MessageReader<MouseWheel>,
+    hover_map: Res<HoverMap>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut commands: Commands,
+) {
+    for mouse_wheel in mouse_wheel_reader.read() {
+        let mut delta = -Vec2::new(mouse_wheel.x, mouse_wheel.y);
+        if mouse_wheel.unit == MouseScrollUnit::Line {
+            delta *= CHAT_SCROLL_LINE_HEIGHT;
+        }
+        if keyboard_input.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]) {
+            std::mem::swap(&mut delta.x, &mut delta.y);
+        }
+        for pointer_map in hover_map.values() {
+            for entity in pointer_map.keys().copied() {
+                commands.trigger(ChatUiScroll { entity, delta });
+            }
+        }
+    }
+}
+
+fn on_chat_scroll_handler(
+    mut scroll: On<ChatUiScroll>,
+    mut query: Query<(&mut ScrollPosition, &Node, &ComputedNode)>,
+) {
+    let Ok((mut scroll_position, node, computed)) = query.get_mut(scroll.entity) else {
+        return;
+    };
+    if node.overflow.y != OverflowAxis::Scroll && node.overflow.x != OverflowAxis::Scroll {
+        return;
+    }
+
+    let max_offset = ((computed.content_size() - computed.size()) * computed.inverse_scale_factor())
+        .max(Vec2::ZERO);
+    let delta = &mut scroll.delta;
+
+    if node.overflow.x == OverflowAxis::Scroll && delta.x != 0.0 {
+        let at_end = if delta.x > 0.0 {
+            scroll_position.x >= max_offset.x
+        } else {
+            scroll_position.x <= 0.0
+        };
+        if !at_end {
+            scroll_position.x = (scroll_position.x + delta.x).clamp(0.0, max_offset.x);
+            delta.x = 0.0;
+        }
+    }
+
+    if node.overflow.y == OverflowAxis::Scroll && delta.y != 0.0 {
+        let at_end = if delta.y > 0.0 {
+            scroll_position.y >= max_offset.y
+        } else {
+            scroll_position.y <= 0.0
+        };
+        if !at_end {
+            scroll_position.y = (scroll_position.y + delta.y).clamp(0.0, max_offset.y);
+            delta.y = 0.0;
+        }
+    }
+
+    if *delta == Vec2::ZERO {
+        scroll.propagate(false);
+    }
+}
+
+fn on_chat_transcript_drag_start(
+    drag_start: On<Pointer<DragStart>>,
+    mut query: Query<(&ComputedNode, &mut ChatTranscriptScrollStart), With<ChatTranscriptRoot>>,
+) {
+    let Ok((computed, mut start)) = query.get_mut(drag_start.entity) else {
+        return;
+    };
+    start.0 = computed.scroll_position * computed.inverse_scale_factor;
+}
+
+fn on_chat_transcript_drag(
+    drag: On<Pointer<Drag>>,
+    mut query: Query<
+        (&mut ScrollPosition, &ChatTranscriptScrollStart, &ComputedNode),
+        With<ChatTranscriptRoot>,
+    >,
+) {
+    let Ok((mut scroll_position, start, computed)) = query.get_mut(drag.entity) else {
+        return;
+    };
+    let max_offset = ((computed.content_size() - computed.size()) * computed.inverse_scale_factor())
+        .max(Vec2::ZERO);
+    let next = (start.0 - Vec2::new(drag.distance.x, drag.distance.y)).max(Vec2::ZERO);
+    scroll_position.0 = next.min(max_offset);
 }
 
 fn refresh_service_status_line(
@@ -1594,7 +1903,7 @@ fn reveal_chat_image(
     time: Res<Time>,
     session: Res<StandardMechaSession>,
     mut reveal: ResMut<ChatImageReveal>,
-    mut render_images: Query<&mut ImageNode, With<ChatRenderImage>>,
+    mut artifacts: Query<(&ChatArtifactImage, &mut ImageNode)>,
 ) {
     let target = latest_chat_image(&session.history)
         .filter(|image| image.status == "complete")
@@ -1603,22 +1912,166 @@ fn reveal_chat_image(
     match target {
         Some(path) => {
             if reveal.shown_path.as_deref() != Some(path.as_str()) {
-                reveal.shown_path = Some(path);
+                reveal.shown_path = Some(path.clone());
                 reveal.alpha = 0.0;
             } else {
                 reveal.alpha = (reveal.alpha + time.delta_secs() / IMAGE_REVEAL_SECS).min(1.0);
             }
-            if let Ok(mut image_node) = render_images.single_mut() {
-                image_node.color = Color::srgba(1.0, 1.0, 1.0, reveal.alpha);
+            for (artifact, mut image_node) in &mut artifacts {
+                if artifact.asset_path == path {
+                    image_node.color = Color::srgba(1.0, 1.0, 1.0, reveal.alpha);
+                } else {
+                    image_node.color = Color::WHITE;
+                }
             }
         }
         None => {
             reveal.shown_path = None;
             reveal.alpha = 0.0;
-            if let Ok(mut image_node) = render_images.single_mut() {
-                image_node.color = Color::srgba(1.0, 1.0, 1.0, 0.0);
+            for (_, mut image_node) in &mut artifacts {
+                image_node.color = Color::WHITE;
             }
         }
+    }
+}
+
+fn portrait_node(archetype: MechaArchetype) -> Node {
+    let height = PORTRAIT_DISPLAY_WIDTH / archetype.portrait_aspect.max(0.01);
+    Node {
+        width: Val::Px(PORTRAIT_DISPLAY_WIDTH),
+        height: Val::Px(height),
+        aspect_ratio: Some(archetype.portrait_aspect),
+        border: UiRect::all(Val::Px(2.0)),
+        flex_shrink: 0.0,
+        ..default()
+    }
+}
+
+fn waiting_banner_text(waiting: bool, phase: &str, elapsed_secs: f32) -> String {
+    if !waiting {
+        return String::new();
+    }
+    waiting_status_line(phase, elapsed_secs)
+}
+
+fn waiting_status_line(phase: &str, elapsed_secs: f32) -> String {
+    let secs = elapsed_secs.floor() as u32;
+    let phase = if phase.is_empty() {
+        "Working — local model and Chronos/Comfy are still running"
+    } else {
+        phase
+    };
+    format!("WORKING ({secs}s) — {phase}")
+}
+
+fn populate_chat_transcript(
+    parent: &mut ChildSpawnerCommands,
+    asset_server: &AssetServer,
+    history: &[ChatRecord],
+    waiting: bool,
+    phase: &str,
+    wait_elapsed_secs: f32,
+    latest_reveal_alpha: f32,
+    latest_path: Option<&str>,
+    accent: Rgb,
+) {
+    if history.is_empty() && !waiting {
+        parent.spawn((
+            Text::new(
+                "No prior messages for this archetype yet. Type and press Enter to send through local Ollama.",
+            ),
+            TextFont {
+                font_size: 16.0,
+                ..default()
+            },
+            TextColor(Color::srgb(0.86, 0.88, 0.92)),
+        ));
+        return;
+    }
+
+    let start = history.len().saturating_sub(HISTORY_RENDER_LIMIT);
+    for record in &history[start..] {
+        let label = chat_record_label(record);
+        parent
+            .spawn(Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(8.0),
+                ..default()
+            })
+            .with_children(|message| {
+                message.spawn((
+                    Text::new(format!("{label}: {}", compact(&record.content, 700))),
+                    TextFont {
+                        font_size: 16.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.86, 0.88, 0.92)),
+                ));
+                if let Some(image) = &record.image {
+                    message.spawn((
+                        Text::new(format!("Image: {}", image_history_line(image))),
+                        TextFont {
+                            font_size: 12.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.70, 0.74, 0.82)),
+                    ));
+                    if image.status == "complete" {
+                        if let Some(asset_path) = image.asset_path.as_deref() {
+                            let alpha = if latest_path == Some(asset_path) {
+                                latest_reveal_alpha
+                            } else {
+                                1.0
+                            };
+                            message.spawn((
+                                ImageNode {
+                                    image: asset_server.load(asset_path.to_owned()),
+                                    color: Color::srgba(1.0, 1.0, 1.0, alpha),
+                                    image_mode: NodeImageMode::Auto,
+                                    ..default()
+                                },
+                                Node {
+                                    width: Val::Percent(92.0),
+                                    height: Val::Auto,
+                                    max_width: Val::Px(520.0),
+                                    max_height: Val::Px(CHAT_ARTIFACT_MAX_HEIGHT),
+                                    border: UiRect::all(Val::Px(1.0)),
+                                    align_self: AlignSelf::FlexStart,
+                                    ..default()
+                                },
+                                BorderColor::all(accent.alpha(0.55)),
+                                ChatArtifactImage {
+                                    asset_path: asset_path.to_owned(),
+                                },
+                            ));
+                        }
+                    }
+                }
+            });
+    }
+
+    if waiting {
+        parent.spawn((
+            Text::new(waiting_status_line(phase, wait_elapsed_secs)),
+            TextFont {
+                font_size: 17.0,
+                ..default()
+            },
+            TextColor(accent.color()),
+        ));
+    }
+}
+
+fn chat_record_label(record: &ChatRecord) -> &str {
+    match record.role.as_str() {
+        "witness" => "Witness",
+        "system" => "System",
+        other => MECHA_ARCHETYPES
+            .iter()
+            .find(|archetype| archetype.id == other)
+            .map(|archetype| archetype.display_name)
+            .unwrap_or(other),
     }
 }
 
@@ -1630,6 +2083,8 @@ fn service_status_line() -> String {
     }
 }
 
+/// Kept for unit tests and as a plain-text dump of the visible transcript contract.
+#[allow(dead_code)]
 fn render_history(history: &[ChatRecord], waiting: bool, phase: &str) -> String {
     if history.is_empty() && !waiting {
         return "No prior messages for this archetype yet. Type and press Enter to send through local Ollama.".to_owned();
@@ -1638,15 +2093,7 @@ fn render_history(history: &[ChatRecord], waiting: bool, phase: &str) -> String 
     let mut lines: Vec<String> = history[start..]
         .iter()
         .map(|record| {
-            let label = match record.role.as_str() {
-                "witness" => "Witness",
-                "system" => "System",
-                other => MECHA_ARCHETYPES
-                    .iter()
-                    .find(|archetype| archetype.id == other)
-                    .map(|archetype| archetype.display_name)
-                    .unwrap_or(other),
-            };
+            let label = chat_record_label(record);
             let mut line = format!("{label}: {}", compact(&record.content, 700));
             if let Some(image) = &record.image {
                 line.push_str(&format!("\nImage: {}", image_history_line(image)));
@@ -1684,12 +2131,14 @@ fn image_history_line(image: &ChatImage) -> String {
     }
 }
 
-fn latest_render_status(history: &[ChatRecord], waiting: bool, phase: &str) -> String {
+fn latest_render_status(
+    history: &[ChatRecord],
+    waiting: bool,
+    phase: &str,
+    wait_elapsed_secs: f32,
+) -> String {
     if waiting {
-        if phase.is_empty() {
-            return "Reply and painting are still forming.".to_owned();
-        }
-        return phase.to_owned();
+        return waiting_status_line(phase, wait_elapsed_secs);
     }
     let Some(image) = latest_chat_image(history) else {
         return "No rendered response in this chat yet.".to_owned();
@@ -2243,6 +2692,55 @@ mod tests {
         assert!(root.join("mecha/council000.png").exists());
         assert!(root.join("mecha/council001.png").exists());
         assert!(root.join("mecha/council002.png").exists());
+        assert!(
+            root.join(CANON_FONT).exists(),
+            "missing canon serif font {CANON_FONT}"
+        );
+        assert!(
+            root.join(UI_CANON_REF).exists(),
+            "missing Seed-of-Life UI canon reference {UI_CANON_REF}"
+        );
+        let _ = SOURCE_CANON;
+    }
+
+    #[test]
+    fn seed_of_life_slots_match_operator_canon() {
+        let by_id: std::collections::HashMap<&str, u8> = MECHA_ARCHETYPES
+            .iter()
+            .map(|a| (a.id, a.seed_slot))
+            .collect();
+        assert_eq!(by_id["sentinel"], 0);
+        assert_eq!(by_id["architect"], 1);
+        assert_eq!(by_id["mentor"], 2);
+        assert_eq!(by_id["explorer"], 3);
+        assert_eq!(by_id["oracle"], 4);
+        assert_eq!(by_id["empath"], 5);
+        assert_eq!(by_id["jester"], 6);
+        let slots: HashSet<u8> = MECHA_ARCHETYPES.iter().map(|a| a.seed_slot).collect();
+        assert_eq!(slots, HashSet::from([0, 1, 2, 3, 4, 5, 6]));
+
+        let (cx, cy) = seed_slot_center(0);
+        let mid = SEED_CLUSTER_PX * 0.5;
+        assert!((cx - mid).abs() < 0.01 && (cy - mid).abs() < 0.01);
+        let (ax, ay) = seed_slot_center(1);
+        assert!((ax - mid).abs() < 0.01);
+        assert!((ay - (mid - SEED_RADIUS_PX)).abs() < 0.01);
+    }
+
+    #[test]
+    fn portrait_aspect_ratios_match_source_asset_shapes() {
+        for archetype in MECHA_ARCHETYPES {
+            let expected = match archetype.id {
+                "sentinel" | "explorer" => PORTRAIT_ASPECT_SQUARE,
+                _ => PORTRAIT_ASPECT_TALL,
+            };
+            assert!(
+                (archetype.portrait_aspect - expected).abs() < f32::EPSILON,
+                "{} portrait_aspect should be {expected}, got {}",
+                archetype.id,
+                archetype.portrait_aspect
+            );
+        }
     }
 
     #[test]
@@ -2348,6 +2846,7 @@ mod tests {
             }],
             false,
             "",
+            0.0,
         );
         assert!(history_line.contains("keywords: bridge, span"));
         assert!(!history_line.contains("artifact"));
@@ -2363,9 +2862,62 @@ mod tests {
         assert!(rendered.contains("Chronos is painting the response..."));
         assert!(!rendered.contains("artifact:"));
         assert_eq!(
-            latest_render_status(&[], true, "Ollama is forming Architect's reply..."),
-            "Ollama is forming Architect's reply..."
+            latest_render_status(&[], true, "Ollama is forming Architect's reply...", 12.4),
+            "WORKING (12s) — Ollama is forming Architect's reply..."
         );
+        assert!(waiting_status_line("Chronos/Comfy is painting the response image...", 65.0)
+            .contains("WORKING (65s)"));
+    }
+
+    #[test]
+    fn transcript_fingerprint_detects_new_turn_not_idle_zeros() {
+        let mut fingerprint = ChatTranscriptFingerprint::default();
+        let history = vec![
+            ChatRecord {
+                timestamp: 1,
+                archetype: "sentinel".to_owned(),
+                role: "witness".to_owned(),
+                content: "one".to_owned(),
+                image: None,
+            },
+            ChatRecord {
+                timestamp: 2,
+                archetype: "sentinel".to_owned(),
+                role: "sentinel".to_owned(),
+                content: "reply".to_owned(),
+                image: None,
+            },
+        ];
+        let last = history.last().map(|r| r.timestamp).unwrap_or(0);
+        let changed = fingerprint.history_len != history.len()
+            || fingerprint.last_timestamp != last
+            || fingerprint.waiting
+            || !fingerprint.phase.is_empty();
+        assert!(changed, "first population must rebuild");
+        fingerprint.history_len = history.len();
+        fingerprint.last_timestamp = last;
+        fingerprint.waiting = false;
+        fingerprint.phase.clear();
+        let unchanged = fingerprint.history_len != history.len()
+            || fingerprint.last_timestamp != last
+            || fingerprint.waiting
+            || !fingerprint.phase.is_empty();
+        assert!(!unchanged, "idle completed turn must not force rebuild");
+        let history2 = {
+            let mut next = history.clone();
+            next.push(ChatRecord {
+                timestamp: 3,
+                archetype: "sentinel".to_owned(),
+                role: "witness".to_owned(),
+                content: "two".to_owned(),
+                image: None,
+            });
+            next
+        };
+        let last2 = history2.last().map(|r| r.timestamp).unwrap_or(0);
+        let turn2 = fingerprint.history_len != history2.len()
+            || fingerprint.last_timestamp != last2;
+        assert!(turn2, "second witness turn must rebuild transcript");
     }
 
     fn workspace_assets_root() -> PathBuf {

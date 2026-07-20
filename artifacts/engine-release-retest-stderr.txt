@@ -1,0 +1,10 @@
+2026-07-20T05:49:32.455451Z  INFO bevy_diagnostic::system_information_diagnostics_plugin::internal: SystemInfo { os: "Windows 11 Pro", kernel: "26200", cpu: "AMD Ryzen 7 2700 Eight-Core Processor", core_count: "8", memory: "31.9 GiB" }
+2026-07-20T05:49:32.997457Z  INFO bevy_render::renderer: AdapterInfo { name: "NVIDIA GeForce RTX 3060", vendor: 4318, device: 9475, device_type: DiscreteGpu, driver: "NVIDIA", driver_info: "596.36", backend: Vulkan }
+2026-07-20T05:49:33.253407Z  INFO bevy_render::batching::gpu_preprocessing: GPU preprocessing is fully supported on this device.
+2026-07-20T05:49:33.256051Z  INFO bevy_winit::system: Creating new window Archetypes — Council Chamber (0v0)
+
+thread 'main' (24912) panicked at C:\Users\m\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.18.1\src\system\system_param.rs:387:5:
+error[B0001]: Query<<Enable the debug feature to see the name>, <Enable the debug feature to see the name>> in system <Enable the debug feature to see the name> accesses component(s) <Enable the debug feature to see the name> in a way that conflicts with a previous system parameter. Consider using `Without<T>` to create disjoint Queries or merging conflicting Queries into a `ParamSet`. See: https://bevy.org/learn/errors/b0001
+stack backtrace:
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+Encountered a panic in system `<Enable the debug feature to see the name>`!

@@ -88,9 +88,12 @@ fn legacy_chamber_visuals_enabled() -> bool {
 const LORE_CHAMBER_SCENE: &str = "scenes/lore_chamber.glb#Scene0";
 
 fn load_lore_chamber(mut commands: Commands, asset_server: Res<AssetServer>) {
+    // Hidden until Booting ends so the first frames are pure black title veil,
+    // never a flash of the chamber-backed main menu world.
     commands.spawn((
         SceneRoot(asset_server.load(LORE_CHAMBER_SCENE)),
         Name::new("LoreCouncilChamber"),
+        Visibility::Hidden,
     ));
 }
 

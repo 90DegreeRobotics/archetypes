@@ -37,24 +37,43 @@ Copy-Item (Join-Path $RepoRoot "target\release\engine.exe") $DistRoot -Force
 Copy-Item (Join-Path $RepoRoot "target\release\launcher.exe") $DistRoot -Force
 
 # The release engine loads ./assets relative to its working directory.
+# Preserve runtime-staged Comfy chat renders under standard_mecha/renders so a
+# Desktop restage does not wipe the player's in-chat paintings.
+$AssetsSrc = Join-Path $RepoRoot "assets"
 $AssetsDst = Join-Path $DistRoot "assets"
+$RendersRel = "standard_mecha\renders"
+$RendersDst = Join-Path $AssetsDst $RendersRel
+$RendersBackup = Join-Path $env:TEMP ("archetypes-renders-backup-" + [guid]::NewGuid().ToString("N"))
+if (Test-Path $RendersDst) {
+    New-Item -ItemType Directory -Force -Path $RendersBackup | Out-Null
+    Copy-Item (Join-Path $RendersDst "*") -Destination $RendersBackup -Recurse -Force -ErrorAction SilentlyContinue
+}
 New-Item -ItemType Directory -Force -Path $AssetsDst | Out-Null
-Get-ChildItem (Join-Path $RepoRoot "assets") | Copy-Item -Destination $AssetsDst -Recurse -Force
-Write-Host "Staged runtime to $DistRoot"
+Get-ChildItem $AssetsSrc | Copy-Item -Destination $AssetsDst -Recurse -Force
+New-Item -ItemType Directory -Force -Path $RendersDst | Out-Null
+if (Test-Path $RendersBackup) {
+    Copy-Item (Join-Path $RendersBackup "*") -Destination $RendersDst -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item $RendersBackup -Recurse -Force -ErrorAction SilentlyContinue
+}
+Write-Host "Staged runtime to $DistRoot (preserved chat renders under assets\$RendersRel)"
 
-# Build an .ico from an archetype icon so the shortcut has real art.
+# Build / refresh an .ico so the Desktop shortcut and embedded exe icons stay aligned.
 $IcoPath = Join-Path $DistRoot "archetypes.ico"
 $IconPng = Join-Path $RepoRoot "assets\icons\architect-icon.png"
+$RepoIco = Join-Path $RepoRoot "assets\icons\archetypes.ico"
 try {
     Add-Type -AssemblyName System.Drawing
     $src = [System.Drawing.Image]::FromFile($IconPng)
     $bmp = New-Object System.Drawing.Bitmap $src, 256, 256
     $hicon = $bmp.GetHicon()
     $icon = [System.Drawing.Icon]::FromHandle($hicon)
-    $stream = [System.IO.File]::Create($IcoPath)
-    $icon.Save($stream)
-    $stream.Close(); $icon.Dispose(); $bmp.Dispose(); $src.Dispose()
-    Write-Host "Icon written to $IcoPath"
+    foreach ($dest in @($IcoPath, $RepoIco)) {
+        $stream = [System.IO.File]::Create($dest)
+        $icon.Save($stream)
+        $stream.Close()
+    }
+    $icon.Dispose(); $bmp.Dispose(); $src.Dispose()
+    Write-Host "Icon written to $IcoPath (and $RepoIco for winres embeds)"
 } catch {
     Write-Warning "Could not build .ico ($_). The shortcut will use the launcher's default icon."
     $IcoPath = Join-Path $DistRoot "launcher.exe"
