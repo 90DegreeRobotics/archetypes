@@ -28,6 +28,6 @@ Harden the Archetypes launcher so its Chronos Sentinel launch append is client-s
 - Expected outcome: Runtime proof exists for source and Desktop `dist` launcher parity; any certification blockers are explicit.
 
 ### Step 5 - Commit and push
-- [ ] Action: Commit the verified unit on `main`, push to `origin/main`, and confirm clean parity.
+- [x] Action: Commit the verified unit on `main`, push to `origin/main`, and confirm clean parity.
 - Files touched: Git metadata only.
 - Expected outcome: `origin/main` is the handoff surface and working tree is clean.
