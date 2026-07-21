@@ -13,7 +13,7 @@ Release Handling: every canonical protected action is classified here. `blocked`
 | `capability.issue` | blocked; capability lifecycle not fully wired in game runtime. |
 | `capability.consume` | blocked; capability consumption not fully wired in game runtime. |
 | `chat.respond` | blocked; dialogue response path requires runtime Sentinel mediation. |
-| `effect.execute` | partial; launcher launch intent is guarded, full game effect coverage blocked. |
+| `effect.execute` | partial; launcher launch intent is guarded with a client-signed body-bound Sentinel envelope, full game effect coverage blocked. |
 | `external_message.send` | blocked; sharing/outbound comms require Sentinel mediation. |
 | `file.delete` | blocked; local deletion paths require mediation. |
 | `file.read_sensitive` | blocked; profile/save reads require mediation. |
@@ -25,7 +25,7 @@ Release Handling: every canonical protected action is classified here. `blocked`
 | `identity.genesis` | blocked; game identity lifecycle not release-certified. |
 | `identity.register` | blocked; player identity lifecycle not release-certified. |
 | `identity.rebind` | blocked; player identity lifecycle not release-certified. |
-| `identity.key.register` | blocked; key lifecycle not release-certified. |
+| `identity.key.register` | partial; launcher client-key registration is wired through Chronos local authority bootstrap, admin-signed lifecycle not release-certified. |
 | `identity.key.revoke` | blocked; key lifecycle not release-certified. |
 | `identity.key.rotate` | blocked; key lifecycle not release-certified. |
 | `installer.update` | blocked; installer/update certification incomplete. |
@@ -37,12 +37,11 @@ Release Handling: every canonical protected action is classified here. `blocked`
 | `payment.or_commitment` | not used directly; must deny unless introduced and certified. |
 | `plugin.install` | blocked if mods/plugins are introduced. |
 | `plugin.execute` | blocked if mods/plugins are introduced. |
-| `policy.evaluate` | partial; launcher relies on Chronos policy path, in-engine policy lifecycle blocked. |
-| `process.spawn` | partial; launcher engine spawn is Sentinel-gated, child runtime coverage blocked. |
+| `policy.evaluate` | partial; launcher relies on Chronos policy path with signed request binding, in-engine policy lifecycle blocked. |
+| `process.spawn` | partial; launcher engine spawn is Sentinel-gated by a signed launch append, child runtime coverage blocked. |
 | `profile.generate` | blocked; player profile generation mediation incomplete. |
 | `robot.command` | not used directly; must deny unless introduced and certified. |
 | `shell.execute` | not used directly; must deny unless introduced and certified. |
 | `system.install` | blocked; installer/system paths require certification. |
 | `tool.invoke` | blocked; tool invocation mediation incomplete. |
 | `tool.run` | blocked; tool execution mediation incomplete. |
-

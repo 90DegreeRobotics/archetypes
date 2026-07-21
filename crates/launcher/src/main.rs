@@ -11,7 +11,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
-    fs::File,
+    fs::{self, File},
     io::{Read, Write},
     net::{Ipv4Addr, TcpListener},
     path::{Path, PathBuf},
@@ -19,7 +19,10 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use ed25519_dalek::{Signer as _, SigningKey};
+use serde::Serialize;
 use serde_json::{json, Value};
+use uuid::Uuid;
 
 /// A fixed loopback port used purely as a single-instance guard.
 const SINGLE_INSTANCE_PORT: u16 = 47615;
@@ -28,6 +31,8 @@ const DIRECTOR_URL: &str = "http://127.0.0.1:7777";
 const COMFY_URL: &str = "http://127.0.0.1:8000";
 const SENTINEL_LAUNCH_LAW: &str = "Let there be no gate before the Sentinel";
 const SENTINEL_LAUNCH_ACTION: &str = "archetypes.launch";
+const SENTINEL_CLIENT_ACTOR: &str = "archetypes-launcher";
+const SENTINEL_SEED_LEN: usize = 32;
 
 fn main() {
     println!("Archetypes - Council Chamber");
@@ -118,7 +123,7 @@ fn authorize_sentinel_launch(engine: &Path) -> Result<(), String> {
     )?;
     require_sentinel_enforce_status(&status)?;
 
-    let body = sentinel_launch_event_body(engine);
+    let body = attach_sentinel_launch_auth(sentinel_launch_event_body(engine))?;
     let receipt = http_post_json(
         &format!("{DIRECTOR_URL}/api/v1/codex/append"),
         &body,
@@ -131,6 +136,19 @@ fn authorize_sentinel_launch(engine: &Path) -> Result<(), String> {
 
     println!("Sentinel launch gate: authorized ({event_id})");
     Ok(())
+}
+
+fn attach_sentinel_launch_auth(mut body: Value) -> Result<Value, String> {
+    let signer = load_or_create_sentinel_signer(&sentinel_client_keystore_path())?;
+    register_sentinel_client(&signer)?;
+    let authority_request = codex_append_authority_request(&body)?;
+    let payload = authority_payload("codex_append", "codex_append", &authority_request)?;
+    let envelope = signer.seal(payload)?;
+    let object = body
+        .as_object_mut()
+        .ok_or_else(|| "sentinel launch event body was not a JSON object".to_owned())?;
+    object.insert("auth".to_owned(), envelope);
+    Ok(body)
 }
 
 fn require_sentinel_enforce_status(status: &Value) -> Result<(), String> {
@@ -174,6 +192,163 @@ fn sentinel_launch_event_body(engine: &Path) -> Value {
     })
 }
 
+fn codex_append_authority_request(body: &Value) -> Result<Value, String> {
+    let requested_archetype = body
+        .get("archetype")
+        .and_then(Value::as_str)
+        .unwrap_or("chronos_director");
+    let event_type = nonempty_json_str(body, "event_type")
+        .ok_or_else(|| "launch append body has no event_type".to_owned())?;
+    let content = body.get("content").cloned().unwrap_or(Value::Null);
+    let content_digest = blake3::hash(content.to_string().as_bytes())
+        .to_hex()
+        .to_string();
+    Ok(json!({
+        "target_archetype": requested_archetype,
+        "target_event_type": event_type,
+        "target_layer": body.get("layer").cloned().unwrap_or(Value::Null),
+        "content_blake3": content_digest,
+        "causation": body.get("causation").cloned().unwrap_or(Value::Null),
+    }))
+}
+
+fn authority_payload(action: &str, resource: &str, request: &Value) -> Result<Value, String> {
+    let bytes = serde_json::to_vec(request)
+        .map_err(|error| format!("could not canonicalize Sentinel request: {error}"))?;
+    Ok(json!({
+        "action": action,
+        "resource": resource,
+        "request_blake3": blake3::hash(&bytes).to_hex().to_string(),
+    }))
+}
+
+fn register_sentinel_client(signer: &LauncherSentinelSigner) -> Result<(), String> {
+    let registration = signer.public_registration();
+    let receipt = http_post_json(
+        &format!("{DIRECTOR_URL}/api/v1/authority/authorize"),
+        &registration,
+        Duration::from_secs(8),
+    )
+    .map_err(|error| format!("Chronos Sentinel client-key registration failed: {error}"))?;
+    if receipt.get("authorized").and_then(Value::as_bool) != Some(true) {
+        return Err(format!(
+            "Chronos Sentinel did not authorize the launcher key: {receipt}"
+        ));
+    }
+    let returned_key_id = nonempty_json_str(&receipt, "key_id")
+        .ok_or_else(|| format!("Chronos Sentinel registration returned no key_id: {receipt}"))?;
+    if returned_key_id != signer.key_id {
+        return Err(format!(
+            "Chronos Sentinel registered key_id {returned_key_id}, expected {}",
+            signer.key_id
+        ));
+    }
+    Ok(())
+}
+
+struct LauncherSentinelSigner {
+    signing_key: SigningKey,
+    key_id: String,
+}
+
+#[derive(Serialize)]
+struct SentinelSignature {
+    algorithm: &'static str,
+    bytes: Vec<u8>,
+}
+
+#[derive(Serialize)]
+struct SignedAuthorityEnvelope {
+    actor_id: String,
+    key_id: String,
+    nonce: Uuid,
+    payload: Value,
+    signature: SentinelSignature,
+}
+
+impl LauncherSentinelSigner {
+    fn from_seed(seed: [u8; SENTINEL_SEED_LEN]) -> Self {
+        let signing_key = SigningKey::from_bytes(&seed);
+        let key_id = key_id_for_verifying_key(&signing_key.verifying_key());
+        Self {
+            signing_key,
+            key_id,
+        }
+    }
+
+    fn public_registration(&self) -> Value {
+        json!({
+            "actor": SENTINEL_CLIENT_ACTOR,
+            "key_id": self.key_id.as_str(),
+            "verifying_key_hex": hex::encode(self.signing_key.verifying_key().to_bytes()),
+        })
+    }
+
+    fn seal(&self, payload: Value) -> Result<Value, String> {
+        let actor_id = SENTINEL_CLIENT_ACTOR.to_owned();
+        let nonce = Uuid::new_v4();
+        let bytes = serde_json::to_vec(&(&actor_id, &self.key_id, &nonce, &payload))
+            .map_err(|error| format!("could not canonicalize Sentinel envelope: {error}"))?;
+        let signature = self.signing_key.sign(&bytes);
+        serde_json::to_value(SignedAuthorityEnvelope {
+            actor_id,
+            key_id: self.key_id.clone(),
+            nonce,
+            payload,
+            signature: SentinelSignature {
+                algorithm: "Ed25519",
+                bytes: signature.to_bytes().to_vec(),
+            },
+        })
+        .map_err(|error| format!("could not encode Sentinel envelope: {error}"))
+    }
+}
+
+fn load_or_create_sentinel_signer(path: &Path) -> Result<LauncherSentinelSigner, String> {
+    if path.exists() {
+        let bytes = fs::read(path).map_err(|error| {
+            format!(
+                "could not read Sentinel launcher key {}: {error}",
+                path.display()
+            )
+        })?;
+        if bytes.len() != SENTINEL_SEED_LEN {
+            return Err(format!(
+                "malformed Sentinel launcher key at {}: expected {SENTINEL_SEED_LEN} bytes, found {}",
+                path.display(),
+                bytes.len()
+            ));
+        }
+        let mut seed = [0u8; SENTINEL_SEED_LEN];
+        seed.copy_from_slice(&bytes);
+        return Ok(LauncherSentinelSigner::from_seed(seed));
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "could not create Sentinel launcher key directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+
+    let mut seed = [0u8; SENTINEL_SEED_LEN];
+    getrandom::getrandom(&mut seed)
+        .map_err(|error| format!("could not mint Sentinel launcher key: {error}"))?;
+    fs::write(path, &seed).map_err(|error| {
+        format!(
+            "could not write Sentinel launcher key {}: {error}",
+            path.display()
+        )
+    })?;
+    Ok(LauncherSentinelSigner::from_seed(seed))
+}
+
+fn key_id_for_verifying_key(key: &ed25519_dalek::VerifyingKey) -> String {
+    blake3::hash(&key.to_bytes()).to_hex().to_string()
+}
+
 fn nonempty_json_str<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value
         .get(key)
@@ -213,11 +388,19 @@ fn engine_log_path() -> PathBuf {
     logs_dir().join("last-engine.log")
 }
 
+fn sentinel_client_keystore_path() -> PathBuf {
+    app_data_dir().join("sentinel").join("launcher_client.seed")
+}
+
 fn logs_dir() -> PathBuf {
+    app_data_dir().join("logs")
+}
+
+fn app_data_dir() -> PathBuf {
     let base = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("NeuroCognica").join("Archetypes").join("logs")
+    base.join("NeuroCognica").join("Archetypes")
 }
 
 fn read_log_tail(path: &Path, max_bytes: usize) -> String {
@@ -484,5 +667,114 @@ mod tests {
         assert!(body["content"]["requested_unix_ms"]
             .as_u64()
             .is_some_and(|stamp| stamp > 0));
+    }
+
+    #[test]
+    fn codex_append_authority_request_binds_launch_content() {
+        let first = json!({
+            "archetype": "archetypes",
+            "event_type": "archetypes_launch_requested",
+            "content": {
+                "source": "archetypes_launcher",
+                "protected_action": SENTINEL_LAUNCH_ACTION,
+                "law": SENTINEL_LAUNCH_LAW,
+                "engine_path": r"C:\archetypes\dist\engine.exe",
+                "requested_unix_ms": 1000_u64,
+            }
+        });
+        let second = json!({
+            "archetype": "archetypes",
+            "event_type": "archetypes_launch_requested",
+            "content": {
+                "source": "archetypes_launcher",
+                "protected_action": SENTINEL_LAUNCH_ACTION,
+                "law": SENTINEL_LAUNCH_LAW,
+                "engine_path": r"C:\archetypes\dist\engine.exe",
+                "requested_unix_ms": 2000_u64,
+            }
+        });
+
+        let first_request = codex_append_authority_request(&first).unwrap();
+        let second_request = codex_append_authority_request(&second).unwrap();
+
+        assert_eq!(first_request["target_archetype"], "archetypes");
+        assert_eq!(
+            first_request["target_event_type"],
+            "archetypes_launch_requested"
+        );
+        assert_eq!(first_request["target_layer"], Value::Null);
+        assert_eq!(first_request["causation"], Value::Null);
+        assert!(first_request["content_blake3"]
+            .as_str()
+            .is_some_and(|digest| digest.len() == 64));
+        assert_ne!(
+            first_request["content_blake3"], second_request["content_blake3"],
+            "launch content digest must be body-sensitive"
+        );
+    }
+
+    #[test]
+    fn sentinel_payload_digest_is_request_sensitive() {
+        let request_a = json!({"content_blake3": "a"});
+        let request_b = json!({"content_blake3": "b"});
+        let payload_a = authority_payload("codex_append", "codex_append", &request_a).unwrap();
+        let payload_b = authority_payload("codex_append", "codex_append", &request_b).unwrap();
+
+        assert_eq!(payload_a["action"], "codex_append");
+        assert_eq!(payload_a["resource"], "codex_append");
+        assert!(payload_a["request_blake3"]
+            .as_str()
+            .is_some_and(|digest| digest.len() == 64));
+        assert_ne!(payload_a["request_blake3"], payload_b["request_blake3"]);
+    }
+
+    #[test]
+    fn sentinel_envelope_and_registration_match_chronos_contract() {
+        let signer = LauncherSentinelSigner::from_seed([7u8; SENTINEL_SEED_LEN]);
+        let registration = signer.public_registration();
+        assert_eq!(registration["actor"], SENTINEL_CLIENT_ACTOR);
+        assert_eq!(registration["key_id"], signer.key_id.as_str());
+        assert!(registration["verifying_key_hex"]
+            .as_str()
+            .is_some_and(|value| value.len() == 64));
+
+        let payload = json!({
+            "action": "codex_append",
+            "resource": "codex_append",
+            "request_blake3": "0".repeat(64),
+        });
+        let envelope = signer.seal(payload.clone()).unwrap();
+
+        assert_eq!(envelope["actor_id"], SENTINEL_CLIENT_ACTOR);
+        assert_eq!(envelope["key_id"], signer.key_id.as_str());
+        assert_eq!(envelope["payload"], payload);
+        assert_eq!(envelope["signature"]["algorithm"], "Ed25519");
+        assert!(envelope["nonce"].as_str().is_some());
+        assert_eq!(
+            envelope["signature"]["bytes"].as_array().unwrap().len(),
+            64,
+            "Ed25519 signature is 64 bytes"
+        );
+    }
+
+    #[test]
+    fn sentinel_signer_keystore_is_durable_and_strict() {
+        let root =
+            std::env::temp_dir().join(format!("archetypes-launcher-sentinel-{}", Uuid::new_v4()));
+        let path = root.join("sentinel").join("launcher_client.seed");
+
+        let first = load_or_create_sentinel_signer(&path).unwrap();
+        let second = load_or_create_sentinel_signer(&path).unwrap();
+        assert_eq!(first.key_id, second.key_id);
+        assert_eq!(fs::read(&path).unwrap().len(), SENTINEL_SEED_LEN);
+
+        fs::write(&path, b"bad").unwrap();
+        let error = match load_or_create_sentinel_signer(&path) {
+            Ok(_) => panic!("malformed Sentinel launcher key was accepted"),
+            Err(error) => error,
+        };
+        assert!(error.contains("malformed Sentinel launcher key"), "{error}");
+
+        let _ = fs::remove_dir_all(root);
     }
 }
