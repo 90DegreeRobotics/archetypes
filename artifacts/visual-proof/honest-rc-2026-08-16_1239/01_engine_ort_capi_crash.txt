@@ -1,0 +1,13 @@
+Archetypes engine failed
+
+The chamber engine exited with exit code: 0xc0000005.
+
+--- last log lines ---
+2026-08-16T17:48:13.941822Z  INFO bevy_diagnostic::system_information_diagnostics_plugin::internal: SystemInfo { os: "Windows 11 Pro", kernel: "26200", cpu: "AMD Ryzen 7 2700 Eight-Core Processor", core_count: "8", memory: "31.9 GiB" }
+2026-08-16T17:48:14.697868Z  INFO bevy_render::renderer: AdapterInfo { name: "NVIDIA GeForce RTX 3060", vendor: 4318, device: 9475, device_type: DiscreteGpu, driver: "NVIDIA", driver_info: "596.36", backend: Vulkan }
+2026-08-16T17:48:15.081858Z  INFO bevy_render::batching::gpu_preprocessing: GPU preprocessing is fully supported on this device.
+2026-08-16T17:48:15.089036Z  INFO bevy_winit::system: Creating new window Archetypes — Council Chamber (0v0)
+The requested API version [27] is not available, only API versions [1, 17] are supported in this build. Current ORT Version is: 1.17.1
+
+Full engine log:
+C:\Users\m\AppData\Local\NeuroCognica\Archetypes\logs\last-engine.log

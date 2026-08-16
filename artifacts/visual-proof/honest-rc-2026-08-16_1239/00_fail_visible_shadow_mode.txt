@@ -1,0 +1,12 @@
+Archetypes Sentinel launch refused
+
+The Archetypes game engine was not started.
+
+Sentinel launch authorization failed before engine execution:
+Chronos Sentinel authority is not enforcing (mode=shadow, enforced=Some(false)).
+
+Chronos Director must be running on 127.0.0.1:7777 with Sentinel in enforce mode.
+Open HELP from the main menu after a successful launch, or read last-failure.txt.
+
+Full engine log:
+C:\Users\m\AppData\Local\NeuroCognica\Archetypes\logs\last-engine.log

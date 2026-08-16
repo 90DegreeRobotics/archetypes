@@ -11,7 +11,7 @@ Certification readiness: candidate
 
 ## Current State
 
-Status: Candidate. Launch and in-engine protected work are Sentinel-mediated. Not release-signed.
+Status: Candidate. `sentinel certify --strict` **PASS** on 2026-08-16 against a clean tree. Launch and in-engine protected work are Sentinel-mediated. Not release-signed. Do not read PASS as **certified**.
 
 Implemented footholds:
 

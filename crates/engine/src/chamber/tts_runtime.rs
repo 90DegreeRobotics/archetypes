@@ -1,9 +1,11 @@
-//! Warm Kokoro runtime — load the model once, speak many times.
+//! Council TTS — WAV cache plus CLI, with an opt-in in-process C API.
 //!
 //! Per-line `sherpa-onnx-offline-tts.exe` respawn was paying a 4–5s model load
-//! on every council turn. This module keeps `sherpa-onnx-c-api.dll` loaded for
-//! the process lifetime, hash-caches WAVs, and falls back to the CLI only when
-//! the C API cannot create an engine.
+//! on every council turn. Hash-cached WAVs avoid that on repeat lines. The
+//! in-process `sherpa-onnx-c-api.dll` path is **opt-in** (`ARCHETYPES_TTS_CAPI=1`)
+//! because the pinned sherpa 1.13.4 sidecar ships ORT 1.17.1 (API 1–17) while
+//! the C API requests ORT API 27 and access-violates the engine process. CLI
+//! synthesis stays in a child process so that mismatch cannot take down the game.
 
 use std::{
     collections::HashMap,
@@ -177,9 +179,13 @@ fn with_runtime<T>(f: impl FnOnce(&mut TtsRuntime) -> Result<T, String>) -> Resu
 
 impl TtsRuntime {
     fn open() -> Self {
-        let warm = SpeechPaths::resolve()
-            .ok()
-            .and_then(|paths| WarmEngine::load(&paths).ok());
+        let warm = if std::env::var_os("ARCHETYPES_TTS_CAPI").is_some() {
+            SpeechPaths::resolve()
+                .ok()
+                .and_then(|paths| WarmEngine::load(&paths).ok())
+        } else {
+            None
+        };
         Self {
             cache: HashMap::new(),
             warm,
@@ -452,5 +458,12 @@ mod tests {
         let wav = pcm_f32_to_wav(&[0.0, 0.5, -0.5], 22050);
         assert!(wav_is_valid(&wav));
         assert!(wav.len() > 44);
+    }
+
+    #[test]
+    fn in_process_c_api_is_opt_in_so_ort_mismatch_cannot_kill_the_engine() {
+        let source = include_str!("tts_runtime.rs");
+        assert!(source.contains("ARCHETYPES_TTS_CAPI"));
+        assert!(source.contains("synthesize_cli"));
     }
 }

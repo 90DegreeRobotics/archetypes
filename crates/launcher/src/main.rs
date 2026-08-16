@@ -536,6 +536,8 @@ fn start_director() -> Result<(), String> {
                 root.join("renders").to_str().unwrap_or("renders"),
                 "--ollama-url",
                 OLLAMA_URL,
+                "--sentinel-mode",
+                "enforce",
             ]);
         if let Some(cli) = find_chronos_cli() {
             command.arg("--chronos-exe").arg(cli);
@@ -1188,6 +1190,19 @@ mod tests {
         assert!(candidates
             .iter()
             .any(|path| path.ends_with("chronos_director.exe")));
+    }
+
+    #[test]
+    fn director_sidecar_starts_sentinel_in_enforce() {
+        let source = include_str!("main.rs");
+        assert!(
+            source.contains("--sentinel-mode"),
+            "sidecar Director start must pin Sentinel mode"
+        );
+        assert!(
+            source.contains("\"enforce\""),
+            "sidecar Director start must request enforce, not shadow"
+        );
     }
 
     #[test]
