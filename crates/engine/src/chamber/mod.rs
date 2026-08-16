@@ -9,10 +9,11 @@ pub mod portal;
 pub mod ritual;
 pub mod sky;
 pub mod speech;
+mod tts_runtime;
 pub mod spheres;
 pub mod star;
 
-#[derive(States, Default, Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(States, Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum ChamberState {
     /// Title / loading screen. The black veil owns the first frames before the
     /// current chamber-backed main menu is revealed.
@@ -58,19 +59,19 @@ impl Plugin for CouncilChamberPlugin {
             .init_resource::<CurrentFocus>();
 
         if legacy_chamber_visuals_enabled() {
-            app.add_systems(Startup, load_authoritative_chamber)
-                .add_plugins((
-                    spheres::SpheresPlugin,
-                    panels::PanelsPlugin,
-                    portal::PortalPlugin,
-                    sky::SkyPlugin,
-                    star::StarPlugin,
-                ));
+            app.add_systems(Startup, load_authoritative_chamber);
         } else {
             app.add_systems(Startup, load_lore_chamber);
         }
 
+        // Council visual systems are always registered. They no-op until
+        // `uiscene1.glb` / `table.glb` nodes exist (Standard Mode spawn).
         app.add_plugins((
+            spheres::SpheresPlugin,
+            panels::PanelsPlugin,
+            portal::PortalPlugin,
+            sky::SkyPlugin,
+            star::StarPlugin,
             boot::BootPlugin,
             camera::CameraPlugin,
             interior::InteriorPlugin,
@@ -120,6 +121,37 @@ pub(crate) fn spawn_authoritative_chamber(commands: &mut Commands, asset_server:
     ));
 }
 
+pub(crate) fn ensure_council_scene(
+    commands: &mut Commands,
+    asset_server: &AssetServer,
+    existing: &Query<&Name>,
+) {
+    if existing
+        .iter()
+        .any(|name| name.as_str() == "AuthoritativeCouncilChamber")
+    {
+        return;
+    }
+    spawn_authoritative_chamber(commands, asset_server);
+}
+
+const COUNCIL_RUNTIME_NAMES: [&str; 3] = [
+    "AuthoritativeCouncilChamber",
+    "PortalTable",
+    "SolidStar",
+];
+
+pub(crate) fn despawn_council_runtime(
+    commands: &mut Commands,
+    named: &Query<(Entity, &Name)>,
+) {
+    for (entity, name) in named {
+        if COUNCIL_RUNTIME_NAMES.contains(&name.as_str()) {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -131,5 +163,19 @@ mod tests {
             .join("scenes")
             .join("lore_chamber.glb");
         assert!(path.is_file(), "missing lore chamber asset at {path:?}");
+    }
+
+    #[test]
+    fn council_chamber_assets_exist_in_workspace_assets() {
+        let scenes = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("assets")
+            .join("scenes");
+        assert!(
+            scenes.join("uiscene1.glb").is_file(),
+            "missing council chamber GLB"
+        );
+        assert!(scenes.join("table.glb").is_file(), "missing portal table GLB");
     }
 }

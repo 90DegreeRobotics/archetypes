@@ -1,10 +1,8 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::Command,
     sync::{mpsc, Mutex},
     thread,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use bevy::{audio::AudioSource, prelude::*};
@@ -20,6 +18,7 @@ impl Plugin for SpeechPlugin {
         app.init_resource::<SpeechBridge>()
             .init_resource::<SpeechStatus>()
             .init_resource::<CouncilVoiceState>()
+            .add_systems(Startup, warm_tts_during_boot)
             .add_systems(
                 Update,
                 (
@@ -98,6 +97,12 @@ fn reset_council_voice(mut voice: ResMut<CouncilVoiceState>) {
     *voice = CouncilVoiceState::default();
 }
 
+fn warm_tts_during_boot() {
+    thread::spawn(|| {
+        super::tts_runtime::warm_runtime();
+    });
+}
+
 fn request_council_line(
     state: Res<State<ChamberState>>,
     transcript: Res<CouncilTranscript>,
@@ -125,7 +130,7 @@ fn request_council_line(
     status.line = format!("Voice: {} is forming speech...", request.name);
     let cursor = transcript.cursor;
     thread::spawn(move || {
-        let result = synthesize(request).map(|wav| SpeechResult {
+        let result = super::tts_runtime::synthesize_cached(&request).map(|wav| SpeechResult {
             archetype,
             wav,
             council_cursor: Some(cursor),
@@ -153,7 +158,7 @@ fn request_verdict_voice(
     *bridge.receiver.lock().expect("speech receiver lock") = Some(receiver);
     status.line = format!("Voice: {} is forming speech...", request.name);
     thread::spawn(move || {
-        let result = synthesize(request).map(|wav| SpeechResult {
+        let result = super::tts_runtime::synthesize_cached(&request).map(|wav| SpeechResult {
             archetype,
             wav,
             council_cursor: None,
@@ -217,14 +222,14 @@ fn track_voice_completion(
 }
 
 #[derive(Debug, Clone)]
-struct VoiceRequest {
-    name: &'static str,
-    speaker_id: u8,
-    text: String,
+pub(crate) struct VoiceRequest {
+    pub(crate) name: &'static str,
+    pub(crate) speaker_id: u8,
+    pub(crate) text: String,
 }
 
 impl VoiceRequest {
-    fn for_council_line(archetype: Archetype, text: &str) -> Self {
+    pub(crate) fn for_council_line(archetype: Archetype, text: &str) -> Self {
         let mut request = Self::for_archetype(archetype);
         request.text = text.to_owned();
         request
@@ -283,14 +288,14 @@ impl VoiceRequest {
     }
 }
 
-struct SpeechPaths {
-    executable: PathBuf,
-    model_dir: PathBuf,
-    cache_dir: PathBuf,
+pub(super) struct SpeechPaths {
+    pub(super) executable: PathBuf,
+    pub(super) model_dir: PathBuf,
+    pub(super) cache_dir: PathBuf,
 }
 
 impl SpeechPaths {
-    fn resolve() -> Result<Self, String> {
+    pub(super) fn resolve() -> Result<Self, String> {
         let (executable, model_dir) = match (
             std::env::var_os("ARCHETYPES_TTS_EXE"),
             std::env::var_os("ARCHETYPES_TTS_MODEL_DIR"),
@@ -340,57 +345,6 @@ fn default_speech_root() -> Option<PathBuf> {
     std::env::var_os("ProgramFiles")
         .map(PathBuf::from)
         .map(|root| root.join("Archetypes").join("speech"))
-}
-
-fn synthesize(request: VoiceRequest) -> Result<Vec<u8>, String> {
-    let paths = SpeechPaths::resolve()?;
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| error.to_string())?
-        .as_millis();
-    let output = paths
-        .cache_dir
-        .join(format!("{}-{stamp}.wav", request.name.to_ascii_lowercase()));
-    let mut command = Command::new(&paths.executable);
-    command.args([
-        format!(
-            "--kokoro-model={}",
-            paths.model_dir.join("model.onnx").display()
-        ),
-        format!(
-            "--kokoro-voices={}",
-            paths.model_dir.join("voices.bin").display()
-        ),
-        format!(
-            "--kokoro-tokens={}",
-            paths.model_dir.join("tokens.txt").display()
-        ),
-        format!(
-            "--kokoro-data-dir={}",
-            paths.model_dir.join("espeak-ng-data").display()
-        ),
-        "--num-threads=4".to_owned(),
-        format!("--sid={}", request.speaker_id),
-        format!("--output-filename={}", output.display()),
-        request.text.to_owned(),
-    ]);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-    }
-    let status = command
-        .status()
-        .map_err(|error| format!("could not start TTS: {error}"))?;
-    if !status.success() {
-        return Err(format!("TTS exited with {status}"));
-    }
-    let wav =
-        fs::read(&output).map_err(|error| format!("could not read generated WAV: {error}"))?;
-    if wav.len() < 44 || &wav[0..4] != b"RIFF" || &wav[8..12] != b"WAVE" {
-        return Err("TTS output was not a valid non-empty WAV".to_owned());
-    }
-    Ok(wav)
 }
 
 fn require_file(path: &Path, label: &str) -> Result<(), String> {

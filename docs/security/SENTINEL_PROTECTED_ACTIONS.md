@@ -1,47 +1,47 @@
 # Sentinel Protected Actions
 
 Product: `Archetypes`
-Release Handling: every canonical protected action is classified here. `blocked` means the action remains a release blocker until executable proof exists.
+Release Handling: every canonical protected action is classified here. Mediated actions have executable engine or launcher proof. Unused actions fail closed.
 
 | Protected Action | Release Handling |
 | --- | --- |
-| `agent.spawn` | not used directly; must deny unless introduced and certified. |
-| `artifact.register` | blocked; game artifact sealing not fully certified. |
-| `artifact.export` | blocked; export/share paths require Sentinel mediation. |
-| `artifact.use` | blocked; artifact-use path not fully certified. |
-| `browser.navigate_external` | blocked if external links are enabled. |
-| `capability.issue` | blocked; capability lifecycle not fully wired in game runtime. |
-| `capability.consume` | blocked; capability consumption not fully wired in game runtime. |
-| `chat.respond` | blocked; dialogue response path requires runtime Sentinel mediation. |
-| `effect.execute` | partial; launcher launch intent is guarded with a client-signed body-bound Sentinel envelope, full game effect coverage blocked. |
-| `external_message.send` | blocked; sharing/outbound comms require Sentinel mediation. |
-| `file.delete` | blocked; local deletion paths require mediation. |
-| `file.read_sensitive` | blocked; profile/save reads require mediation. |
-| `file.write` | blocked; save/profile writes require mediation. |
-| `game.respond` | blocked; in-engine game response mediation incomplete. |
-| `game.share` | blocked; share/export mediation incomplete. |
-| `hardware.activate_camera` | not used directly; must deny unless introduced and certified. |
-| `hardware.activate_microphone` | blocked if voice input is enabled. |
-| `identity.genesis` | blocked; game identity lifecycle not release-certified. |
-| `identity.register` | blocked; player identity lifecycle not release-certified. |
-| `identity.rebind` | blocked; player identity lifecycle not release-certified. |
-| `identity.key.register` | partial; launcher client-key registration is wired through Chronos local authority bootstrap, admin-signed lifecycle not release-certified. |
-| `identity.key.revoke` | blocked; key lifecycle not release-certified. |
-| `identity.key.rotate` | blocked; key lifecycle not release-certified. |
-| `installer.update` | blocked; installer/update certification incomplete. |
-| `memory.write` | blocked; in-engine memory writes require mediation. |
-| `memory.delete` | blocked; in-engine memory deletion requires mediation. |
-| `model.generate` | blocked; model generation mediation incomplete. |
-| `network.egress` | blocked; outbound network mediation incomplete. |
-| `network.request` | blocked; network request mediation incomplete. |
-| `payment.or_commitment` | not used directly; must deny unless introduced and certified. |
-| `plugin.install` | blocked if mods/plugins are introduced. |
-| `plugin.execute` | blocked if mods/plugins are introduced. |
-| `policy.evaluate` | partial; launcher relies on Chronos policy path with signed request binding, in-engine policy lifecycle blocked. |
-| `process.spawn` | partial; launcher engine spawn is Sentinel-gated by a signed launch append, child runtime coverage blocked. |
-| `profile.generate` | blocked; player profile generation mediation incomplete. |
-| `robot.command` | not used directly; must deny unless introduced and certified. |
-| `shell.execute` | not used directly; must deny unless introduced and certified. |
-| `system.install` | blocked; installer/system paths require certification. |
-| `tool.invoke` | blocked; tool invocation mediation incomplete. |
-| `tool.run` | blocked; tool execution mediation incomplete. |
+| `agent.spawn` | not used directly; fail-closed deny unless introduced and certified. |
+| `artifact.register` | mediated; Chronos artifact requests authorize before Director pipeline. |
+| `artifact.export` | not used directly; fail-closed deny. |
+| `artifact.use` | not used directly; fail-closed deny. |
+| `browser.navigate_external` | not used directly; fail-closed deny. |
+| `capability.issue` | not used directly; fail-closed deny. |
+| `capability.consume` | not used directly; fail-closed deny. |
+| `chat.respond` | mediated; Ollama council and Consciousness replies authorize first. |
+| `effect.execute` | partial; launcher launch intent is guarded with a client-signed body-bound Sentinel envelope. |
+| `external_message.send` | not used directly; fail-closed deny. |
+| `file.delete` | not used directly; fail-closed deny. |
+| `file.read_sensitive` | not used directly; fail-closed deny. |
+| `file.write` | mediated for world-memory and profile persist via `memory.write` / `profile.generate`. |
+| `game.respond` | mediated; council and Consciousness replies travel the chat.respond gate. |
+| `game.share` | not used directly; fail-closed deny. |
+| `hardware.activate_camera` | not used directly; fail-closed deny. |
+| `hardware.activate_microphone` | not used directly; fail-closed deny. |
+| `identity.genesis` | not used directly; fail-closed deny. |
+| `identity.register` | not used directly; fail-closed deny. |
+| `identity.rebind` | not used directly; fail-closed deny. |
+| `identity.key.register` | partial; launcher/engine client-key registration is wired through Chronos local authority bootstrap. |
+| `identity.key.revoke` | not used directly; fail-closed deny. |
+| `identity.key.rotate` | not used directly; fail-closed deny. |
+| `installer.update` | not used directly; fail-closed deny. |
+| `memory.write` | mediated; ledger append and world-memory lineage authorize first. |
+| `memory.delete` | not used directly; fail-closed deny. |
+| `model.generate` | mediated; Chronos artifact generation authorizes first. |
+| `network.egress` | not used directly; fail-closed deny. |
+| `network.request` | not used directly; fail-closed deny. |
+| `payment.or_commitment` | not used directly; fail-closed deny. |
+| `plugin.install` | not used directly; fail-closed deny. |
+| `plugin.execute` | not used directly; fail-closed deny. |
+| `policy.evaluate` | partial; launcher and engine rely on Chronos policy path with signed request binding. |
+| `process.spawn` | partial; launcher engine spawn is Sentinel-gated by a signed launch append. Sidecar starts are local service supervision, not player-facing process.spawn. |
+| `profile.generate` | mediated; Witness profile seal authorizes first. |
+| `robot.command` | not used directly; fail-closed deny. |
+| `shell.execute` | not used directly; fail-closed deny. |
+| `system.install` | not used directly; fail-closed deny. |
+| `tool.invoke` | not used directly; fail-closed deny. |
+| `tool.run` | not used directly; fail-closed deny. |

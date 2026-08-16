@@ -1450,7 +1450,7 @@ fn start_chat_send(session: &mut StandardMechaSession, bridge: &mut ChatBridge) 
 
     let keywords = extract_keywords(&content);
     if let Err(error) = append_to_ledger(
-        GameMode::Standard,
+        GameMode::Consciousness,
         "mecha_chat_user",
         json!({
             "archetype": archetype.id,
@@ -1473,7 +1473,7 @@ fn start_chat_send(session: &mut StandardMechaSession, bridge: &mut ChatBridge) 
     let system = archetype.persona().to_owned();
     let context = llm_context(&session.history);
     let prompt = format!(
-        "The Witness is chatting with you directly inside Archetypes Standard Mode.\n\
+        "The Witness is chatting with you directly inside Archetypes Consciousness.\n\
          Recent durable history for this archetype:\n{context}\n\n\
          New Witness message:\n{content}\n\n\
          Reply in character as {}, in one to three concise paragraphs. Do not invent system state.",
@@ -1585,7 +1585,7 @@ fn finish_chat_turn(session: &mut StandardMechaSession, result: ChatTurnResult) 
     session.history.push(record);
     let response_ok = response_status == "complete";
     let ledger_result = append_to_ledger(
-        GameMode::Standard,
+        GameMode::Consciousness,
         ledger_kind,
         json!({
             "archetype": archetype_id,

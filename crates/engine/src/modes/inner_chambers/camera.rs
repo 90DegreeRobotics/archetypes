@@ -58,6 +58,7 @@ fn setup_camera(
         Transform::from_xyz(0.0, 2.0, 0.0).looking_at(Vec3::new(0.0, 2.0, -1.0), Vec3::Y),
         PlayerCamera,
         CameraController::default(),
+        crate::chamber::camera::RuntimeGameplayCamera,
     ));
 }
 

@@ -1,0 +1,11 @@
+Copyright (c) Michael Holt / NeuroCognica
+
+All rights reserved.
+
+This software and its associated assets are proprietary to the copyright
+holder. Redistribution, sublicensing, or publication of the source or
+binaries without written permission is forbidden.
+
+Third-party runtimes used by the installed product (Ollama, sherpa-onnx,
+Kokoro, Bevy, Chronos Foundry, ComfyUI) remain under their own licenses
+and are not relicensed by this file.

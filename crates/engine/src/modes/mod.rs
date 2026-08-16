@@ -3,11 +3,13 @@ use bevy::prelude::*;
 pub mod difficulty;
 pub mod game_mode;
 pub mod inner_chambers;
+pub mod living_engine;
 pub mod oracle_riddle;
 pub mod standard_mecha;
 
 use game_mode::{GameMode, ModeRegistration};
 use inner_chambers::InnerChambersPlugin;
+use living_engine::LivingEnginePlugin;
 use oracle_riddle::OracleRiddlePlugin;
 use standard_mecha::StandardMechaPlugin;
 
@@ -37,6 +39,7 @@ impl Plugin for ModesPlugin {
         app.init_resource::<ModeRegistry>()
             .add_plugins(OracleRiddlePlugin)
             .add_plugins(InnerChambersPlugin)
+            .add_plugins(LivingEnginePlugin)
             .add_plugins(StandardMechaPlugin);
     }
 }

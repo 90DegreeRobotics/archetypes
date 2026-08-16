@@ -9,6 +9,11 @@ pub fn ollama_model() -> String {
 }
 
 pub fn ollama_chat(model: &str, system: &str, user: &str) -> Result<String, String> {
+    super::sentinel::mediate(
+        "chat.respond",
+        "archetypes://ollama/chat",
+        &json!({ "model": model }),
+    )?;
     let response = ureq::post(OLLAMA_CHAT_URL)
         .timeout(Duration::from_secs(90))
         .send_json(json!({

@@ -42,17 +42,35 @@ fn main() {
     let _guard = match TcpListener::bind((Ipv4Addr::LOCALHOST, SINGLE_INSTANCE_PORT)) {
         Ok(listener) => listener,
         Err(_) => {
-            eprintln!("Archetypes is already running.");
-            pause_briefly();
+            fail_visible(
+                "Archetypes is already running",
+                "A second launch was refused because the chamber is already open.\n\
+                 Close the existing Archetypes window, then try again.",
+                &engine_log_path(),
+            );
             return;
         }
     };
 
     let engine = engine_path();
+    if let Err(error) = ensure_sidecars() {
+        fail_visible(
+            "Archetypes could not start local services",
+            &format!(
+                "Ollama, Chronos Director, or ComfyUI were down and could not be started.\n\n{error}\n\n\
+                 If ChronoSophia is installed, leave it running, then click Archetypes again."
+            ),
+            &engine_log_path(),
+        );
+        return;
+    }
+
     if let Err(error) = authorize_sentinel_launch(&engine) {
         let body = format!(
             "The Archetypes game engine was not started.\n\n\
-             Sentinel launch authorization failed before engine execution:\n{error}"
+             Sentinel launch authorization failed before engine execution:\n{error}\n\n\
+             Chronos Director must be running on 127.0.0.1:7777 with Sentinel in enforce mode.\n\
+             Open HELP from the main menu after a successful launch, or read last-failure.txt."
         );
         fail_visible(
             "Archetypes Sentinel launch refused",
@@ -62,46 +80,84 @@ fn main() {
         return;
     }
 
+    if !tts_installed() {
+        match repair_offline_voices() {
+            Ok(()) => println!("Offline voices repaired."),
+            Err(error) => {
+                fail_visible(
+                    "Archetypes voices missing",
+                    &format!(
+                        "The offline council voices are not installed and repair failed:\n{error}\n\n\
+                         Re-run Uninstall Archetypes / the Desktop installer, or copy the speech bundle beside launcher.exe."
+                    ),
+                    &engine_log_path(),
+                );
+                return;
+            }
+        }
+    }
+
     let ready = check_readiness();
     if !ready.ollama {
-        eprintln!("\n[required] Ollama is not responding on 127.0.0.1:11434.");
-        eprintln!("           The council cannot speak without it. Start Ollama, then relaunch.");
-        if let Some(detail) = ready.ollama_detail.as_deref() {
-            eprintln!("           Detail: {detail}");
-        }
-        pause_briefly();
+        let detail = ready
+            .ollama_detail
+            .as_deref()
+            .unwrap_or("Ollama did not answer /api/tags");
+        fail_visible(
+            "Archetypes cannot hear Ollama",
+            &format!(
+                "Ollama is not responding on 127.0.0.1:11434.\n\
+                 Start Ollama, confirm model qwen2.5:7b-instruct is installed, then relaunch.\n\n\
+                 Detail: {detail}"
+            ),
+            &engine_log_path(),
+        );
         return;
     }
     if !ready.tts {
-        eprintln!("\n[required] The offline voices are not installed.");
-        eprintln!("           Re-run the Archetypes installer to repair the voice bundle.");
-        pause_briefly();
+        fail_visible(
+            "Archetypes voices missing",
+            "The offline voices are still not installed after repair.\n\
+             Re-run the Archetypes installer so the speech bundle sits beside launcher.exe.",
+            &engine_log_path(),
+        );
         return;
     }
     if !ready.chronos_foundry {
-        eprintln!("\n[required] Chronos Foundry is not ready for play.");
-        eprintln!("           Start Chronos Foundry so Director (:7777) reports readiness");
-        eprintln!("           and ComfyUI answers on :8000, then relaunch Archetypes.");
-        if let Some(detail) = ready.chronos_detail.as_deref() {
-            eprintln!("           Detail: {detail}");
-        }
-        pause_briefly();
+        let detail = ready
+            .chronos_detail
+            .as_deref()
+            .unwrap_or("Director or Comfy did not answer");
+        fail_visible(
+            "Archetypes cannot reach Chronos Foundry",
+            &format!(
+                "Chronos Foundry is not ready for play.\n\
+                 Start Chronos Foundry so Director (:7777) reports readiness and ComfyUI answers on :8000, then relaunch.\n\n\
+                 Detail: {detail}"
+            ),
+            &engine_log_path(),
+        );
         return;
     }
 
     if !engine.is_file() {
-        eprintln!(
-            "\n[fatal] engine executable not found at {}",
-            engine.display()
+        fail_visible(
+            "Archetypes engine missing",
+            &format!(
+                "engine.exe was not found next to the launcher:\n{}",
+                engine.display()
+            ),
+            &engine_log_path(),
         );
-        pause_briefly();
         return;
     }
 
     println!("\nEntering the chamber...");
     let log_path = engine_log_path();
     match run_engine(&engine, &log_path) {
-        Ok(status) if status.success() => {}
+        Ok(status) if status.success() => {
+            let _ = fs::remove_file(logs_dir().join("last-failure.txt"));
+        }
         Ok(status) => {
             let tail = read_log_tail(&log_path, 4000);
             let body = format!(
@@ -443,6 +499,231 @@ struct Readiness {
     chronos_detail: Option<String>,
 }
 
+fn ensure_sidecars() -> Result<(), String> {
+    if !probe_ollama().0 {
+        spawn_detached(Command::new("ollama").arg("serve"), "Ollama")?;
+        wait_for("Ollama", Duration::from_secs(20), || probe_ollama().0)?;
+    }
+    if !probe_director().0 {
+        start_director()?;
+        wait_for("Chronos Director", Duration::from_secs(45), || probe_director().0)?;
+    }
+    if !probe_comfy().0 {
+        start_comfy()?;
+        wait_for("ComfyUI", Duration::from_secs(120), || probe_comfy().0)?;
+    }
+    Ok(())
+}
+
+fn start_director() -> Result<(), String> {
+    if let Some(exe) = find_director_exe() {
+        let root = chronos_root();
+        let data = root.join("data");
+        let _ = fs::create_dir_all(&data);
+        let mut command = Command::new(&exe);
+        command
+            .current_dir(&root)
+            .args([
+                "--port",
+                "7777",
+                "--codex",
+                data.join("codex.db").to_str().unwrap_or("data/codex.db"),
+                "--conv-codex",
+                data.join("conversation.db")
+                    .to_str()
+                    .unwrap_or("data/conversation.db"),
+                "--renders-dir",
+                root.join("renders").to_str().unwrap_or("renders"),
+                "--ollama-url",
+                OLLAMA_URL,
+            ]);
+        if let Some(cli) = find_chronos_cli() {
+            command.arg("--chronos-exe").arg(cli);
+        }
+        return spawn_detached(&mut command, "Chronos Director");
+    }
+    if let Some(foundry) = find_foundry_script() {
+        let pythonw = find_pythonw().ok_or_else(|| {
+            format!(
+                "Chronos Director is not running and pythonw.exe was not found to start {}",
+                foundry.display()
+            )
+        })?;
+        let mut command = Command::new(pythonw);
+        command.arg(&foundry).current_dir(chronos_root());
+        return spawn_detached(&mut command, "ChronoSophia Foundry");
+    }
+    Err(format!(
+        "Chronos Director was not found. Looked under {} for chronos_director.exe and desktop/chronos_foundry.py.",
+        chronos_root().display()
+    ))
+}
+
+fn start_comfy() -> Result<(), String> {
+    let comfy_dir = find_comfy_dir().ok_or_else(|| {
+        "ComfyUI main.py was not found. Set ARCHETYPES_COMFYUI_DIR or install ComfyUI under Documents\\ComfyUI."
+            .to_owned()
+    })?;
+    let python = find_comfy_python(&comfy_dir).ok_or_else(|| {
+        format!(
+            "No Python interpreter found to start ComfyUI at {}",
+            comfy_dir.display()
+        )
+    })?;
+    let data_dir = comfy_data_dir(&comfy_dir);
+    let mut command = Command::new(python);
+    command
+        .current_dir(&comfy_dir)
+        .args(["main.py", "--listen", "127.0.0.1", "--port", "8000"]);
+    if data_dir.is_dir() {
+        command.arg("--base-directory").arg(&data_dir);
+    }
+    spawn_detached(&mut command, "ComfyUI")
+}
+
+fn spawn_detached(command: &mut Command, label: &str) -> Result<(), String> {
+    command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        command.creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS);
+    }
+    command
+        .spawn()
+        .map(|child| {
+            std::mem::forget(child);
+        })
+        .map_err(|error| format!("could not start {label}: {error}"))
+}
+
+fn wait_for(label: &str, budget: Duration, mut ready: impl FnMut() -> bool) -> Result<(), String> {
+    let started = SystemTime::now();
+    loop {
+        if ready() {
+            return Ok(());
+        }
+        let elapsed = started.elapsed().unwrap_or_default();
+        if elapsed >= budget {
+            return Err(format!(
+                "{label} did not become ready within {}s",
+                budget.as_secs()
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
+fn chronos_root() -> PathBuf {
+    std::env::var_os("ARCHETYPES_CHRONOS_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\chronos"))
+}
+
+fn director_candidates(root: &Path) -> Vec<PathBuf> {
+    vec![
+        root.join("target/release/chronos_director.exe"),
+        root.join("target/debug/chronos_director.exe"),
+        root.join("tmp/hotfix_stage/target/release/chronos_director.exe"),
+        root.join("chronos_director.exe"),
+    ]
+}
+
+fn find_director_exe() -> Option<PathBuf> {
+    director_candidates(&chronos_root())
+        .into_iter()
+        .find(|path| path.is_file())
+}
+
+fn find_chronos_cli() -> Option<PathBuf> {
+    let root = chronos_root();
+    [
+        root.join("target/release/chronos_cli.exe"),
+        root.join("target/release/chronos.exe"),
+        root.join("tmp/hotfix_stage/target/release/chronos_cli.exe"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+}
+
+fn find_foundry_script() -> Option<PathBuf> {
+    let path = chronos_root().join("desktop").join("chronos_foundry.py");
+    path.is_file().then_some(path)
+}
+
+fn find_pythonw() -> Option<PathBuf> {
+    which_on_path("pythonw.exe").or_else(|| {
+        std::env::var_os("LOCALAPPDATA").and_then(|root| {
+            let dir = PathBuf::from(root).join("Programs").join("Python");
+            let mut versions = fs::read_dir(dir).ok()?.collect::<Vec<_>>();
+            versions.sort_by_key(|entry| entry.as_ref().ok().map(|e| e.file_name()));
+            versions.into_iter().rev().find_map(|entry| {
+                let pythonw = entry.ok()?.path().join("pythonw.exe");
+                pythonw.is_file().then_some(pythonw)
+            })
+        })
+    })
+}
+
+fn find_comfy_dir() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(explicit) = std::env::var("ARCHETYPES_COMFYUI_DIR") {
+        candidates.push(PathBuf::from(explicit));
+    }
+    if let Ok(explicit) = std::env::var("CHRONOS_COMFYUI_DIR") {
+        candidates.push(PathBuf::from(explicit));
+    }
+    if let Some(profile) = std::env::var_os("USERPROFILE") {
+        let docs = PathBuf::from(profile).join("Documents").join("ComfyUI");
+        candidates.push(docs.clone());
+        candidates.push(docs.join("ComfyUI"));
+    }
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        candidates.push(
+            PathBuf::from(local)
+                .join("Programs")
+                .join("ComfyUI")
+                .join("resources")
+                .join("ComfyUI"),
+        );
+    }
+    candidates.into_iter().find(|path| path.join("main.py").is_file())
+}
+
+fn comfy_data_dir(comfy_dir: &Path) -> PathBuf {
+    if let Some(profile) = std::env::var_os("USERPROFILE") {
+        let docs = PathBuf::from(profile).join("Documents").join("ComfyUI");
+        if docs.is_dir() {
+            return docs;
+        }
+    }
+    comfy_dir.to_path_buf()
+}
+
+fn find_comfy_python(comfy_dir: &Path) -> Option<PathBuf> {
+    let venv = comfy_data_dir(comfy_dir)
+        .join(".venv")
+        .join("Scripts")
+        .join("python.exe");
+    if venv.is_file() {
+        return Some(venv);
+    }
+    let local_venv = comfy_dir.join(".venv").join("Scripts").join("python.exe");
+    if local_venv.is_file() {
+        return Some(local_venv);
+    }
+    which_on_path("python.exe")
+}
+
+fn which_on_path(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path).find_map(|dir| {
+        let candidate = dir.join(name);
+        candidate.is_file().then_some(candidate)
+    })
+}
+
 fn check_readiness() -> Readiness {
     let (ollama, ollama_detail) = probe_ollama();
     let (director, director_detail) = probe_director();
@@ -555,6 +836,107 @@ fn speech_root_ready(root: &std::path::Path) -> bool {
         .join("sherpa-onnx-offline-tts.exe")
         .is_file()
         && root.join("kokoro-en-v0_19").join("model.onnx").is_file()
+}
+
+fn dependencies_manifest_path() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|dir| dir.join("scripts").join("dependencies.json")))
+        .unwrap_or_else(|| PathBuf::from("scripts/dependencies.json"))
+}
+
+fn repair_offline_voices() -> Result<(), String> {
+    let install_root = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .ok_or_else(|| "could not locate launcher directory".to_owned())?;
+    let speech_root = install_root.join("speech");
+    fs::create_dir_all(&speech_root).map_err(|error| error.to_string())?;
+
+    let manifest_path = dependencies_manifest_path();
+    let body = fs::read_to_string(&manifest_path).map_err(|error| {
+        format!(
+            "dependency manifest missing at {}: {error}",
+            manifest_path.display()
+        )
+    })?;
+    let manifest: Value =
+        serde_json::from_str(&body).map_err(|error| format!("invalid dependencies.json: {error}"))?;
+    let artifacts = manifest
+        .get("download_artifacts")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "dependencies.json has no download_artifacts".to_owned())?;
+
+    for artifact in artifacts {
+        let name = artifact
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("artifact");
+        let url = artifact
+            .get("url")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("{name} has no url"))?;
+        let expected = artifact
+            .get("sha256")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("{name} has no sha256"))?;
+        let expected_rel = if name.contains("sherpa-onnx") {
+            "sherpa-onnx-v1.13.4-win-x64-shared-MD-Release/bin/sherpa-onnx-offline-tts.exe"
+        } else {
+            "kokoro-en-v0_19/model.onnx"
+        };
+        if speech_root.join(expected_rel).is_file() {
+            continue;
+        }
+        let archive = std::env::temp_dir().join(format!("archetypes-{expected}.tar.bz2"));
+        download_url(url, &archive)?;
+        let actual = sha256_file(&archive)?;
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err(format!(
+                "hash mismatch for {name}: expected {expected}, got {actual}"
+            ));
+        }
+        let status = Command::new("tar.exe")
+            .args(["-xf", &archive.display().to_string(), "-C"])
+            .arg(&speech_root)
+            .status()
+            .map_err(|error| format!("could not run tar.exe: {error}"))?;
+        if !status.success() {
+            return Err(format!("tar.exe failed extracting {name}"));
+        }
+    }
+
+    if speech_root_ready(&speech_root) {
+        Ok(())
+    } else {
+        Err("voices extracted but readiness paths are still missing".to_owned())
+    }
+}
+
+fn download_url(url: &str, dest: &Path) -> Result<(), String> {
+    let mut reader = ureq::get(url)
+        .timeout(Duration::from_secs(180))
+        .call()
+        .map_err(|error| format!("download failed: {error}"))?
+        .into_reader();
+    let mut file = File::create(dest).map_err(|error| error.to_string())?;
+    std::io::copy(&mut reader, &mut file).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn sha256_file(path: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let mut file = File::open(path).map_err(|error| error.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 8192];
+    loop {
+        let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hex::encode_upper(hasher.finalize()))
 }
 
 fn engine_path() -> PathBuf {
@@ -758,6 +1140,26 @@ mod tests {
     }
 
     #[test]
+    fn dependencies_manifest_is_expected_beside_the_launcher() {
+        let path = dependencies_manifest_path();
+        let text = path.to_string_lossy().replace('\\', "/").to_lowercase();
+        assert!(
+            text.ends_with("scripts/dependencies.json"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn sha256_file_is_stable_for_known_bytes() {
+        let path = std::env::temp_dir().join(format!("archetypes-sha-{}", Uuid::new_v4()));
+        std::fs::write(&path, b"archetypes").unwrap();
+        let digest = sha256_file(&path).unwrap();
+        assert_eq!(digest.len(), 64);
+        assert_eq!(digest, sha256_file(&path).unwrap());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn sentinel_signer_keystore_is_durable_and_strict() {
         let root =
             std::env::temp_dir().join(format!("archetypes-launcher-sentinel-{}", Uuid::new_v4()));
@@ -776,5 +1178,27 @@ mod tests {
         assert!(error.contains("malformed Sentinel launcher key"), "{error}");
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn director_candidates_stay_under_chronos_root() {
+        let root = PathBuf::from(r"C:\chronos");
+        let candidates = director_candidates(&root);
+        assert!(candidates.iter().all(|path| path.starts_with(&root)));
+        assert!(candidates
+            .iter()
+            .any(|path| path.ends_with("chronos_director.exe")));
+    }
+
+    #[test]
+    fn comfy_discovery_uses_userprofile_not_a_baked_account() {
+        let source = include_str!("main.rs");
+        assert!(source.contains("USERPROFILE"));
+        assert!(source.contains("ARCHETYPES_COMFYUI_DIR"));
+        let baked = ["Users", "m", "Documents", "ComfyUI"].join("\\");
+        assert!(
+            !source.contains(&format!("C:\\{baked}")),
+            "Comfy discovery must not bake a single operator account"
+        );
     }
 }

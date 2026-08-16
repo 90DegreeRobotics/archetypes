@@ -17,7 +17,7 @@ pub struct StarPlugin;
 
 /// Marker for the engine-authored solid star.
 #[derive(Component)]
-struct SolidStar;
+pub(crate) struct SolidStar;
 
 /// Fraction of the vessel-shell radius the solid star's points reach toward. Below
 /// 1.0 so the star reads as a crystal core with the vessels floating around it.

@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::paths::app_data_root;
+use super::sentinel;
 use crate::modes::game_mode::GameMode;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -27,6 +28,11 @@ pub fn append_to_ledger(
     kind: &str,
     payload: serde_json::Value,
 ) -> Result<(), String> {
+    sentinel::mediate(
+        "memory.write",
+        "archetypes://ledger",
+        &serde_json::json!({ "kind": kind, "mode": mode.id() }),
+    )?;
     append_to_path(ledger_path(), mode, kind, payload)
 }
 

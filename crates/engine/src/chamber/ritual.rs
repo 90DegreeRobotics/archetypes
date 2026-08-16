@@ -17,6 +17,7 @@ use serde_json::json;
 
 use super::{
     council::{CouncilStatus, CouncilTranscript},
+    ensure_council_scene, despawn_council_runtime,
     portal::StargatePortal,
     speech::{CouncilVoiceState, SpeechStatus},
     spheres::ArchetypeSphere,
@@ -24,7 +25,12 @@ use super::{
 };
 use crate::chamber::camera::WitnessCamera;
 use crate::modes::game_mode::GameMode;
-use crate::services::{ledger::append_to_ledger, paths::app_data_root};
+use crate::services::{
+    ledger::append_to_ledger,
+    memory::{load_world_memory, remember_artifact},
+    paths::app_data_root,
+    sentinel,
+};
 use crate::theme::Archetype;
 
 pub struct RitualPlugin;
@@ -37,6 +43,12 @@ impl Plugin for RitualPlugin {
             .add_systems(Startup, (spawn_ritual_ui, load_witness_profile))
             .add_systems(
                 Update,
+                begin_council_from_menu.run_if(in_state(ChamberState::MainMenu)),
+            )
+            .add_systems(OnEnter(ChamberState::Onboarding), prepare_council_scene)
+            .add_systems(OnEnter(ChamberState::IdleAtTable), prepare_council_scene)
+            .add_systems(
+                Update,
                 (
                     receive_text_input,
                     toggle_transcript_drawer,
@@ -44,13 +56,15 @@ impl Plugin for RitualPlugin {
                     poll_chronos_result,
                     render_ritual_ui,
                     update_speaker_avatar,
+                    return_to_menu_on_escape,
                 )
                     .chain(),
             )
-            .add_systems(OnEnter(ChamberState::IdleAtTable), clear_focus_on_table)
+            .add_systems(OnEnter(ChamberState::IdleAtTable), (clear_focus_on_table, manifest_memory_tokens))
+            .add_systems(OnEnter(ChamberState::MainMenu), despawn_memory_tokens)
             .add_systems(
                 OnEnter(ChamberState::ArtifactResult),
-                present_artifact_image,
+                (present_artifact_image, manifest_memory_tokens),
             )
             .add_systems(
                 Update,
@@ -106,7 +120,6 @@ impl RitualSession {
         self.verdict = verdict;
     }
 
-    #[allow(dead_code)]
     pub(super) fn has_profile(&self) -> bool {
         self.profile.is_some()
     }
@@ -265,6 +278,86 @@ fn toggle_transcript_drawer(keyboard: Res<ButtonInput<Key>>, mut ui: ResMut<Dial
     }
 }
 
+#[derive(Resource)]
+pub struct TriggerCouncilChamber;
+
+fn begin_council_from_menu(
+    mut commands: Commands,
+    trigger: Option<Res<TriggerCouncilChamber>>,
+    session: Res<RitualSession>,
+    mut next_state: ResMut<NextState<ChamberState>>,
+) {
+    if trigger.is_none() {
+        return;
+    }
+    commands.remove_resource::<TriggerCouncilChamber>();
+    commands.insert_resource(ActiveGameMode(GameMode::Standard));
+    if session.has_profile() {
+        next_state.set(ChamberState::IdleAtTable);
+    } else {
+        next_state.set(ChamberState::Onboarding);
+    }
+}
+
+fn prepare_council_scene(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    existing: Query<&Name>,
+    active: Option<Res<ActiveGameMode>>,
+) {
+    ensure_council_scene(&mut commands, &asset_server, &existing);
+    if active.is_none() {
+        commands.insert_resource(ActiveGameMode(GameMode::Standard));
+    }
+}
+
+fn ritual_allows_menu_return(state: ChamberState) -> bool {
+    matches!(
+        state,
+        ChamberState::Onboarding
+            | ChamberState::IdleAtTable
+            | ChamberState::Deliberating
+            | ChamberState::CouncilSpeaking
+            | ChamberState::WitnessVerdict
+            | ChamberState::ArtifactPending
+            | ChamberState::ArtifactResult
+    )
+}
+
+fn return_to_menu_on_escape(
+    keys: Res<ButtonInput<KeyCode>>,
+    state: Res<State<ChamberState>>,
+    mut commands: Commands,
+    named: Query<(Entity, &Name)>,
+    mut transcript: ResMut<CouncilTranscript>,
+    mut next_state: ResMut<NextState<ChamberState>>,
+) {
+    if !keys.just_pressed(KeyCode::Escape) || !ritual_allows_menu_return(*state.get()) {
+        return;
+    }
+    despawn_council_runtime(&mut commands, &named);
+    commands.remove_resource::<ActiveGameMode>();
+    transcript.status = CouncilStatus::Idle;
+    transcript.lines.clear();
+    transcript.verdict.clear();
+    transcript.cursor = 0;
+    next_state.set(ChamberState::MainMenu);
+}
+
+#[cfg(test)]
+mod ritual_menu_tests {
+    use super::*;
+
+    #[test]
+    fn escape_returns_from_every_ritual_state_and_not_from_menu() {
+        assert!(ritual_allows_menu_return(ChamberState::Onboarding));
+        assert!(ritual_allows_menu_return(ChamberState::IdleAtTable));
+        assert!(ritual_allows_menu_return(ChamberState::Deliberating));
+        assert!(!ritual_allows_menu_return(ChamberState::MainMenu));
+        assert!(!ritual_allows_menu_return(ChamberState::Booting));
+    }
+}
+
 fn load_witness_profile(mut session: ResMut<RitualSession>) {
     let Ok(body) = fs::read_to_string(profile_path()) else {
         return;
@@ -390,6 +483,15 @@ fn seal_profile(
         mode_stats: std::collections::HashMap::new(),
         arrow_signal: 0.0,
     };
+    if sentinel::mediate(
+        "profile.generate",
+        "archetypes://witness_profile",
+        &json!({ "name": profile.name.clone() }),
+    )
+    .is_err()
+    {
+        return;
+    }
     if persist_json(&profile_path(), &profile).is_ok() {
         seal_ledger_event(
             mode,
@@ -501,6 +603,17 @@ fn poll_chronos_result(
         } else {
             "artifact_failed"
         };
+        if result.status == "complete" {
+            if let Err(error) = remember_artifact(
+                &session.offering,
+                &session.verdict,
+                result.artifact_id.clone(),
+                result.png_path.clone(),
+                result.proof_receipt_id.clone(),
+            ) {
+                warn!("world memory did not accept the artifact: {error}");
+            }
+        }
         seal_ledger_event(
             mode,
             kind,
@@ -741,6 +854,49 @@ fn persist_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     let body = serde_json::to_string_pretty(value).map_err(|error| error.to_string())?;
     fs::write(path, format!("{body}\n")).map_err(|error| error.to_string())
+}
+
+#[derive(Component)]
+struct MemoryToken;
+
+fn despawn_memory_tokens(mut commands: Commands, query: Query<Entity, With<MemoryToken>>) {
+    for entity in &query {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn manifest_memory_tokens(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    existing: Query<Entity, With<MemoryToken>>,
+) {
+    for entity in &existing {
+        commands.entity(entity).despawn();
+    }
+    let memory = load_world_memory();
+    if memory.shards.is_empty() {
+        return;
+    }
+    let mesh = meshes.add(Cuboid::new(0.32, 0.85, 0.32));
+    let count = memory.shards.len().min(7);
+    for (index, shard) in memory.shards.iter().rev().take(count).enumerate() {
+        let angle = index as f32 * std::f32::consts::TAU / count as f32;
+        let mat = materials.add(StandardMaterial {
+            base_color: Color::srgb(0.83, 0.69, 0.22),
+            emissive: LinearRgba::new(0.45, 0.32, 0.08, 1.0),
+            metallic: 0.6,
+            perceptual_roughness: 0.18,
+            ..default()
+        });
+        commands.spawn((
+            Mesh3d(mesh.clone()),
+            MeshMaterial3d(mat),
+            Transform::from_translation(Vec3::new(angle.sin() * 2.35, -1.15, angle.cos() * 2.35)),
+            MemoryToken,
+            Name::new(format!("WorldMemoryToken_{}", shard.id)),
+        ));
+    }
 }
 
 fn seal_ledger_event(mode: GameMode, kind: &str, payload: serde_json::Value) {

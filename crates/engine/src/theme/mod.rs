@@ -18,6 +18,16 @@ pub enum Archetype {
 }
 
 impl Archetype {
+    pub const COUNCIL: [Archetype; 7] = [
+        Archetype::Architect,
+        Archetype::Sentinel,
+        Archetype::Mentor,
+        Archetype::Explorer,
+        Archetype::Oracle,
+        Archetype::Empath,
+        Archetype::Jester,
+    ];
+
     pub fn theme(&self) -> ArchetypeTheme {
         match self {
             Archetype::Architect => constants::theme_architect(),

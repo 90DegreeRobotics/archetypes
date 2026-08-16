@@ -1,8 +1,17 @@
+//! Architect Inner Chambers — a navigable Luminous Blueprint interior.
+//!
+//! Reading the space is reading the Architect's mind. Extracted truth can seed
+//! one future Oracle Riddle round.
+
 use bevy::prelude::*;
 
 pub mod camera;
+pub mod catalog;
 pub mod extraction;
+pub mod seed;
 pub mod world;
+
+pub use seed::{persist_extracted_truth, take_seeded_truth};
 
 #[derive(Resource)]
 pub struct TriggerInnerChambers;
@@ -40,6 +49,9 @@ fn check_trigger(
 ) {
     if trigger.is_some() {
         commands.remove_resource::<TriggerInnerChambers>();
+        commands.insert_resource(crate::chamber::ActiveGameMode(
+            crate::modes::game_mode::GameMode::InnerChambers,
+        ));
         next_state.set(InnerChambersState::Loading);
     }
 }

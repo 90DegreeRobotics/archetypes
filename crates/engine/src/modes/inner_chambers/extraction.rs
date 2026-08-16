@@ -1,12 +1,11 @@
+use super::catalog::{all_nodes, council_chambers, NODE_RADIUS};
+use super::seed::persist_extracted_truth;
+use super::world::InnerChambersHint;
 use super::InnerChambersState;
 use crate::modes::game_mode::GameMode;
 use crate::services::ledger::append_to_ledger;
 use bevy::prelude::*;
 use serde_json::json;
-
-use super::world::{InnerChambersHint, ARCHITECT_NODE_POSITIONS, ARCHITECT_NODE_RADIUS};
-
-const EXTRACTED_TRUTH: [&str; 3] = ["Order", "Structure", "Grid"];
 
 pub struct ExtractionPlugin;
 
@@ -19,8 +18,6 @@ impl Plugin for ExtractionPlugin {
     }
 }
 
-// Logic for reading the archetype's mind.
-// The player navigates to specific grid intersections to extract a "truth".
 fn check_extraction(
     keyboard: Res<ButtonInput<KeyCode>>,
     query: Query<&Transform, With<super::camera::PlayerCamera>>,
@@ -36,12 +33,21 @@ fn check_extraction(
         return;
     }
 
-    let aligned_node = nearest_truth_node(transform.translation);
+    let aligned = nearest_truth_node(transform.translation);
     if let Ok(mut text) = hint.single_mut() {
-        text.0 = if aligned_node.is_some() {
-            "NODE ALIGNED\nPress E to read: Order / Structure / Grid".to_owned()
+        text.0 = if let Some((chamber_index, node_index, words)) = aligned {
+            let spec = council_chambers()[chamber_index];
+            format!(
+                "{}\nNODE {} ALIGNED\nPress E to read: {} / {} / {}",
+                spec.title,
+                node_index + 1,
+                words[0],
+                words[1],
+                words[2]
+            )
         } else {
-            "Find a blue node. E reads only when aligned. Esc returns.".to_owned()
+            "Seven minds surround the hub. Walk into a chamber. E reads only when aligned. Esc returns."
+                .to_owned()
         };
     }
 
@@ -49,14 +55,21 @@ fn check_extraction(
         return;
     }
 
-    let Some(node_index) = aligned_node else {
+    let Some((chamber_index, node_index, words)) = aligned else {
         if let Ok(mut text) = hint.single_mut() {
-            text.0 = "No node aligned. Move closer to a blue monolith.".to_owned();
+            text.0 = "No node aligned. Enter a chamber and stand with a luminous node.".to_owned();
         }
         return;
     };
 
-    let payload = inner_chamber_truth_payload(transform.translation, node_index);
+    let spec = council_chambers()[chamber_index];
+    let payload = inner_chamber_truth_payload(
+        transform.translation,
+        chamber_index,
+        node_index,
+        spec.archetype.theme().name,
+        words,
+    );
     if let Err(error) = append_to_ledger(
         GameMode::InnerChambers,
         "inner_chamber_truth_extracted",
@@ -68,27 +81,36 @@ fn check_extraction(
         }
         return;
     }
+    if let Err(error) = persist_extracted_truth(words, node_index, spec.archetype.theme().name) {
+        warn!("inner chamber truth persist failed: {error}");
+    }
 
     next_state.set(InnerChambersState::Exiting);
 }
 
-pub(crate) fn nearest_truth_node(position: Vec3) -> Option<usize> {
-    ARCHITECT_NODE_POSITIONS
-        .iter()
-        .enumerate()
-        .filter_map(|(index, node)| {
-            (position.distance(*node) <= ARCHITECT_NODE_RADIUS)
-                .then_some((index, position.distance(*node)))
+pub(crate) fn nearest_truth_node(position: Vec3) -> Option<(usize, usize, [&'static str; 3])> {
+    all_nodes()
+        .into_iter()
+        .filter_map(|(chamber_index, node_index, node, words)| {
+            (position.distance(node) <= NODE_RADIUS)
+                .then_some((chamber_index, node_index, words, position.distance(node)))
         })
-        .min_by(|(_, a), (_, b)| a.total_cmp(b))
-        .map(|(index, _)| index)
+        .min_by(|a, b| a.3.total_cmp(&b.3))
+        .map(|(chamber_index, node_index, words, _)| (chamber_index, node_index, words))
 }
 
-pub(crate) fn inner_chamber_truth_payload(location: Vec3, node_index: usize) -> serde_json::Value {
+pub(crate) fn inner_chamber_truth_payload(
+    location: Vec3,
+    chamber_index: usize,
+    node_index: usize,
+    archetype: &str,
+    words: [&str; 3],
+) -> serde_json::Value {
     json!({
-        "archetype": "Architect",
+        "archetype": archetype,
+        "chamber_index": chamber_index,
         "node_index": node_index,
-        "extracted_truth": EXTRACTED_TRUTH,
+        "extracted_truth": words,
         "location": [location.x, location.y, location.z]
     })
 }
@@ -96,21 +118,40 @@ pub(crate) fn inner_chamber_truth_payload(location: Vec3, node_index: usize) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modes::inner_chambers::catalog::node_positions;
 
     #[test]
     fn extraction_requires_truth_node_proximity() {
-        assert_eq!(nearest_truth_node(ARCHITECT_NODE_POSITIONS[0]), Some(0));
+        let spec = council_chambers()[0];
+        let node = node_positions(&spec)[0];
+        let hit = nearest_truth_node(node).expect("architect node");
+        assert_eq!(hit.0, 0);
+        assert_eq!(hit.2[0], "Order");
         assert_eq!(nearest_truth_node(Vec3::ZERO), None);
     }
 
     #[test]
-    fn truth_payload_records_node_location_and_three_words() {
-        let payload = inner_chamber_truth_payload(Vec3::new(1.0, 2.0, 3.0), 4);
-        assert_eq!(payload["archetype"], "Architect");
-        assert_eq!(payload["node_index"], 4);
+    fn each_chamber_has_distinct_concrete_triples() {
+        let mut seen = std::collections::BTreeSet::new();
+        for spec in council_chambers() {
+            for words in spec.truths {
+                seen.insert(words);
+            }
+        }
+        assert_eq!(seen.len(), 14);
+    }
+
+    #[test]
+    fn truth_payload_records_which_mind_was_read() {
+        let payload = inner_chamber_truth_payload(
+            Vec3::new(1.0, 2.0, 3.0),
+            4,
+            1,
+            "Noctis Veil",
+            ["Pattern", "Veil", "Bell"],
+        );
+        assert_eq!(payload["archetype"], "Noctis Veil");
+        assert_eq!(payload["chamber_index"], 4);
         assert_eq!(payload["extracted_truth"].as_array().unwrap().len(), 3);
-        assert_eq!(payload["location"][0], 1.0);
-        assert_eq!(payload["location"][1], 2.0);
-        assert_eq!(payload["location"][2], 3.0);
     }
 }

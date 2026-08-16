@@ -1,6 +1,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameMode {
     Standard,
+    Consciousness,
     OracleRiddle,
     InnerChambers,
     LivingEngine,
@@ -20,10 +21,15 @@ pub struct ModeRegistration {
 }
 
 impl GameMode {
-    pub const REGISTRY: [ModeRegistration; 4] = [
+    pub const REGISTRY: [ModeRegistration; 5] = [
         ModeRegistration {
             mode: GameMode::Standard,
             label: "STANDARD MODE",
+            available: true,
+        },
+        ModeRegistration {
+            mode: GameMode::Consciousness,
+            label: "CONSCIOUSNESS",
             available: true,
         },
         ModeRegistration {
@@ -33,19 +39,20 @@ impl GameMode {
         },
         ModeRegistration {
             mode: GameMode::InnerChambers,
-            label: "INNER CHAMBERS - LOCKED",
-            available: false,
+            label: "INNER CHAMBERS",
+            available: true,
         },
         ModeRegistration {
             mode: GameMode::LivingEngine,
-            label: "LIVING ENGINE - LOCKED",
-            available: false,
+            label: "LIVING ENGINE",
+            available: true,
         },
     ];
 
     pub const fn id(self) -> &'static str {
         match self {
             GameMode::Standard => "standard",
+            GameMode::Consciousness => "consciousness",
             GameMode::OracleRiddle => "oracle_riddle",
             GameMode::InnerChambers => "inner_chambers",
             GameMode::LivingEngine => "living_engine",
@@ -55,6 +62,7 @@ impl GameMode {
     pub const fn label(self) -> &'static str {
         match self {
             GameMode::Standard => "STANDARD MODE",
+            GameMode::Consciousness => "CONSCIOUSNESS",
             GameMode::OracleRiddle => "ORACLE RIDDLE",
             GameMode::InnerChambers => "INNER CHAMBERS",
             GameMode::LivingEngine => "LIVING ENGINE",
@@ -68,24 +76,36 @@ mod tests {
 
     #[test]
     fn registry_contains_all_lane_contracts_without_fake_playability() {
-        assert_eq!(GameMode::REGISTRY.len(), 4);
+        assert_eq!(GameMode::REGISTRY.len(), 5);
+        assert!(GameMode::REGISTRY.iter().all(|entry| entry.available));
         assert!(GameMode::REGISTRY
             .iter()
             .any(|entry| entry.mode == GameMode::Standard && entry.available));
         assert!(GameMode::REGISTRY
             .iter()
+            .any(|entry| entry.mode == GameMode::Consciousness && entry.available));
+        assert!(GameMode::REGISTRY
+            .iter()
             .any(|entry| entry.mode == GameMode::OracleRiddle && entry.available));
         assert!(GameMode::REGISTRY
             .iter()
-            .filter(|entry| !entry.available)
-            .all(|entry| matches!(entry.mode, GameMode::InnerChambers | GameMode::LivingEngine)));
+            .any(|entry| entry.mode == GameMode::InnerChambers && entry.available));
+        assert!(GameMode::REGISTRY
+            .iter()
+            .any(|entry| entry.mode == GameMode::LivingEngine && entry.available));
     }
 
     #[test]
     fn modes_have_stable_ledger_ids() {
         assert_eq!(GameMode::Standard.id(), "standard");
+        assert_eq!(GameMode::Consciousness.id(), "consciousness");
         assert_eq!(GameMode::OracleRiddle.id(), "oracle_riddle");
         assert_eq!(GameMode::InnerChambers.id(), "inner_chambers");
         assert_eq!(GameMode::LivingEngine.id(), "living_engine");
+    }
+
+    #[test]
+    fn consciousness_is_not_aliased_to_standard() {
+        assert_ne!(GameMode::Consciousness.id(), GameMode::Standard.id());
     }
 }

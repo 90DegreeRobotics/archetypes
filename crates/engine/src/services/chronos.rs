@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 pub const DIRECTOR_URL: &str = "http://127.0.0.1:7777";
@@ -10,8 +10,22 @@ pub fn comfyui_url() -> String {
 }
 
 pub fn comfyui_output_dir() -> String {
-    std::env::var("ARCHETYPES_COMFYUI_OUTPUT_DIR")
-        .unwrap_or_else(|_| r"C:\Users\m\Documents\ComfyUI\output".to_owned())
+    if let Ok(explicit) = std::env::var("ARCHETYPES_COMFYUI_OUTPUT_DIR") {
+        return explicit;
+    }
+    if let Some(profile) = std::env::var_os("USERPROFILE") {
+        let conventional = PathBuf::from(profile)
+            .join("Documents")
+            .join("ComfyUI")
+            .join("output");
+        if conventional.is_dir() {
+            return conventional.display().to_string();
+        }
+    }
+    crate::services::paths::app_data_root()
+        .join("comfy_output")
+        .display()
+        .to_string()
 }
 
 pub fn ollama_model_name() -> String {
@@ -42,6 +56,13 @@ pub fn request_chronos_artifact_with_style(
     style: &str,
     session_id: &str,
 ) -> ArtifactOutcome {
+    if let Err(error) = crate::services::sentinel::mediate(
+        "artifact.register",
+        "archetypes://chronos/artifact",
+        &json!({ "session_id": session_id }),
+    ) {
+        return failed_outcome(format!("Sentinel denied the artifact request ({error})."));
+    }
     let status: Value = match response_json(
         ureq::get(&format!("{DIRECTOR_URL}/api/v1/status"))
             .timeout(Duration::from_secs(4))
@@ -153,8 +174,14 @@ pub fn resolve_chronos_path(path: &str) -> PathBuf {
     if path.is_absolute() {
         path
     } else {
-        Path::new("C:\\chronos").join(path)
+        chronos_root().join(path)
     }
+}
+
+fn chronos_root() -> PathBuf {
+    std::env::var_os("ARCHETYPES_CHRONOS_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\chronos"))
 }
 
 #[cfg(test)]
@@ -164,10 +191,23 @@ mod tests {
     #[test]
     fn resolve_chronos_path_joins_relative_under_chronos_root() {
         let path = resolve_chronos_path("renders/example.png");
-        assert_eq!(
-            path,
-            PathBuf::from(r"C:\chronos\renders\example.png")
+        assert!(
+            path.ends_with(std::path::Path::new("renders").join("example.png")),
+            "{path:?}"
         );
+        assert!(path.is_absolute());
+    }
+
+    #[test]
+    fn comfy_output_dir_is_not_a_hardcoded_operator_profile() {
+        let dir = comfyui_output_dir();
+        assert!(
+            !dir.to_lowercase().contains(r"\users\m\documents\comfyui\output")
+                || std::env::var_os("ARCHETYPES_COMFYUI_OUTPUT_DIR").is_some()
+                || PathBuf::from(&dir).is_dir(),
+            "default Comfy path must not be pinned to a single operator account: {dir}"
+        );
+        assert!(!dir.contains(r"C:\Users\m\Documents\ComfyUI\output") || PathBuf::from(&dir).is_dir());
     }
 
     #[test]

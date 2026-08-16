@@ -57,6 +57,18 @@ if (Test-Path $RendersBackup) {
 }
 Write-Host "Staged runtime to $DistRoot (preserved chat renders under assets\$RendersRel)"
 
+$ScriptsDst = Join-Path $DistRoot "scripts"
+New-Item -ItemType Directory -Force -Path $ScriptsDst | Out-Null
+Copy-Item (Join-Path $RepoRoot "scripts\dependencies.json") (Join-Path $ScriptsDst "dependencies.json") -Force
+Copy-Item (Join-Path $RepoRoot "scripts\uninstall_product.ps1") (Join-Path $ScriptsDst "uninstall_product.ps1") -Force -ErrorAction SilentlyContinue
+
+$HelpSrc = Join-Path $RepoRoot "assets\help"
+$HelpDst = Join-Path $DistRoot "help"
+if (Test-Path $HelpSrc) {
+    New-Item -ItemType Directory -Force -Path $HelpDst | Out-Null
+    Copy-Item (Join-Path $HelpSrc "*") -Destination $HelpDst -Recurse -Force
+}
+
 # Build / refresh an .ico so the Desktop shortcut and embedded exe icons stay aligned.
 $IcoPath = Join-Path $DistRoot "archetypes.ico"
 $IconPng = Join-Path $RepoRoot "assets\icons\architect-icon.png"
@@ -95,6 +107,18 @@ foreach ($dir in $targets) {
     $shortcut.Description = "Archetypes - Council Chamber"
     $shortcut.Save()
     Write-Host "Shortcut created: $lnk"
+}
+
+$StartMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
+$HelpHtml = Join-Path $DistRoot "help\index.html"
+if (Test-Path $HelpHtml) {
+    $helpLnk = Join-Path $StartMenu "Archetypes Help.lnk"
+    $helpShortcut = $WshShell.CreateShortcut($helpLnk)
+    $helpShortcut.TargetPath = $HelpHtml
+    $helpShortcut.WorkingDirectory = (Join-Path $DistRoot "help")
+    $helpShortcut.Description = "Archetypes — Witness Manual"
+    $helpShortcut.Save()
+    Write-Host "Shortcut created: $helpLnk"
 }
 
 Write-Host "`nDone. All council voices are installed. Launch Archetypes from your Desktop or Start Menu."

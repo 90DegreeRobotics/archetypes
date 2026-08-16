@@ -7,29 +7,26 @@ Local plan copy: `docs/security/SENTINEL_IMPERVIOUS_PROTOCOL_MASTER_PLAN.md`
 Protected action inventory: `docs/security/SENTINEL_PROTECTED_ACTIONS.md`
 Certification report path: `docs/security/SENTINEL_CERTIFICATION_REPORT.md`
 Required release mode: `enforce`
-Certification readiness: blocked
+Certification readiness: candidate
 
 ## Current State
 
-Status: Implementing, not release-certified.
+Status: Candidate. Launch and in-engine protected work are Sentinel-mediated. Not release-signed.
 
 Implemented footholds:
 
 - Launcher requires Chronos Director readiness and Sentinel authority in enforce mode.
 - Launcher owns a durable local Ed25519 Sentinel client key under `%LOCALAPPDATA%\NeuroCognica\Archetypes\sentinel\launcher_client.seed`.
 - Launch intent is written through the guarded Chronos Codex append path before `engine.exe`.
-- The guarded launch append carries a client-signed Sentinel authority envelope bound to the normalized `codex_append` request digest.
-- Legacy `ARCHETYPES_ALLOW_WITHOUT_CHRONOS` handling has been removed from launcher source.
+- The engine reuses that keystore. `chat.respond`, `game.respond` (via chat), `model.generate` (via Chronos artifact), `artifact.register`, `memory.write`, `file.write` (via memory/profile persist), and `profile.generate` are mediated before they run.
+- Local deny-all paralysis tests cover all 40 canonical protected actions. Unknown actions deny even under the mediated-runtime policy.
+- Legacy `ARCHETYPES_ALLOW_WITHOUT_CHRONOS` handling remains absent from launcher and engine source.
 
-Open stop-ship findings:
+Open stop-ship findings for a **certified** (not candidate) release:
 
-- Chronos client-key bootstrap is still a local authority registration path; admin-signed key lifecycle and revocation ceremony are not complete.
-- In-engine Sentinel client is not complete.
-- Runtime game response mediation is not complete.
-- Save/export/share mediation is not complete.
-- Player profile and memory mediation are not complete.
-- Deny-all paralysis test for launcher plus engine is not complete.
+- Admin-signed key lifecycle and revocation ceremony are not complete.
 - Release artifact signing and policy signing are not complete.
+- Unused protected actions remain fail-closed deny rather than Chronos-policy certified paths.
 
 ## Required Certification Command
 

@@ -1,6 +1,6 @@
 # CODEX LANE B — The Inner Chambers (Architect)
 
-**Owner: Codex. Status: WAITING ON LANE 0.**
+**Owner: Codex. Status: COMPLETED (playable Architect interior shipped in product rebuild 0.2.0 — `plan_2026-08-16_1045_product-rebuild.md`). Historical brief below is the original lane contract.**
 **Cold-start brief — everything you need is in this file.**
 
 ## What you are building

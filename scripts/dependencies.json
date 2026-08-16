@@ -12,6 +12,20 @@
       "required": true
     }
   ],
+  "external_prerequisites": [
+    {
+      "name": "Chronos Director",
+      "probe": "http://127.0.0.1:7777/api/v1/status",
+      "required": true,
+      "note": "Sibling NeuroCognica product. The Archetypes launcher starts an installed Director if :7777 is down, then fail-closes unless readiness is ready and Sentinel is enforcing."
+    },
+    {
+      "name": "ComfyUI",
+      "probe": "http://127.0.0.1:8000/system_stats",
+      "required": true,
+      "note": "Reached through Chronos Foundry. The Archetypes launcher starts an installed ComfyUI if :8000 is down. Not downloaded as an Archetypes sidecar."
+    }
+  ],
   "download_artifacts": [
     {
       "name": "sherpa-onnx v1.13.4 Windows x64 TTS runtime",

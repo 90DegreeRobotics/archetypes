@@ -128,15 +128,28 @@ const ORACLE_PROMPTS: [OraclePrompt; 16] = [
 ];
 
 fn start_generation(mut commands: Commands) {
-    let oracle_prompt = prompt_for_round(round_seed());
+    let (difficulty, target_words, prompt) =
+        if let Some(words) = crate::modes::inner_chambers::take_seeded_truth() {
+            let image_prompt = format!(
+                "Create a clear visual guessing-game image with exactly three obvious clues. Hidden answer words: {}, {}, {}. Make the first word the main subject, make the second word visually obvious as color/material/condition, and make the third word visible as action, setting, or time of day. Literal, readable, not symbolic. No text, no letters, no captions. This vision was extracted from an inner chamber.",
+                words[0], words[1], words[2]
+            );
+            (Difficulty::Obscured, words.to_vec(), image_prompt)
+        } else {
+            let oracle_prompt = prompt_for_round(round_seed());
+            (
+                oracle_prompt.difficulty,
+                oracle_prompt.words_vec(),
+                oracle_prompt.image_prompt(),
+            )
+        };
     let session = OracleSession {
-        difficulty: oracle_prompt.difficulty,
-        target_words: oracle_prompt.words_vec(),
+        difficulty,
+        target_words,
         ..default()
     };
     commands.insert_resource(session);
 
-    let prompt = oracle_prompt.image_prompt();
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         let _ = tx.send(request_chronos_artifact(&prompt));

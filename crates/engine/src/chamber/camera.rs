@@ -9,6 +9,8 @@
 use bevy::prelude::*;
 
 use super::{spheres::ArchetypeSphere, ChamberState, CurrentFocus, COUNCIL_CENTER};
+use crate::modes::inner_chambers::InnerChambersState;
+use crate::modes::living_engine::LivingEngineState;
 use crate::theme::Archetype;
 
 /// Fallback establishing pose, used only until the authored camera node is loaded.
@@ -56,8 +58,18 @@ impl Plugin for CameraPlugin {
 
 /// Own all boot/table Visibility + Witness camera activity in one system so it
 /// cannot B0001-conflict with a parallel boot Update system.
+fn occupying_exclusive_world(
+    inner: &State<InnerChambersState>,
+    living: &State<LivingEngineState>,
+) -> bool {
+    *inner.get() != InnerChambersState::Inactive
+        || *living.get() != LivingEngineState::Inactive
+}
+
 fn gate_boot_and_table_visibility(
     state: Res<State<ChamberState>>,
+    inner: Res<State<InnerChambersState>>,
+    living: Res<State<LivingEngineState>>,
     mut clear: ResMut<ClearColor>,
     mut named: Query<(&Name, &mut Visibility)>,
     mut cameras: Query<&mut Camera, With<WitnessCamera>>,
@@ -67,21 +79,39 @@ fn gate_boot_and_table_visibility(
         clear.0 = Color::BLACK;
     }
 
-    let table_visible = matches!(
+    let exclusive = occupying_exclusive_world(&inner, &living);
+    let ritual = matches!(
         state.get(),
-        ChamberState::MainMenu
-            | ChamberState::Onboarding
+        ChamberState::Onboarding
             | ChamberState::IdleAtTable
+            | ChamberState::Deliberating
+            | ChamberState::CouncilSpeaking
+            | ChamberState::WitnessVerdict
+            | ChamberState::ArtifactPending
             | ChamberState::ArtifactResult
     );
+    let lore_visible = !booting && !exclusive && !ritual;
+    let council_visible = !booting && !exclusive && ritual;
+    let table_visible = council_visible
+        && matches!(
+            state.get(),
+            ChamberState::Onboarding | ChamberState::IdleAtTable | ChamberState::ArtifactResult
+        );
 
     for (name, mut visibility) in &mut named {
         match name.as_str() {
-            "LoreCouncilChamber" | "AuthoritativeCouncilChamber" => {
-                *visibility = if booting {
-                    Visibility::Hidden
-                } else {
+            "LoreCouncilChamber" => {
+                *visibility = if lore_visible {
                     Visibility::Visible
+                } else {
+                    Visibility::Hidden
+                };
+            }
+            "AuthoritativeCouncilChamber" => {
+                *visibility = if council_visible {
+                    Visibility::Visible
+                } else {
+                    Visibility::Hidden
                 };
             }
             "PortalTable" => {
@@ -96,12 +126,16 @@ fn gate_boot_and_table_visibility(
     }
 
     if let Ok(mut camera) = cameras.single_mut() {
-        camera.is_active = !booting;
+        camera.is_active = !booting && !exclusive;
     }
 }
 
 #[derive(Component)]
 pub struct WitnessCamera;
+
+/// Marks a mode-owned 3D camera that must remain active while WitnessCamera is gated off.
+#[derive(Component)]
+pub struct RuntimeGameplayCamera;
 
 fn setup_witness_camera(mut commands: Commands) {
     commands.spawn((
@@ -115,7 +149,14 @@ fn setup_witness_camera(mut commands: Commands) {
 /// Imported cameras, when present in legacy/reference assets, are never the live
 /// view; the runtime Witness camera owns framing.
 fn disable_imported_cameras(
-    mut query: Query<&mut Camera, (Without<WitnessCamera>, Without<Camera2d>)>,
+    mut query: Query<
+        &mut Camera,
+        (
+            Without<WitnessCamera>,
+            Without<Camera2d>,
+            Without<RuntimeGameplayCamera>,
+        ),
+    >,
 ) {
     for mut camera in &mut query {
         camera.is_active = false;
@@ -131,6 +172,7 @@ fn drive_camera(
         (With<Camera>, Without<WitnessCamera>, Without<Camera2d>),
     >,
     mut camera: Query<&mut Transform, With<WitnessCamera>>,
+    star: Query<&Transform, (With<crate::chamber::star::SolidStar>, Without<WitnessCamera>)>,
     time: Res<Time>,
 ) {
     let Ok(mut transform) = camera.single_mut() else {
@@ -157,7 +199,12 @@ fn drive_camera(
         ChamberState::CouncilSpeaking => focus
             .0
             .and_then(|archetype| sphere_world_pos(&spheres, archetype))
-            .map(frame_sphere)
+            .map(|sphere| {
+                star.single()
+                    .ok()
+                    .map(|star_transform| hexagram_frame(sphere, star_transform))
+                    .unwrap_or_else(|| frame_sphere(sphere))
+            })
             .unwrap_or(establishing),
         // The council convenes: a deliberate, centered frame on the star, not the
         // wide main-menu establishing shot.
@@ -187,6 +234,35 @@ fn frame_sphere(sphere_pos: Vec3) -> Transform {
     Transform::from_translation(camera_pos).looking_at(sphere_pos, Vec3::Y)
 }
 
+/// Cube vertices of a stellated octahedron — the eight 3-fold axes where two
+/// tetrahedra project as a hexagram (Star of David).
+const HEXAGRAM_LOCAL_AXES: [Vec3; 8] = [
+    Vec3::new(1.0, 1.0, 1.0),
+    Vec3::new(1.0, 1.0, -1.0),
+    Vec3::new(1.0, -1.0, 1.0),
+    Vec3::new(1.0, -1.0, -1.0),
+    Vec3::new(-1.0, 1.0, 1.0),
+    Vec3::new(-1.0, 1.0, -1.0),
+    Vec3::new(-1.0, -1.0, 1.0),
+    Vec3::new(-1.0, -1.0, -1.0),
+];
+
+pub(crate) fn hexagram_axis_for_sphere(sphere_pos: Vec3, star: &Transform) -> Vec3 {
+    let to_sphere = (sphere_pos - star.translation).normalize_or_zero();
+    HEXAGRAM_LOCAL_AXES
+        .iter()
+        .map(|local| (star.rotation * local.normalize()).normalize_or_zero())
+        .max_by(|a, b| a.dot(to_sphere).total_cmp(&b.dot(to_sphere)))
+        .unwrap_or(to_sphere)
+}
+
+fn hexagram_frame(sphere_pos: Vec3, star: &Transform) -> Transform {
+    let axis = hexagram_axis_for_sphere(sphere_pos, star);
+    let camera_pos = star.translation + axis * FRAME_RADIUS + Vec3::Y * 0.6;
+    let look = sphere_pos.lerp(star.translation, 0.35);
+    Transform::from_translation(camera_pos).looking_at(look, Vec3::Y)
+}
+
 fn sphere_world_pos(
     spheres: &Query<(&ArchetypeSphere, &GlobalTransform)>,
     archetype: Archetype,
@@ -194,4 +270,34 @@ fn sphere_world_pos(
     spheres.iter().find_map(|(sphere, transform)| {
         (sphere.archetype == archetype).then(|| transform.translation())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hexagram_axis_prefers_the_cube_vertex_facing_the_speaker() {
+        let star = Transform::from_translation(Vec3::ZERO);
+        let sphere = Vec3::new(4.0, 4.0, 4.0);
+        let axis = hexagram_axis_for_sphere(sphere, &star);
+        let expected = Vec3::ONE.normalize();
+        assert!(axis.dot(expected) > 0.98, "axis={axis:?}");
+    }
+
+    #[test]
+    fn hexagram_axes_are_eight_distinct_directions() {
+        let mut unique = HEXAGRAM_LOCAL_AXES
+            .map(|axis| {
+                (
+                    (axis.x.signum() as i32),
+                    (axis.y.signum() as i32),
+                    (axis.z.signum() as i32),
+                )
+            })
+            .to_vec();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), 8);
+    }
 }

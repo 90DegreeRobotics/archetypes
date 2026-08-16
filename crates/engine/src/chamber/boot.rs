@@ -1,9 +1,9 @@
-//! Title / loading screen and the current lore-chamber launcher shell.
+//! Title / loading screen and the lore-chamber launcher shell.
 //!
-//! The old table/chamber/menu visuals are parked behind an explicit legacy gate,
-//! while default desktop launch reveals the generated lore-compliant chamber.
-//! Standard and Oracle are playable from this menu; Inner Chambers / Living Engine
-//! remain locked.
+//! Default desktop launch reveals the generated lore-compliant chamber as the
+//! main menu. STANDARD MODE enters the AURA council ritual (uiscene1 + table).
+//! CONSCIOUSNESS is 1:1 archetype chat. Oracle, Inner Chambers, and Living Engine
+//! are playable from this menu. HELP is an in-game overlay — never a CLI.
 
 use std::{fs, path::PathBuf};
 
@@ -45,8 +45,11 @@ impl Plugin for BootPlugin {
                 (
                     style_mode_buttons,
                     style_quit_button,
+                    style_help_button,
                     activate_mode,
                     activate_quit,
+                    activate_help,
+                    close_help_on_escape,
                 )
                     .chain()
                     .run_if(in_state(ChamberState::MainMenu)),
@@ -85,6 +88,12 @@ struct ModeButton {
 
 #[derive(Component)]
 struct QuitButton;
+
+#[derive(Component)]
+struct HelpButton;
+
+#[derive(Component)]
+struct HelpOverlay;
 
 #[derive(Component)]
 struct MainMenuNotice;
@@ -335,6 +344,32 @@ pub(crate) fn spawn_main_menu(mut commands: Commands, registry: Res<ModeRegistry
                         margin: UiRect::top(Val::Px(8.0)),
                         ..default()
                     },
+                    BackgroundColor(Color::srgba(0.018, 0.020, 0.028, 0.96)),
+                    BorderColor::all(Color::srgba(0.32, 0.48, 0.62, 0.72)),
+                    HelpButton,
+                ))
+                .with_children(|button| {
+                    button.spawn((
+                        Text::new("HELP"),
+                        TextFont {
+                            font_size: 17.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.78, 0.86, 0.92)),
+                    ));
+                });
+                menu.spawn((
+                    Button,
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Px(48.0),
+                        justify_content: JustifyContent::FlexStart,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::axes(Val::Px(18.0), Val::Px(0.0)),
+                        border: UiRect::all(Val::Px(1.0)),
+                        margin: UiRect::top(Val::Px(8.0)),
+                        ..default()
+                    },
                     BackgroundColor(Color::srgba(0.022, 0.018, 0.018, 0.96)),
                     BorderColor::all(Color::srgba(0.54, 0.24, 0.24, 0.72)),
                     QuitButton,
@@ -377,21 +412,29 @@ fn initial_menu_banner() -> String {
     }
 }
 
-fn menu_label(mode: GameMode) -> &'static str {
-    match mode {
-        GameMode::Standard => "STANDARD MODE",
-        GameMode::OracleRiddle => "ORACLE RIDDLE",
-        GameMode::InnerChambers => "INNER CHAMBERS - LOCKED",
-        GameMode::LivingEngine => "LIVING ENGINE - LOCKED",
+fn menu_label(mode: GameMode) -> String {
+    if mode_available(mode) {
+        mode.label().to_owned()
+    } else {
+        format!("{} - LOCKED", mode.label())
     }
+}
+
+fn mode_available(mode: GameMode) -> bool {
+    GameMode::REGISTRY
+        .iter()
+        .find(|entry| entry.mode == mode)
+        .map(|entry| entry.available)
+        .unwrap_or(false)
 }
 
 fn standby_notice(mode: GameMode) -> &'static str {
     match mode {
-        GameMode::Standard => "STANDARD MODE OPENING.",
+        GameMode::Standard => "STANDARD MODE OPENING. THE COUNCIL AWAITS.",
+        GameMode::Consciousness => "CONSCIOUSNESS OPENING.",
         GameMode::OracleRiddle => "ORACLE RIDDLE OPENING.",
-        GameMode::InnerChambers => "INNER CHAMBERS REMAIN LOCKED.",
-        GameMode::LivingEngine => "LIVING ENGINE REMAINS LOCKED.",
+        GameMode::InnerChambers => "INNER CHAMBERS OPENING.",
+        GameMode::LivingEngine => "LIVING ENGINE OPENING.",
     }
 }
 
@@ -467,10 +510,14 @@ fn style_quit_button(
 
 fn activate_mode(
     interaction: Query<(&Interaction, &ModeButton), Changed<Interaction>>,
+    help: Query<Entity, With<HelpOverlay>>,
     mut commands: Commands,
     mut notice: Query<&mut Text, With<MainMenuNotice>>,
     main_menu: Query<Entity, With<MainMenuUi>>,
 ) {
+    if !help.is_empty() {
+        return;
+    }
     for (val, button) in &interaction {
         if *val == Interaction::Pressed {
             if let Ok(mut text) = notice.single_mut() {
@@ -485,6 +532,10 @@ fn activate_mode(
             }
             match button.mode {
                 GameMode::Standard => {
+                    commands.insert_resource(crate::chamber::ritual::TriggerCouncilChamber);
+                    info!("{} selected from main menu", button.mode.label());
+                }
+                GameMode::Consciousness => {
                     commands.insert_resource(crate::modes::standard_mecha::TriggerStandardMecha);
                     info!("{} selected from main menu", button.mode.label());
                 }
@@ -492,8 +543,13 @@ fn activate_mode(
                     commands.insert_resource(crate::modes::oracle_riddle::TriggerOracleRiddle);
                     info!("{} selected from main menu", button.mode.label());
                 }
-                GameMode::InnerChambers | GameMode::LivingEngine => {
-                    info!("{} remains locked", button.mode.label());
+                GameMode::InnerChambers => {
+                    commands.insert_resource(crate::modes::inner_chambers::TriggerInnerChambers);
+                    info!("{} selected from main menu", button.mode.label());
+                }
+                GameMode::LivingEngine => {
+                    commands.insert_resource(crate::modes::living_engine::TriggerLivingEngine);
+                    info!("{} selected from main menu", button.mode.label());
                 }
             }
         }
@@ -502,9 +558,13 @@ fn activate_mode(
 
 fn activate_quit(
     interaction: Query<&Interaction, (Changed<Interaction>, With<QuitButton>)>,
+    help: Query<Entity, With<HelpOverlay>>,
     mut notice: Query<&mut Text, With<MainMenuNotice>>,
     mut app_exit: MessageWriter<AppExit>,
 ) {
+    if !help.is_empty() {
+        return;
+    }
     for val in &interaction {
         if *val == Interaction::Pressed {
             if let Ok(mut text) = notice.single_mut() {
@@ -516,8 +576,131 @@ fn activate_quit(
     }
 }
 
-fn despawn_main_menu(mut commands: Commands, query: Query<Entity, With<MainMenuUi>>) {
+fn style_help_button(
+    mut interactions: Query<
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        (Changed<Interaction>, With<HelpButton>),
+    >,
+) {
+    for (interaction, mut background, mut border) in &mut interactions {
+        match *interaction {
+            Interaction::Pressed => {
+                *background = BackgroundColor(Color::srgba(0.16, 0.32, 0.48, 0.42));
+                *border = BorderColor::all(Color::srgba(0.84, 0.92, 1.0, 0.92));
+            }
+            Interaction::Hovered => {
+                *background = BackgroundColor(Color::srgba(0.08, 0.16, 0.26, 0.34));
+                *border = BorderColor::all(Color::srgba(0.62, 0.78, 0.92, 0.84));
+            }
+            Interaction::None => {
+                *background = BackgroundColor(Color::srgba(0.018, 0.020, 0.028, 0.96));
+                *border = BorderColor::all(Color::srgba(0.32, 0.48, 0.62, 0.72));
+            }
+        }
+    }
+}
+
+const HELP_BODY: &str = "ARCHETYPES — THE WITNESS MANUAL\n\n\
+You are the Witness: the sovereign eighth seat. The seven archetypes advise. They never replace you.\n\n\
+MODES\n\
+• STANDARD MODE — Offer language to the AURA council. Three voices confer. A verdict collapses. Chronos paints the authorized image.\n\
+• CONSCIOUSNESS — Sit with one archetype. Direct counsel, memory, and a painted reply.\n\
+• ORACLE RIDDLE — A hidden three-word vision. Reconstruct the prompt. Insight is the reward.\n\
+• INNER CHAMBERS — Walk seven minds around a hub. Align with a node and press E to extract a truth. That truth can seed the next Oracle round.\n\
+• LIVING ENGINE — Tune three orbital resonances. Keep the Aura from starving or overloading. Viren is entropy; counter-frequency cures it.\n\n\
+ESC returns to this menu from every mode.\n\n\
+SERVICES\n\
+The Desktop launcher starts Ollama, Chronos Director, and ComfyUI if they are installed and down. Chronos remains a sibling product; Archetypes does not download it.\n\
+Council voices (Kokoro / sherpa-onnx) install beside the game. The launcher repairs them if they are missing.\n\n\
+LOGS\n\
+%LOCALAPPDATA%\\NeuroCognica\\Archetypes\\logs\\last-failure.txt\n\
+%LOCALAPPDATA%\\NeuroCognica\\Archetypes\\logs\\last-engine.log\n\
+If the chamber will not open, that failure file is the truth.\n\n\
+UNINSTALL\n\
+Start Menu → Uninstall Archetypes, or run the uninstall shortcut the installer created. Your Witness profile can be kept.\n\n\
+Esc closes this help.";
+
+fn activate_help(
+    interaction: Query<&Interaction, (Changed<Interaction>, With<HelpButton>)>,
+    existing: Query<Entity, With<HelpOverlay>>,
+    mut commands: Commands,
+) {
+    if !existing.is_empty() {
+        return;
+    }
+    for val in &interaction {
+        if *val == Interaction::Pressed {
+            spawn_help_overlay(&mut commands);
+        }
+    }
+}
+
+fn spawn_help_overlay(commands: &mut Commands) {
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                padding: UiRect::all(Val::Px(64.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.82)),
+            GlobalZIndex(980),
+            HelpOverlay,
+        ))
+        .with_children(|root| {
+            root.spawn((
+                Node {
+                    width: Val::Px(820.0),
+                    max_width: Val::Percent(92.0),
+                    max_height: Val::Percent(88.0),
+                    padding: UiRect::all(Val::Px(28.0)),
+                    overflow: Overflow::scroll_y(),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.04, 0.045, 0.055, 0.96)),
+                BorderColor::all(Color::srgba(0.78, 0.84, 0.90, 0.35)),
+            ))
+            .with_children(|panel| {
+                panel.spawn((
+                    Text::new(HELP_BODY),
+                    TextFont {
+                        font_size: 16.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgb(0.88, 0.90, 0.92)),
+                ));
+            });
+        });
+}
+
+fn close_help_on_escape(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut commands: Commands,
+    overlay: Query<Entity, With<HelpOverlay>>,
+) {
+    if !keys.just_pressed(KeyCode::Escape) {
+        return;
+    }
+    for entity in &overlay {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn despawn_main_menu(
+    mut commands: Commands,
+    query: Query<Entity, With<MainMenuUi>>,
+    help: Query<Entity, With<HelpOverlay>>,
+) {
     for entity in &query {
+        commands.entity(entity).despawn();
+    }
+    for entity in &help {
         commands.entity(entity).despawn();
     }
 }
@@ -638,13 +821,24 @@ mod tests {
     }
 
     #[test]
-    fn menu_labels_expose_playable_modes_and_keep_locked_modes_locked() {
+    fn menu_labels_expose_all_five_playable_modes() {
         assert_eq!(menu_label(GameMode::Standard), "STANDARD MODE");
+        assert_eq!(menu_label(GameMode::Consciousness), "CONSCIOUSNESS");
         assert_eq!(menu_label(GameMode::OracleRiddle), "ORACLE RIDDLE");
-        assert_eq!(
-            menu_label(GameMode::InnerChambers),
-            "INNER CHAMBERS - LOCKED"
-        );
-        assert_eq!(menu_label(GameMode::LivingEngine), "LIVING ENGINE - LOCKED");
+        assert_eq!(menu_label(GameMode::InnerChambers), "INNER CHAMBERS");
+        assert_eq!(menu_label(GameMode::LivingEngine), "LIVING ENGINE");
+        assert!(GameMode::REGISTRY.iter().all(|entry| entry.available));
+    }
+
+    #[test]
+    fn help_manual_names_every_mode_and_the_log_path() {
+        assert!(HELP_BODY.contains("STANDARD MODE"));
+        assert!(HELP_BODY.contains("CONSCIOUSNESS"));
+        assert!(HELP_BODY.contains("ORACLE RIDDLE"));
+        assert!(HELP_BODY.contains("INNER CHAMBERS"));
+        assert!(HELP_BODY.contains("LIVING ENGINE"));
+        assert!(HELP_BODY.contains("last-failure.txt"));
+        assert!(HELP_BODY.contains("Ollama"));
+        assert!(HELP_BODY.contains("Chronos"));
     }
 }

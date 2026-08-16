@@ -14,8 +14,13 @@ fn embed_windows_icon() {
         if icon.is_file() {
             let mut res = winres::WindowsResource::new();
             res.set_icon(icon.to_string_lossy().as_ref());
+            res.set("FileVersion", "0.3.0.0");
+            res.set("ProductVersion", "0.3.0.0");
+            res.set("ProductName", "Archetypes");
+            res.set("FileDescription", "Archetypes — Council Chamber");
+            res.set("LegalCopyright", "Copyright (c) Michael Holt / NeuroCognica");
             if let Err(error) = res.compile() {
-                println!("cargo:warning=winres icon embed failed: {error}");
+                println!("cargo:warning=winres embed failed: {error}");
             }
         } else {
             println!(
