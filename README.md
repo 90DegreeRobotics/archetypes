@@ -13,12 +13,14 @@ A plain black ceremonial veil fades in `ARCHETYPES`, then `A GAME BY MICHAEL HOL
 3. **ORACLE RIDDLE** — reverse-prompt from a Chronos image. Concrete visual triples, order-insensitive scoring, Insight rewards. A truth extracted in Inner Chambers can seed the next round.
 4. **INNER CHAMBERS** — walk seven distinct minds around a hub. Align with a node and press E to extract a three-word truth.
 5. **LIVING ENGINE** — orbital instrument. Tune three prototype resonances (Architect, Sentinel, Oracle), keep the three-layer Aura from starving or overloading, confront a Viren strain, seat two implants.
-6. **HELP** — in-game Witness manual. The same text is installed as Start Menu **Archetypes Help**.
+6. **HELP** — in-game Witness manual. The same text installs to `help\index.html` inside the install root.
 7. **QUIT GAME**
 
 Lane 0 spine (`services::{llm, chronos, paths, ledger}` and `modes::{game_mode, difficulty}`) remains the shared metabolism. Events seal into a hash-chained JSONL ledger under `%LOCALAPPDATA%\NeuroCognica\Archetypes\data`.
 
-Launch via the Desktop/Start-Menu shortcut created by `scripts/install_shortcut.ps1` (developer restage) or `scripts/install_product.ps1` (per-user/Program Files install + Add/Remove Programs + uninstall). `scripts/setup_windows.ps1` still installs Ollama, the model, and the offline voices. There is no environment-variable bypass for the Chronos/Sentinel launch gate.
+Launch via the Desktop shortcut, or **Start Menu → NeuroCognica → Archetypes**. Archetypes shares one Start Menu folder with the rest of the NeuroCognica family (ChronoSophia2, NC Company Database, EOAI-MGS, Chirox); uninstall is in Add/Remove Programs, not the Start Menu. The rule is `C:\NeuroCognica_Brand\docs\START_MENU_FAMILY.md`. Shortcuts are created by `scripts/install_shortcut.ps1` (developer restage) or `scripts/install_product.ps1` (per-user/Program Files install + Add/Remove Programs + uninstall). `scripts/setup_windows.ps1` still installs Ollama, the model, and the offline voices. There is no environment-variable bypass for the Chronos/Sentinel launch gate.
+
+The product icon `assets/icons/archetypes.ico` is the green NeuroCognica family mark — six white dots around one on an opaque green plate, all seven Windows sizes. It is generated outside this repo by `python C:\NeuroCognica_Brand\scripts\build_product_brand.py archetypes` and committed here. Do not hand-draw it and do not regenerate it at build time; both exes embed this exact file through winres.
 
 Verified functional paths and operator-reviewed visuals are separated in `STATUS.md`. See [Council-Driven World Engine](docs/architecture/COUNCIL_WORLD_ENGINE.md) for the canonical vertical slice.
 

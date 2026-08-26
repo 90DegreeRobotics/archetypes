@@ -40,44 +40,24 @@ Copy-Item (Join-Path $SourceRoot "*") -Destination $InstallRoot -Recurse -Force
 
 $Launcher = Join-Path $InstallRoot "launcher.exe"
 $Ico = Join-Path $InstallRoot "archetypes.ico"
-if (-not (Test-Path $Ico)) { $Ico = $Launcher }
+if (-not (Test-Path $Ico)) {
+    # Falling back to the exe's embedded icon is how a product quietly loses its
+    # family mark. The staged dist must carry the green NeuroCognica .ico.
+    throw "No product icon at $Ico. Restage with scripts\install_shortcut.ps1."
+}
 $UninstallScript = Join-Path $InstallRoot "scripts\uninstall_product.ps1"
-$HelpHtml = Join-Path $InstallRoot "help\index.html"
 
-$WshShell = New-Object -ComObject WScript.Shell
-$targets = @(
-    [Environment]::GetFolderPath("Desktop"),
-    (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs")
-)
-foreach ($dir in $targets) {
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $lnk = Join-Path $dir "Archetypes.lnk"
-    $shortcut = $WshShell.CreateShortcut($lnk)
-    $shortcut.TargetPath = $Launcher
-    $shortcut.WorkingDirectory = $InstallRoot
-    $shortcut.IconLocation = $Ico
-    $shortcut.Description = "Archetypes - Council Chamber"
-    $shortcut.Save()
-}
-
-$StartMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
-if (Test-Path $HelpHtml) {
-    $helpLnk = Join-Path $StartMenu "Archetypes Help.lnk"
-    $helpShortcut = $WshShell.CreateShortcut($helpLnk)
-    $helpShortcut.TargetPath = $HelpHtml
-    $helpShortcut.WorkingDirectory = (Join-Path $InstallRoot "help")
-    $helpShortcut.Description = "Archetypes — Witness Manual"
-    $helpShortcut.Save()
-}
-if (Test-Path $UninstallScript) {
-    $uninstallLnk = Join-Path $StartMenu "Uninstall Archetypes.lnk"
-    $uninstallShortcut = $WshShell.CreateShortcut($uninstallLnk)
-    $uninstallShortcut.TargetPath = "pwsh.exe"
-    $uninstallShortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$UninstallScript`""
-    $uninstallShortcut.WorkingDirectory = $InstallRoot
-    $uninstallShortcut.Description = "Remove Archetypes"
-    $uninstallShortcut.Save()
-}
+# One flat .lnk in Programs\NeuroCognica, beside ChronoSophia2, NC Company
+# Database and the rest of the family. Help ships inside the installed tree and
+# uninstall lives in Add/Remove Programs, registered below; neither earns a
+# second Start Menu entry, and neither belongs at the top level, which is where
+# all three of them used to land.
+# Authority: C:\NeuroCognica_Brand\docs\START_MENU_FAMILY.md
+. (Join-Path $PSScriptRoot "neurocognica_start_menu.ps1")
+Remove-NeuroCognicaLegacyShortcut
+New-NeuroCognicaShortcut -TargetPath $Launcher -WorkingDirectory $InstallRoot -IconLocation $Ico | Out-Null
+New-NeuroCognicaDesktopShortcut -TargetPath $Launcher -WorkingDirectory $InstallRoot -IconLocation $Ico | Out-Null
+Update-WindowsIconCache
 
 $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Archetypes"
 New-Item -Path $uninstallKey -Force | Out-Null
@@ -90,4 +70,5 @@ New-ItemProperty -Path $uninstallKey -Name "UninstallString" -Value "pwsh.exe -N
 New-ItemProperty -Path $uninstallKey -Name "NoModify" -Value 1 -PropertyType DWord -Force | Out-Null
 New-ItemProperty -Path $uninstallKey -Name "NoRepair" -Value 1 -PropertyType DWord -Force | Out-Null
 
-Write-Host "Installed. Launch from Desktop Archetypes, or Start Menu. Help and Uninstall are in Start Menu."
+Write-Host "Installed. Launch from the Desktop, or from Start Menu > NeuroCognica > Archetypes."
+Write-Host "Help: $(Join-Path $InstallRoot 'help\index.html'). Uninstall: Settings > Apps > Archetypes."

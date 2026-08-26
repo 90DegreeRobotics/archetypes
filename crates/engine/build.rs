@@ -11,6 +11,11 @@ fn embed_windows_icon() {
             .join("assets")
             .join("icons")
             .join("archetypes.ico");
+        // Without this, cargo never re-runs the build script when the icon
+        // changes, so a corrected .ico leaves a stale mark embedded in the exe
+        // and the fix looks like it did nothing. That is exactly what happened
+        // when the NeuroCognica family mark replaced the old glyph.
+        println!("cargo:rerun-if-changed={}", icon.display());
         if icon.is_file() {
             let mut res = winres::WindowsResource::new();
             res.set_icon(icon.to_string_lossy().as_ref());

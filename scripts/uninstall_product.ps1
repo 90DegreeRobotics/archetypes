@@ -20,19 +20,22 @@ if (-not $InstallRoot) {
     $InstallRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 }
 
-$WshShell = New-Object -ComObject WScript.Shell
-$shortcutDirs = @(
-    [Environment]::GetFolderPath("Desktop"),
-    (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs")
-)
-$shortcutNames = @("Archetypes.lnk", "Archetypes Help.lnk", "Uninstall Archetypes.lnk")
-foreach ($dir in $shortcutDirs) {
-    foreach ($name in $shortcutNames) {
-        $lnk = Join-Path $dir $name
-        if (Test-Path $lnk) {
-            Remove-Item -LiteralPath $lnk -Force
-            Write-Host "Removed $lnk"
-        }
+# Remove this product's shortcut and every legacy name it ever wrote. The
+# NeuroCognica folder itself is NEVER removed: its other members are still
+# installed. C:\NeuroCognica_Brand\docs\START_MENU_FAMILY.md.
+. (Join-Path $PSScriptRoot "neurocognica_start_menu.ps1")
+$FamilyLnk = Get-NeuroCognicaShortcutPath
+if (Test-Path -LiteralPath $FamilyLnk) {
+    Remove-Item -LiteralPath $FamilyLnk -Force
+    Write-Host "Removed $FamilyLnk"
+}
+Remove-NeuroCognicaLegacyShortcut
+
+foreach ($name in @("Archetypes.lnk", "Archetypes Help.lnk", "Uninstall Archetypes.lnk")) {
+    $lnk = Join-Path ([Environment]::GetFolderPath("Desktop")) $name
+    if (Test-Path -LiteralPath $lnk) {
+        Remove-Item -LiteralPath $lnk -Force
+        Write-Host "Removed $lnk"
     }
 }
 

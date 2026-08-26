@@ -61,6 +61,9 @@ $ScriptsDst = Join-Path $DistRoot "scripts"
 New-Item -ItemType Directory -Force -Path $ScriptsDst | Out-Null
 Copy-Item (Join-Path $RepoRoot "scripts\dependencies.json") (Join-Path $ScriptsDst "dependencies.json") -Force
 Copy-Item (Join-Path $RepoRoot "scripts\uninstall_product.ps1") (Join-Path $ScriptsDst "uninstall_product.ps1") -Force -ErrorAction SilentlyContinue
+# uninstall_product.ps1 dot-sources this from its own directory, so the installed
+# tree needs it too or uninstall throws instead of removing the shortcut.
+Copy-Item (Join-Path $RepoRoot "scripts\neurocognica_start_menu.ps1") (Join-Path $ScriptsDst "neurocognica_start_menu.ps1") -Force
 
 $HelpSrc = Join-Path $RepoRoot "assets\help"
 $HelpDst = Join-Path $DistRoot "help"
@@ -69,56 +72,35 @@ if (Test-Path $HelpSrc) {
     Copy-Item (Join-Path $HelpSrc "*") -Destination $HelpDst -Recurse -Force
 }
 
-# Build / refresh an .ico so the Desktop shortcut and embedded exe icons stay aligned.
-$IcoPath = Join-Path $DistRoot "archetypes.ico"
-$IconPng = Join-Path $RepoRoot "assets\icons\architect-icon.png"
+# Stage the product icon. It is NOT generated here.
+#
+# This block used to rasterise the old architect glyph PNG into a single 256px
+# .ico and write it over BOTH the dist copy and the repo copy on every run. That
+# is how Archetypes ended up wearing a cyan spider glyph instead of the
+# NeuroCognica family mark, and why the mark could not be fixed by dropping a
+# correct file into the repo: the next restage overwrote it.
+#
+# The family icon is generated once, outside every repo:
+#   python C:\NeuroCognica_Brand\scripts\build_product_brand.py archetypes
+# and its output is committed at assets\icons\archetypes.ico - green plate,
+# white dots, all seven Windows sizes. Copy it; never redraw it.
 $RepoIco = Join-Path $RepoRoot "assets\icons\archetypes.ico"
-try {
-    Add-Type -AssemblyName System.Drawing
-    $src = [System.Drawing.Image]::FromFile($IconPng)
-    $bmp = New-Object System.Drawing.Bitmap $src, 256, 256
-    $hicon = $bmp.GetHicon()
-    $icon = [System.Drawing.Icon]::FromHandle($hicon)
-    foreach ($dest in @($IcoPath, $RepoIco)) {
-        $stream = [System.IO.File]::Create($dest)
-        $icon.Save($stream)
-        $stream.Close()
-    }
-    $icon.Dispose(); $bmp.Dispose(); $src.Dispose()
-    Write-Host "Icon written to $IcoPath (and $RepoIco for winres embeds)"
-} catch {
-    Write-Warning "Could not build .ico ($_). The shortcut will use the launcher's default icon."
-    $IcoPath = Join-Path $DistRoot "launcher.exe"
+if (-not (Test-Path -LiteralPath $RepoIco)) {
+    throw "Missing product icon $RepoIco. Regenerate it with the brand kit; do not hand-draw one."
 }
+$IcoPath = Join-Path $DistRoot "archetypes.ico"
+Copy-Item -LiteralPath $RepoIco -Destination $IcoPath -Force
+Write-Host "Staged product icon: $IcoPath"
 
+# Developer staging creates the same single family shortcut a product install
+# does, pointed at the staged dist tree. Same folder, same name, same icon, so
+# a later install_product.ps1 replaces it instead of leaving two Archetypes in
+# the Start Menu. C:\NeuroCognica_Brand\docs\START_MENU_FAMILY.md.
+. (Join-Path $PSScriptRoot "neurocognica_start_menu.ps1")
 $LauncherExe = Join-Path $DistRoot "launcher.exe"
-$WshShell = New-Object -ComObject WScript.Shell
-$targets = @(
-    [Environment]::GetFolderPath("Desktop"),
-    (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs")
-)
-foreach ($dir in $targets) {
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $lnk = Join-Path $dir "Archetypes.lnk"
-    $shortcut = $WshShell.CreateShortcut($lnk)
-    $shortcut.TargetPath = $LauncherExe
-    $shortcut.WorkingDirectory = $DistRoot
-    $shortcut.IconLocation = $IcoPath
-    $shortcut.Description = "Archetypes - Council Chamber"
-    $shortcut.Save()
-    Write-Host "Shortcut created: $lnk"
-}
+Remove-NeuroCognicaLegacyShortcut
+New-NeuroCognicaShortcut -TargetPath $LauncherExe -WorkingDirectory $DistRoot -IconLocation $IcoPath | Out-Null
+New-NeuroCognicaDesktopShortcut -TargetPath $LauncherExe -WorkingDirectory $DistRoot -IconLocation $IcoPath | Out-Null
+Update-WindowsIconCache
 
-$StartMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
-$HelpHtml = Join-Path $DistRoot "help\index.html"
-if (Test-Path $HelpHtml) {
-    $helpLnk = Join-Path $StartMenu "Archetypes Help.lnk"
-    $helpShortcut = $WshShell.CreateShortcut($helpLnk)
-    $helpShortcut.TargetPath = $HelpHtml
-    $helpShortcut.WorkingDirectory = (Join-Path $DistRoot "help")
-    $helpShortcut.Description = "Archetypes — Witness Manual"
-    $helpShortcut.Save()
-    Write-Host "Shortcut created: $helpLnk"
-}
-
-Write-Host "`nDone. All council voices are installed. Launch Archetypes from your Desktop or Start Menu."
+Write-Host "`nDone. All council voices are installed. Launch Archetypes from the Desktop, or Start Menu > NeuroCognica."
