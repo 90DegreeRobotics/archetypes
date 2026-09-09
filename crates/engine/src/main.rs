@@ -14,6 +14,9 @@ pub mod theme;
 use chamber::CouncilChamberPlugin;
 use modes::ModesPlugin;
 
+const PRODUCT_VERSION: &str = env!("ARCHETYPES_PRODUCT_VERSION");
+const BUILD_SERIAL: &str = env!("ARCHETYPES_BUILD_SERIAL");
+
 fn main() {
     App::new()
         .add_plugins(
@@ -24,7 +27,7 @@ fn main() {
                 })
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: "Archetypes — Council Chamber".to_owned(),
+                        title: window_title(),
                         name: Some("archetypes.council.chamber".to_owned()),
                         ..default()
                     }),
@@ -34,6 +37,10 @@ fn main() {
         .add_systems(Startup, maximize_primary_window)
         .add_plugins((ModesPlugin, CouncilChamberPlugin))
         .run();
+}
+
+fn window_title() -> String {
+    format!("Archetypes {PRODUCT_VERSION} (build {BUILD_SERIAL}) — Council Chamber")
 }
 
 fn maximize_primary_window(mut windows: Query<&mut Window, With<PrimaryWindow>>) {
@@ -57,5 +64,13 @@ mod tests {
     #[test]
     fn development_asset_root_points_at_workspace_assets() {
         assert!(asset_root().replace('\\', "/").ends_with("/../../assets"));
+    }
+
+    #[test]
+    fn native_window_title_always_carries_release_identity() {
+        assert_eq!(
+            window_title(),
+            format!("Archetypes {PRODUCT_VERSION} (build {BUILD_SERIAL}) — Council Chamber")
+        );
     }
 }

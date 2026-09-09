@@ -30,6 +30,26 @@
       "size_bytes": 206662328,
       "package_available": true,
       "note": "Emitted and verified by installer/build.ps1."
+    },
+    {
+      "normalized_version": "1.0.3",
+      "build_serial": 4,
+      "source_commit": "b2e47af8f8e0",
+      "built_utc": "2026-09-09T21:57:32.7645435Z",
+      "installer_sha256": "6dff04299b89df7c9466933e9dea7ad67739088f5931b8b925c0bd7594a6fcfd",
+      "size_bytes": 206696416,
+      "package_available": true,
+      "note": "Emitted and verified by installer/build.ps1. Signed and installed; superseded because the source changes were not committed before packaging."
+    },
+    {
+      "normalized_version": "1.0.4",
+      "build_serial": 5,
+      "source_commit": "",
+      "built_utc": "",
+      "installer_sha256": "",
+      "size_bytes": 0,
+      "package_available": false,
+      "note": "Pending formal signed release from committed source."
     }
   ]
 }
