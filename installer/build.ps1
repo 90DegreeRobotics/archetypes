@@ -237,13 +237,26 @@ $release | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $output
 
 $historyDoc = Get-Content -Raw -LiteralPath $historyPath | ConvertFrom-Json
 $entry = $historyDoc.entries | Where-Object { [int]$_.build_serial -eq $buildSerial } | Select-Object -First 1
-if (-not $entry) { throw "version-history.json has no entry for build_serial $buildSerial." }
-$entry.source_commit = $gitCommit
-$entry.built_utc = $builtUtc
-$entry.installer_sha256 = $hash
-$entry.size_bytes = $size
-$entry.package_available = $true
-$entry.note = "Emitted and verified by installer/build.ps1."
+if (-not $entry) {
+    $newEntry = [ordered]@{
+        normalized_version = $productVersion
+        build_serial = $buildSerial
+        source_commit = $gitCommit
+        built_utc = $builtUtc
+        installer_sha256 = $hash
+        size_bytes = $size
+        package_available = $true
+        note = "Emitted and verified by installer/build.ps1."
+    }
+    $historyDoc.entries = @($historyDoc.entries) + [PSCustomObject]$newEntry
+} else {
+    $entry.source_commit = $gitCommit
+    $entry.built_utc = $builtUtc
+    $entry.installer_sha256 = $hash
+    $entry.size_bytes = $size
+    $entry.package_available = $true
+    $entry.note = "Emitted and verified by installer/build.ps1."
+}
 $historyDoc | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $historyPath -Encoding UTF8
 
 Write-Host "`nSIGNED RELEASE COMPLETE" -ForegroundColor Green

@@ -50,6 +50,16 @@
       "size_bytes": 206691928,
       "package_available": true,
       "note": "Emitted and verified by installer/build.ps1."
+    },
+    {
+      "normalized_version": "1.0.5",
+      "build_serial": 6,
+      "source_commit": "2718d7cd0f43",
+      "built_utc": "2026-09-09T23:10:16.9608170Z",
+      "installer_sha256": "f35cf4bec4c56a60f3a9fe4fda5592839a71374711a80f77061789ba860a1c47",
+      "size_bytes": 526929832,
+      "package_available": true,
+      "note": "Emitted and verified by installer/build.ps1."
     }
   ]
 }
