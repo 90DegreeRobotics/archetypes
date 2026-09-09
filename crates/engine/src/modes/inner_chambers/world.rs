@@ -288,6 +288,60 @@ fn setup_inner_world(
         ));
     }
 
+    // --- 2c. EMBODIED EMPATH ARCHETYPE FIGURE (STANDS ON FLOOR AT EYE LEVEL) ---
+    // Scaled by 1.60 so the face visor stands at y = 2.85m (exact eye-level with the player).
+    // Positioned on the floor at y = 0.0 in front of the dais, facing the entering player.
+    commands.spawn((
+        SceneRoot(asset_server.load("scenes/empath.glb#Scene0")),
+        Transform::from_xyz(0.0, 0.0, 7.2)
+            .with_rotation(Quat::from_rotation_y(std::f32::consts::PI))
+            .with_scale(Vec3::splat(1.60)),
+        InnerWorldElement,
+        Name::new("EmpathArchetypeFigure"),
+    ));
+
+    // Key light: angled from front-upper-left, illuminating facial contours, collarbone, and chest
+    commands.spawn((
+        PointLight {
+            intensity: 95_000.0,
+            range: 14.0,
+            color: Color::srgb(1.0, 0.94, 0.96),
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(1.8, 4.2, 9.8),
+        InnerWorldElement,
+        Name::new("EmpathKeyLight"),
+    ));
+
+    // Rim / kicker light: angled from back-upper-right, catching the metallic shoulder and silhouette
+    commands.spawn((
+        PointLight {
+            intensity: 60_000.0,
+            range: 10.0,
+            color: Color::srgb(0.70, 0.45, 1.0),
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(-2.2, 4.0, 5.0),
+        InnerWorldElement,
+        Name::new("EmpathRimLight"),
+    ));
+
+    // Core resonance glow: nestled just in front of the chest disc, accentuating the concentric rings
+    commands.spawn((
+        PointLight {
+            intensity: 18_000.0,
+            range: 4.5,
+            color: Color::srgb(0.50, 0.85, 1.0),
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 2.2, 7.5),
+        InnerWorldElement,
+        Name::new("EmpathCoreGlow"),
+    ));
+
     // --- 3. ENCLOSING CASTLE WALLS & BUTTRESS PILLARS ---
     let wall_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.24, 0.25, 0.29),

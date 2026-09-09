@@ -306,6 +306,17 @@ fn player_locomotion(
                 transform.translation.z = corrected.y;
             }
 
+            // Empath statue obstacle collision (radius ~0.85m at (0.0, 7.2))
+            let empath_pos = Vec2::new(0.0, 7.2);
+            let to_empath = Vec2::new(transform.translation.x, transform.translation.z) - empath_pos;
+            let dist_empath = to_empath.length();
+            if dist_empath < 0.85 {
+                let push = if dist_empath > 0.01 { to_empath / dist_empath } else { Vec2::Y };
+                let corrected = empath_pos + push * 0.85;
+                transform.translation.x = corrected.x;
+                transform.translation.z = corrected.y;
+            }
+
             // Ground height resolution
             let r = (transform.translation.x * transform.translation.x
                 + transform.translation.z * transform.translation.z)
