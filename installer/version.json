@@ -1,0 +1,20 @@
+{
+  "schema": "archetypes.release_identity.v1",
+  "product_name": "Archetypes",
+  "product_version": "1.0.0",
+  "build_serial": 1,
+  "channel": "stable",
+  "min_os_version": "10.0.18362",
+  "distribution": "direct",
+  "signing": {
+    "status": "signed",
+    "authenticode": true,
+    "channels_requiring_signature": [
+      "stable",
+      "beta"
+    ],
+    "certificate": "Azure Artifact Signing, Public Trust, individual path. Subject is CN=Michael Holt.",
+    "enforced_by": "ISCC compile-time signing flag -sarchetypes and Get-AuthenticodeSignature verification",
+    "note": "Product-level posture. Per-build truth recorded in release.json off the emitted installer."
+  }
+}

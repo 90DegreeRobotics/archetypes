@@ -10,3 +10,8 @@
 
 # Release staging produced by scripts/install_shortcut.ps1
 /dist/
+
+# Signing & Installer outputs
+/tools/signing/
+/installer/output/
+installer/signing/azure-metadata.json
