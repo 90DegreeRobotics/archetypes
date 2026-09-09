@@ -1,7 +1,14 @@
 use super::InnerChambersState;
 use crate::chamber::boot::spawn_main_menu;
 use crate::modes::ModeRegistry;
+use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+
+/// The generated images are deliberately non-color/normal PBR inputs, not light-emitting
+/// decals. Keeping them deterministic makes the chamber self-contained while the material
+/// still travels through Bevy's normal-map lighting path.
+const FLOOR_TEXTURE_SIZE: usize = 256;
 
 pub struct WorldPlugin;
 
@@ -41,6 +48,7 @@ fn setup_inner_world(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
     mut clear: ResMut<ClearColor>,
     mut next_state: ResMut<NextState<InnerChambersState>>,
     asset_server: Res<AssetServer>,
@@ -48,10 +56,14 @@ fn setup_inner_world(
     clear.0 = Color::srgb(0.08, 0.09, 0.12);
 
     // --- 1. FLOOR & CENTRAL DAIS ---
+    let (floor_albedo, floor_normal) = chamber_floor_textures();
     let floor_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.16, 0.17, 0.20),
-        perceptual_roughness: 0.80,
-        metallic: 0.05,
+        base_color_texture: Some(images.add(floor_albedo)),
+        normal_map_texture: Some(images.add(floor_normal)),
+        base_color: Color::WHITE,
+        perceptual_roughness: 0.72,
+        metallic: 0.08,
+        reflectance: 0.48,
         ..default()
     });
     commands.spawn((
@@ -722,6 +734,83 @@ fn setup_inner_world(
 
 }
 
+/// Produce a dark basalt tile albedo and its matching tangent-space normal map.
+///
+/// The mortar grooves are recessed and the stones have restrained grain, so point and
+/// directional lights move across visible relief instead of merely brightening a flat color.
+fn chamber_floor_textures() -> (Image, Image) {
+    let side = FLOOR_TEXTURE_SIZE;
+    let mut albedo = vec![0_u8; side * side * 4];
+    let mut heights = vec![0.0_f32; side * side];
+
+    for y in 0..side {
+        for x in 0..side {
+            let fx = x as f32 / side as f32;
+            let fy = y as f32 / side as f32;
+            // Eight by eight laid basalt tiles, with offset courses and narrow mortar.
+            let course = (fy * 8.0).floor() as i32;
+            let shifted_x = (fx * 8.0 + if course % 2 == 0 { 0.0 } else { 0.5 }).fract();
+            let tile_y = (fy * 8.0).fract();
+            let edge = shifted_x.min(1.0 - shifted_x).min(tile_y.min(1.0 - tile_y));
+            let mortar = edge < 0.028;
+            let grain = ((fx * 101.0).sin() * (fy * 79.0).cos()) * 0.045
+                + ((fx * 313.0 + fy * 197.0).sin()) * 0.018;
+            let height = if mortar { -0.42 } else { 0.26 + grain };
+            heights[y * side + x] = height;
+
+            let (r, g, b) = if mortar {
+                (20_u8, 23_u8, 29_u8)
+            } else {
+                let shade = (42.0 + grain * 46.0).clamp(0.0, 255.0) as u8;
+                (shade, shade.saturating_add(4), shade.saturating_add(12))
+            };
+            let index = (y * side + x) * 4;
+            albedo[index..index + 4].copy_from_slice(&[r, g, b, 255]);
+        }
+    }
+
+    let mut normal = vec![0_u8; side * side * 4];
+    for y in 0..side {
+        for x in 0..side {
+            let sample = |sx: usize, sy: usize| heights[sy * side + sx];
+            let left = sample((x + side - 1) % side, y);
+            let right = sample((x + 1) % side, y);
+            let up = sample(x, (y + side - 1) % side);
+            let down = sample(x, (y + 1) % side);
+            let n = Vec3::new((left - right) * 1.65, (up - down) * 1.65, 1.0).normalize();
+            let index = (y * side + x) * 4;
+            normal[index..index + 4].copy_from_slice(&[
+                ((n.x * 0.5 + 0.5) * 255.0) as u8,
+                ((n.y * 0.5 + 0.5) * 255.0) as u8,
+                ((n.z * 0.5 + 0.5) * 255.0) as u8,
+                255,
+            ]);
+        }
+    }
+
+    let size = Extent3d {
+        width: side as u32,
+        height: side as u32,
+        depth_or_array_layers: 1,
+    };
+    (
+        Image::new(
+            size,
+            TextureDimension::D2,
+            albedo,
+            TextureFormat::Rgba8UnormSrgb,
+            RenderAssetUsages::RENDER_WORLD,
+        ),
+        Image::new(
+            size,
+            TextureDimension::D2,
+            normal,
+            TextureFormat::Rgba8Unorm,
+            RenderAssetUsages::RENDER_WORLD,
+        ),
+    )
+}
+
 fn teardown_inner_world(
     mut commands: Commands,
     query: Query<Entity, With<InnerWorldElement>>,
@@ -736,4 +825,19 @@ fn teardown_inner_world(
     commands.remove_resource::<crate::chamber::ActiveGameMode>();
     next_state.set(InnerChambersState::Inactive);
     spawn_main_menu(commands, registry);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chamber_floor_has_a_linear_normal_map_for_lit_relief() {
+        let (albedo, normal) = chamber_floor_textures();
+        assert_eq!(albedo.texture_descriptor.size.width, FLOOR_TEXTURE_SIZE as u32);
+        assert_eq!(normal.texture_descriptor.size.height, FLOOR_TEXTURE_SIZE as u32);
+        assert_eq!(albedo.texture_descriptor.format, TextureFormat::Rgba8UnormSrgb);
+        // Normal maps are data, never gamma-corrected color images.
+        assert_eq!(normal.texture_descriptor.format, TextureFormat::Rgba8Unorm);
+    }
 }
