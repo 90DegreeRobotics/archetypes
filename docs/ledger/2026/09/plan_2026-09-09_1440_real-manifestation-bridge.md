@@ -31,3 +31,9 @@ Replace the exposed recipe-based manifestation facade with a prompt-bound, Senti
 - [ ] Action: Run Chronos2 focused gates, Archetypes workspace tests, live object attempt when services are available, refresh the desktop launcher, inspect a visible witness, commit, and push both main branches with explicit paths.
 - Files touched: plans, audit records, tests, product code.
 - Expected outcome: Auditable cross-repo state with no disguised recipe fallback.
+
+### Step 6 — Harden and re-run the pinned-launcher golden path
+- [x] Action: Made the deployment script fail before copying over a live installed process, verified byte-identical engine and launcher hashes across build, dist, and installed locations, reread the Taskbar shortcut target, then rebuilt and reinstalled through the documented path.
+- Files touched: Windows deployment script, this plan, deployment audit record.
+- Expected outcome: A deployment cannot be reported successful merely because a copy command ran; the installed Taskbar target is proved against the release artifacts.
+- Result: `cargo test --workspace` passed (80 engine, 16 launcher, 5 identity tests). `scripts/install_shortcut.ps1` rebuilt, restaged, installed, hash-verified both executables, and reread the persisted pinned shortcut. A new foreground Taskbar launch is still required for a buyer-runtime witness.

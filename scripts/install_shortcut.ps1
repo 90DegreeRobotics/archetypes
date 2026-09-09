@@ -128,9 +128,16 @@ if (Test-Path $taskbarLnk) {
         $taskbarShortcut.IconLocation = $IcoPath
     }
     $taskbarShortcut.Save()
+    # Read the persisted shell-link back.  Saving a COM shortcut object is not
+    # evidence that Explorer will launch the intended installed launcher.
+    $verifiedTaskbarShortcut = $sh.CreateShortcut($taskbarLnk)
+    if ($verifiedTaskbarShortcut.TargetPath -ne $installedLauncher -or
+        $verifiedTaskbarShortcut.WorkingDirectory -ne $userPrograms) {
+        throw "Taskbar shortcut verification failed. Expected $installedLauncher with working directory $userPrograms; got $($verifiedTaskbarShortcut.TargetPath) / $($verifiedTaskbarShortcut.WorkingDirectory)."
+    }
+    Write-Host "Verified Taskbar target: $($verifiedTaskbarShortcut.TargetPath)"
 }
 
 Update-WindowsIconCache
 
 Write-Host "`nDone. All council voices are installed. Launch Archetypes from Taskbar, Desktop, or Start Menu > NeuroCognica."
-

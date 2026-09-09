@@ -36,7 +36,38 @@ if (-not $InstallRoot) {
 
 Write-Host "Installing Archetypes to $InstallRoot"
 New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
+
+# Windows cannot safely replace a running executable.  More importantly, a
+# deployment must never report success while the buyer is still using the old
+# image in memory.  Fail before copying and tell the operator exactly why.
+$normalizedInstallRoot = [System.IO.Path]::GetFullPath($InstallRoot).TrimEnd('\\')
+$liveInstalledProcesses = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -in @("engine.exe", "launcher.exe") -and $_.ExecutablePath -and
+    ([System.IO.Path]::GetFullPath($_.ExecutablePath).StartsWith($normalizedInstallRoot, [System.StringComparison]::OrdinalIgnoreCase))
+})
+if ($liveInstalledProcesses.Count -gt 0) {
+    $details = ($liveInstalledProcesses | ForEach-Object { "$($_.Name) PID $($_.ProcessId)" }) -join ", "
+    throw "Archetypes is still running from $InstallRoot ($details). Exit the game and launcher, then rerun this deployment. No files were copied."
+}
+
 Copy-Item (Join-Path $SourceRoot "*") -Destination $InstallRoot -Recurse -Force
+
+# A successful Copy-Item is not deployment proof.  The two executables that
+# determine the Taskbar buyer path must be byte-identical to their staged
+# release counterparts.
+foreach ($binary in @("engine.exe", "launcher.exe")) {
+    $sourceBinary = Join-Path $SourceRoot $binary
+    $installedBinary = Join-Path $InstallRoot $binary
+    if (-not (Test-Path -LiteralPath $installedBinary)) {
+        throw "Deployment incomplete: missing $installedBinary after copy."
+    }
+    $sourceHash = (Get-FileHash -LiteralPath $sourceBinary -Algorithm SHA256).Hash
+    $installedHash = (Get-FileHash -LiteralPath $installedBinary -Algorithm SHA256).Hash
+    if ($sourceHash -ne $installedHash) {
+        throw "Deployment integrity failure: $binary hash differs between staged and installed copies."
+    }
+    Write-Host "Verified installed $binary SHA256: $installedHash"
+}
 
 $Launcher = Join-Path $InstallRoot "launcher.exe"
 $Ico = Join-Path $InstallRoot "archetypes.ico"
