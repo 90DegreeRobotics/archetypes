@@ -4,12 +4,12 @@
     {
       "normalized_version": "1.0.0",
       "build_serial": 1,
-      "source_commit": "pending_first_formal_build",
-      "built_utc": null,
-      "installer_sha256": "pending_first_formal_build",
-      "size_bytes": 0,
-      "package_available": false,
-      "note": "Initial baseline entry for serialized Archetypes releases"
+      "source_commit": "755cff0548d2",
+      "built_utc": "2026-09-09T14:19:40.2030209Z",
+      "installer_sha256": "23a632e82c0d7bc0fe1bb244aef40062e6c4dd127f39a5d48cfa0acc6ee80395",
+      "size_bytes": 160644040,
+      "package_available": true,
+      "note": "Emitted and verified by installer/build.ps1."
     }
   ]
 }
