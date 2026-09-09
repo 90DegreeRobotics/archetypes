@@ -20,11 +20,11 @@ impl Plugin for ExtractionPlugin {
 
 fn check_extraction(
     keyboard: Res<ButtonInput<KeyCode>>,
-    query: Query<&Transform, With<super::camera::PlayerCamera>>,
+    query: Query<(&Transform, &super::camera::CameraController), With<super::camera::PlayerCamera>>,
     mut hint: Query<&mut Text, With<InnerChambersHint>>,
     mut next_state: ResMut<NextState<InnerChambersState>>,
 ) {
-    let Ok(transform) = query.single() else {
+    let Ok((transform, controller)) = query.single() else {
         return;
     };
 
@@ -46,8 +46,7 @@ fn check_extraction(
                 words[2]
             )
         } else {
-            "COUNCIL ROTUNDA\nWASD: Fly  •  Space: Up  •  Shift / C: Down  •  Mouse: Look 360°\nOrbit and inspect the Council Table & Stargate Portal  •  Esc returns"
-                .to_owned()
+            controller.locomotion_hud_text()
         };
     }
 

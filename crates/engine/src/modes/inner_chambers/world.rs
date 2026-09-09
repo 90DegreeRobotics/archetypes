@@ -514,7 +514,7 @@ fn setup_inner_world(
         .with_children(|parent| {
             parent.spawn((
                 Text::new(
-                    "COUNCIL ROTUNDA & CHRONOS ARTIFACT EXHIBITION\nWASD: Fly  •  Space: Up  •  Shift / C: Down  •  Mouse: Look 360°\nViewing Council Table & 4 Illuminated Chronos Artifact Pedestals  •  Esc: Return to Menu",
+                    "COUNCIL ROTUNDA  •  [STATUS: GROUND WALKING]\nWASD: Walk & Strafe  •  Space: Jump  •  Mouse: Look (Tilted Down)\nDouble-Jump + Hold Space (2s): Free Flight Mode  •  Esc: Menu",
                 ),
                 TextFont {
                     font_size: 18.0,
