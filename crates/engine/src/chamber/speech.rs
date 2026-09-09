@@ -342,6 +342,15 @@ fn default_speech_root() -> Option<PathBuf> {
             }
         }
     }
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        let user_speech = PathBuf::from(local_app_data)
+            .join("NeuroCognica")
+            .join("Archetypes")
+            .join("speech");
+        if user_speech.is_dir() {
+            return Some(user_speech);
+        }
+    }
     std::env::var_os("ProgramFiles")
         .map(PathBuf::from)
         .map(|root| root.join("Archetypes").join("speech"))

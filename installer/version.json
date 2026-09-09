@@ -1,8 +1,8 @@
 {
   "schema": "archetypes.release_identity.v1",
   "product_name": "Archetypes",
-  "product_version": "1.0.4",
-  "build_serial": 5,
+  "product_version": "1.0.5",
+  "build_serial": 6,
   "channel": "stable",
   "min_os_version": "10.0.18362",
   "distribution": "direct",

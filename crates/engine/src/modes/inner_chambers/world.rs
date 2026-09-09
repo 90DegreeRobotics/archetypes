@@ -3,7 +3,7 @@ use crate::chamber::boot::spawn_main_menu;
 use crate::modes::ModeRegistry;
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::render::render_resource::{Extent3d, PrimitiveTopology, TextureDimension, TextureFormat};
 
 /// The generated images are deliberately non-color/normal PBR inputs, not light-emitting
 /// decals. Keeping them deterministic makes the chamber self-contained while the material
@@ -57,9 +57,10 @@ fn setup_inner_world(
 
     // --- 1. FLOOR & CENTRAL DAIS ---
     let (floor_albedo, floor_normal) = chamber_floor_textures();
+    let floor_normal_handle = images.add(floor_normal);
     let floor_mat = materials.add(StandardMaterial {
         base_color_texture: Some(images.add(floor_albedo)),
-        normal_map_texture: Some(images.add(floor_normal)),
+        normal_map_texture: Some(floor_normal_handle.clone()),
         base_color: Color::WHITE,
         perceptual_roughness: 0.72,
         metallic: 0.08,
@@ -72,6 +73,52 @@ fn setup_inner_world(
         Transform::from_translation(Vec3::ZERO),
         InnerWorldElement,
         Name::new("CastleFloor"),
+    ));
+
+    // Physical stone courses with raised/recessed radial masonry relief
+    let stone_course_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.20, 0.22, 0.27),
+        perceptual_roughness: 0.68,
+        metallic: 0.10,
+        reflectance: 0.45,
+        normal_map_texture: Some(floor_normal_handle),
+        ..default()
+    });
+
+    // Course 1: Dais border flagstones (r: 6.0 to 8.4m, 24 segmented blocks, height: 2.4cm)
+    commands.spawn((
+        Mesh3d(meshes.add(build_radial_flagstone_mesh(6.0, 8.4, 0.024, 24, 0.010))),
+        MeshMaterial3d(stone_course_mat.clone()),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        InnerWorldElement,
+        Name::new("CouncilFloor_Course1_DaisBorder"),
+    ));
+
+    // Course 2: Middle rotunda flagstones (r: 8.54 to 12.0m, 36 segmented blocks, height: 0.020m)
+    commands.spawn((
+        Mesh3d(meshes.add(build_radial_flagstone_mesh(8.54, 12.0, 0.020, 36, 0.008))),
+        MeshMaterial3d(stone_course_mat.clone()),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        InnerWorldElement,
+        Name::new("CouncilFloor_Course2_MiddleRotunda"),
+    ));
+
+    // Course 3: Outer rotunda flagstones (r: 12.16 to 17.0m, 48 segmented blocks, height: 0.016m)
+    commands.spawn((
+        Mesh3d(meshes.add(build_radial_flagstone_mesh(12.16, 17.0, 0.016, 48, 0.006))),
+        MeshMaterial3d(stone_course_mat.clone()),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        InnerWorldElement,
+        Name::new("CouncilFloor_Course3_OuterRotunda"),
+    ));
+
+    // Course 4: Perimeter ambulatory flagstones (r: 17.20 to 24.0m, 60 segmented blocks, height: 0.012m)
+    commands.spawn((
+        Mesh3d(meshes.add(build_radial_flagstone_mesh(17.20, 24.0, 0.012, 60, 0.005))),
+        MeshMaterial3d(stone_course_mat),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        InnerWorldElement,
+        Name::new("CouncilFloor_Course4_Ambulatory"),
     ));
 
     // Raised circular stone dais beneath the Council Table
@@ -811,6 +858,97 @@ fn chamber_floor_textures() -> (Image, Image) {
     )
 }
 
+/// Constructs an annular segmented flagstone paving course with real physical 3D mesh relief.
+/// Generates raised stone tops, vertical joint side faces, and radial mortar channels.
+fn build_radial_flagstone_mesh(
+    inner_r: f32,
+    outer_r: f32,
+    height: f32,
+    segments: usize,
+    gap_rad: f32,
+) -> Mesh {
+    let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut normals: Vec<[f32; 3]> = Vec::new();
+    let mut uvs: Vec<[f32; 2]> = Vec::new();
+
+    let push_quad = |p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, n: Vec3, pos: &mut Vec<[f32; 3]>, norm: &mut Vec<[f32; 3]>, uv: &mut Vec<[f32; 2]>| {
+        // Triangle 1: p0, p1, p2
+        pos.push([p0.x, p0.y, p0.z]);
+        pos.push([p1.x, p1.y, p1.z]);
+        pos.push([p2.x, p2.y, p2.z]);
+        norm.push([n.x, n.y, n.z]);
+        norm.push([n.x, n.y, n.z]);
+        norm.push([n.x, n.y, n.z]);
+        uv.push([p0.x * 0.1, p0.z * 0.1]);
+        uv.push([p1.x * 0.1, p1.z * 0.1]);
+        uv.push([p2.x * 0.1, p2.z * 0.1]);
+
+        // Triangle 2: p0, p2, p3
+        pos.push([p0.x, p0.y, p0.z]);
+        pos.push([p2.x, p2.y, p2.z]);
+        pos.push([p3.x, p3.y, p3.z]);
+        norm.push([n.x, n.y, n.z]);
+        norm.push([n.x, n.y, n.z]);
+        norm.push([n.x, n.y, n.z]);
+        uv.push([p0.x * 0.1, p0.z * 0.1]);
+        uv.push([p2.x * 0.1, p2.z * 0.1]);
+        uv.push([p3.x * 0.1, p3.z * 0.1]);
+    };
+
+    let two_pi = std::f32::consts::PI * 2.0;
+    let step = two_pi / segments as f32;
+
+    for i in 0..segments {
+        let t0 = i as f32 * step + gap_rad * 0.5;
+        let t1 = (i + 1) as f32 * step - gap_rad * 0.5;
+
+        let cos0 = t0.cos();
+        let sin0 = t0.sin();
+        let cos1 = t1.cos();
+        let sin1 = t1.sin();
+
+        // 4 top vertices (raised)
+        let p0 = Vec3::new(inner_r * cos0, height, inner_r * sin0);
+        let p1 = Vec3::new(outer_r * cos0, height, outer_r * sin0);
+        let p2 = Vec3::new(outer_r * cos1, height, outer_r * sin1);
+        let p3 = Vec3::new(inner_r * cos1, height, inner_r * sin1);
+
+        // 4 base vertices (floor plane)
+        let b0 = Vec3::new(inner_r * cos0, 0.0, inner_r * sin0);
+        let b1 = Vec3::new(outer_r * cos0, 0.0, outer_r * sin0);
+        let b2 = Vec3::new(outer_r * cos1, 0.0, outer_r * sin1);
+        let b3 = Vec3::new(inner_r * cos1, 0.0, inner_r * sin1);
+
+        // Top stone surface
+        push_quad(p0, p1, p2, p3, Vec3::Y, &mut positions, &mut normals, &mut uvs);
+
+        // Outer rim face (radial outward)
+        let mid_t = (t0 + t1) * 0.5;
+        let outer_norm = Vec3::new(mid_t.cos(), 0.0, mid_t.sin());
+        push_quad(p1, b1, b2, p2, outer_norm, &mut positions, &mut normals, &mut uvs);
+
+        // Inner rim face (radial inward)
+        let inner_norm = -outer_norm;
+        push_quad(p3, b3, b0, p0, inner_norm, &mut positions, &mut normals, &mut uvs);
+
+        // Start joint face (facing -theta)
+        let start_norm = Vec3::new(sin0, 0.0, -cos0);
+        push_quad(p1, b1, b0, p0, start_norm, &mut positions, &mut normals, &mut uvs);
+
+        // End joint face (facing +theta)
+        let end_norm = Vec3::new(-sin1, 0.0, cos1);
+        push_quad(p3, b3, b2, p2, end_norm, &mut positions, &mut normals, &mut uvs);
+    }
+
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
 fn teardown_inner_world(
     mut commands: Commands,
     query: Query<Entity, With<InnerWorldElement>>,
@@ -839,5 +977,21 @@ mod tests {
         assert_eq!(albedo.texture_descriptor.format, TextureFormat::Rgba8UnormSrgb);
         // Normal maps are data, never gamma-corrected color images.
         assert_eq!(normal.texture_descriptor.format, TextureFormat::Rgba8Unorm);
+    }
+
+    #[test]
+    fn chamber_floor_radial_flagstones_have_physical_3d_relief() {
+        let mesh = build_radial_flagstone_mesh(6.0, 8.4, 0.024, 24, 0.010);
+        let pos_attr = mesh.attribute(Mesh::ATTRIBUTE_POSITION).expect("positions present");
+        let positions = pos_attr.as_float3().expect("float3 positions");
+        assert!(!positions.is_empty(), "mesh must have vertices");
+        // 24 segments * 5 quads * 6 vertices per quad = 720 vertices
+        assert_eq!(positions.len(), 24 * 5 * 6);
+
+        // Confirm physical height relief: contains both raised stone heights and base plane vertices
+        let has_raised = positions.iter().any(|p| (p[1] - 0.024).abs() < 1e-4);
+        let has_base = positions.iter().any(|p| p[1].abs() < 1e-4);
+        assert!(has_raised, "flagstone mesh must have raised top vertices");
+        assert!(has_base, "flagstone mesh must have base groove vertices");
     }
 }

@@ -135,6 +135,20 @@ foreach ($payload in $payloads) {
     if (-not (Test-Path -LiteralPath $payload)) { throw "Required payload missing: $payload" }
 }
 
+Write-Step "Verifying offline council voices in dist\speech"
+$distDir = Join-Path $repoRoot "dist"
+& (Join-Path $repoRoot "scripts\setup_windows.ps1") -InstallRoot $distDir -NonInteractive
+if ($LASTEXITCODE -ne 0) { throw "Speech bootstrap failed for dist\speech." }
+$speechRuntime = Join-Path $distDir "speech\sherpa-onnx-v1.13.4-win-x64-shared-MD-Release\bin\sherpa-onnx-offline-tts.exe"
+$speechModel = Join-Path $distDir "speech\kokoro-en-v0_19\model.onnx"
+if (-not (Test-Path -LiteralPath $speechRuntime) -or -not (Test-Path -LiteralPath $speechModel)) {
+    throw "Required speech runtime or model missing in $distDir\speech."
+}
+$depManifest = Join-Path $repoRoot "scripts\dependencies.json"
+$importScript = Join-Path $repoRoot "scripts\import_chronos_object.py"
+if (-not (Test-Path -LiteralPath $depManifest)) { throw "Required script missing: $depManifest" }
+if (-not (Test-Path -LiteralPath $importScript)) { throw "Required script missing: $importScript" }
+
 $signTool = $null
 $azure = $null
 if (-not $SkipSign) {

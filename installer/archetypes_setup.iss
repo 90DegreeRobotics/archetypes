@@ -56,6 +56,9 @@ Source: "..\target\release\engine.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\launcher.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\assets\icons\archetypes.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\speech\*"; DestDir: "{app}\speech"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\scripts\dependencies.json"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "..\scripts\import_chronos_object.py"; DestDir: "{app}\scripts"; Flags: ignoreversion
 ; Repository ledgers and internal audits are deliberately not customer payload.
 ; Player help already ships beneath assets\help with the runtime asset tree.
 Source: "version.json"; DestDir: "{app}\installer"; Flags: ignoreversion

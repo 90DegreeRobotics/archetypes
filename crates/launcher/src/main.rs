@@ -474,8 +474,8 @@ fn read_log_tail(path: &Path, max_bytes: usize) -> String {
         .to_owned()
 }
 
-/// Desktop shortcuts often have no console. Persist the failure and open it in
-/// Notepad so the operator always sees why the chamber died.
+/// Persist the failure to last-failure.txt and present a proper native modal dialog
+/// to the buyer so the operator always sees why the chamber died.
 fn fail_visible(title: &str, body: &str, log_path: &Path) {
     let summary_path = logs_dir().join("last-failure.txt");
     let summary = format!(
@@ -487,8 +487,44 @@ fn fail_visible(title: &str, body: &str, log_path: &Path) {
     eprintln!("{body}");
     eprintln!("\nFailure summary: {}", summary_path.display());
     eprintln!("Engine log:      {}", log_path.display());
-    let _ = Command::new("notepad.exe").arg(&summary_path).spawn();
+
+    #[cfg(windows)]
+    show_native_error_dialog(title, body);
+
     pause_briefly();
+}
+
+#[cfg(windows)]
+#[link(name = "user32")]
+extern "system" {
+    fn MessageBoxW(
+        hwnd: *mut std::ffi::c_void,
+        lpText: *const u16,
+        lpCaption: *const u16,
+        uType: u32,
+    ) -> i32;
+}
+
+#[cfg(windows)]
+fn show_native_error_dialog(title: &str, message: &str) {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+
+    let wide_title: Vec<u16> = OsStr::new(title).encode_wide().chain(Some(0)).collect();
+    let wide_msg: Vec<u16> = OsStr::new(message).encode_wide().chain(Some(0)).collect();
+
+    const MB_OK: u32 = 0x00000000;
+    const MB_ICONERROR: u32 = 0x00000010;
+    const MB_TOPMOST: u32 = 0x00040000;
+
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            wide_msg.as_ptr(),
+            wide_title.as_ptr(),
+            MB_OK | MB_ICONERROR | MB_TOPMOST,
+        );
+    }
 }
 
 struct Readiness {
@@ -812,6 +848,15 @@ fn tts_installed() -> bool {
         .any(|root| speech_root_ready(&root))
 }
 
+fn user_speech_root() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Users\Default\AppData\Local"))
+        .join("NeuroCognica")
+        .join("Archetypes")
+        .join("speech")
+}
+
 fn speech_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Some(explicit) = std::env::var_os("ARCHETYPES_SPEECH_ROOT") {
@@ -822,6 +867,7 @@ fn speech_roots() -> Vec<PathBuf> {
             roots.push(dir.join("speech"));
         }
     }
+    roots.push(user_speech_root());
     if let Some(program_files) = std::env::var_os("ProgramFiles") {
         roots.push(
             PathBuf::from(program_files)
@@ -841,18 +887,54 @@ fn speech_root_ready(root: &std::path::Path) -> bool {
 }
 
 fn dependencies_manifest_path() -> PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|dir| dir.join("scripts").join("dependencies.json")))
-        .unwrap_or_else(|| PathBuf::from("scripts/dependencies.json"))
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join("scripts").join("dependencies.json");
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let candidate = cwd.join("scripts").join("dependencies.json");
+        if candidate.is_file() {
+            return candidate;
+        }
+    }
+    PathBuf::from(r"C:\archetypes\scripts\dependencies.json")
+}
+
+fn resolve_writable_speech_root() -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().ok();
+    let dir = exe.as_deref().and_then(|p| p.parent());
+    resolve_writable_speech_root_from(dir)
+}
+
+fn resolve_writable_speech_root_from(install_root: Option<&Path>) -> Result<PathBuf, String> {
+    if let Some(dir) = install_root {
+        let is_prog_files = std::env::var_os("ProgramFiles")
+            .map_or(false, |pf| dir.starts_with(&pf))
+            || std::env::var_os("ProgramFiles(x86)")
+                .map_or(false, |pf| dir.starts_with(&pf));
+        if !is_prog_files {
+            let candidate = dir.join("speech");
+            if fs::create_dir_all(&candidate).is_ok() {
+                return Ok(candidate);
+            }
+        }
+    }
+    let user_root = user_speech_root();
+    fs::create_dir_all(&user_root).map_err(|error| {
+        format!(
+            "could not create user speech directory {}: {error}",
+            user_root.display()
+        )
+    })?;
+    Ok(user_root)
 }
 
 fn repair_offline_voices() -> Result<(), String> {
-    let install_root = std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(Path::to_path_buf))
-        .ok_or_else(|| "could not locate launcher directory".to_owned())?;
-    let speech_root = install_root.join("speech");
+    let speech_root = resolve_writable_speech_root()?;
     fs::create_dir_all(&speech_root).map_err(|error| error.to_string())?;
 
     let manifest_path = dependencies_manifest_path();
@@ -1215,5 +1297,33 @@ mod tests {
             !source.contains(&format!("C:\\{baked}")),
             "Comfy discovery must not bake a single operator account"
         );
+    }
+
+    #[test]
+    fn speech_roots_includes_localappdata_and_program_files() {
+        let roots = speech_roots();
+        let texts: Vec<String> = roots.iter().map(|p| p.to_string_lossy().to_lowercase()).collect();
+        assert!(texts.iter().any(|t| t.contains("neurocognica") && t.contains("archetypes") && t.contains("speech")), "must include LocalAppData speech root");
+        assert!(texts.iter().any(|t| t.contains("archetypes") && t.contains("speech")), "must include speech root");
+    }
+
+    #[test]
+    fn resolve_writable_speech_root_avoids_program_files() {
+        let pf_root = resolve_writable_speech_root_from(Some(Path::new(r"C:\Program Files\Archetypes"))).unwrap();
+        let text = pf_root.to_string_lossy().to_lowercase();
+        assert!(!text.contains("program files"), "writable speech root must not target Program Files: {text}");
+        assert!(text.contains("neurocognica") && text.contains("archetypes"), "{text}");
+
+        let current = resolve_writable_speech_root().unwrap();
+        let current_text = current.to_string_lossy().to_lowercase();
+        assert!(!current_text.contains("program files"), "running writable root must not be Program Files: {current_text}");
+    }
+
+    #[test]
+    fn formal_installer_declares_speech_and_manifest() {
+        let iss = std::fs::read_to_string("../../installer/archetypes_setup.iss").unwrap();
+        assert!(iss.contains(r#"Source: "..\dist\speech\*""#), "installer must package dist/speech");
+        assert!(iss.contains(r#"Source: "..\scripts\dependencies.json""#), "installer must package dependencies.json");
+        assert!(iss.contains(r#"Source: "..\scripts\import_chronos_object.py""#), "installer must package import_chronos_object.py");
     }
 }

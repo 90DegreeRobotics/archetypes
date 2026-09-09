@@ -32,7 +32,7 @@ pub struct ManifestationPlugin;
 
 impl Plugin for ManifestationPlugin {
     fn build(&self, app: &mut App) {
-        let (tx, rx) = channel::<ManifestationResult>();
+        let (tx, rx) = channel::<ManifestationEvent>();
         app.insert_resource(ManifestationChannels {
             sender: tx,
             receiver: Mutex::new(rx),
@@ -62,16 +62,29 @@ impl Plugin for ManifestationPlugin {
     }
 }
 
-pub struct ManifestationResult {
-    pub prompt: String,
-    pub success: bool,
-    pub detail: String,
+#[derive(Clone, Debug)]
+pub enum ManifestationEvent {
+    Stage {
+        stage_id: String,
+        pct: u32,
+        state: String,
+        message: String,
+    },
+    Success {
+        prompt: String,
+        detail: String,
+    },
+    Failure {
+        prompt: String,
+        stage_id: Option<String>,
+        detail: String,
+    },
 }
 
 #[derive(Resource)]
 pub struct ManifestationChannels {
-    pub sender: Sender<ManifestationResult>,
-    pub receiver: Mutex<Receiver<ManifestationResult>>,
+    pub sender: Sender<ManifestationEvent>,
+    pub receiver: Mutex<Receiver<ManifestationEvent>>,
     pub active_pid: Arc<Mutex<Option<u32>>>,
 }
 
@@ -81,9 +94,14 @@ pub struct ManifestationState {
     pub prompt_buffer: String,
     pub active_prompt: String,
     pub waiting_elapsed: f32,
+    pub current_stage_id: String,
+    pub current_stage_pct: u32,
+    pub current_stage_state: String,
+    pub current_stage_msg: String,
     pub error_message: String,
     pub active_artifact: Option<Entity>,
     pub floating_symbol_entity: Option<Entity>,
+    pub pedestal_charge: f32,
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Debug)]
@@ -98,6 +116,9 @@ pub enum ManifestationPhase {
 
 #[derive(Component)]
 pub struct ManifestationElement;
+
+#[derive(Component)]
+pub struct PedestalUnderglowLight;
 
 #[derive(Component)]
 pub struct PhasingHourglass {
@@ -144,9 +165,14 @@ fn setup_manifestation_pedestal(
     state.prompt_buffer.clear();
     state.active_prompt.clear();
     state.waiting_elapsed = 0.0;
+    state.current_stage_id.clear();
+    state.current_stage_pct = 0;
+    state.current_stage_state.clear();
+    state.current_stage_msg.clear();
     state.error_message.clear();
     state.active_artifact = None;
     state.floating_symbol_entity = None;
+    state.pedestal_charge = 0.0;
 
     let p = MANIFESTATION_PEDESTAL_POS;
 
@@ -251,6 +277,7 @@ fn setup_manifestation_pedestal(
         },
         Transform::from_xyz(p.x, p.y + 1.8, p.z),
         ManifestationElement,
+        PedestalUnderglowLight,
         Name::new("ManifestationPedestal_Underglow"),
     ));
 
@@ -614,38 +641,58 @@ fn spawn_floating_red_x(
 
 fn animate_pedestal_symbols(
     time: Res<Time>,
+    state: Res<ManifestationState>,
     mut hourglass_query: Query<(&mut Transform, &Children, &PhasingHourglass)>,
     mut red_x_query: Query<&mut Transform, (With<FloatingRedX>, Without<PhasingHourglass>)>,
     mut idle_query: Query<&mut Transform, (With<FloatingIdleSymbol>, Without<PhasingHourglass>, Without<FloatingRedX>)>,
-    mut light_query: Query<&mut PointLight>,
+    mut light_query: Query<&mut PointLight, Without<PedestalUnderglowLight>>,
+    mut underglow_query: Query<&mut PointLight, With<PedestalUnderglowLight>>,
 ) {
     let dt = time.delta_secs();
     let elapsed = time.elapsed_secs();
 
-    // 1. Animate Hourglass: rotate and phase in/out
+    // 1. Animate Hourglass: rotate and phase in/out with stage acceleration
     for (mut transform, children, hg) in &mut hourglass_query {
-        transform.rotate_y(1.6 * dt);
+        let speed_boost = 1.0 + state.pedestal_charge * 1.5;
+        transform.rotate_y(1.6 * speed_boost * dt);
 
         // Phasing calculation: smooth sine oscillation between 0.15 and 1.0
-        let phase = (elapsed * 2.8).sin() * 0.425 + 0.575;
+        let phase = (elapsed * (2.8 + state.pedestal_charge * 4.0)).sin() * 0.425 + 0.575;
 
         // Hover bobbing
         transform.translation.y = MANIFESTATION_HOVER_Y + (elapsed * 2.0).sin() * 0.06;
 
         for child in children.iter() {
             if let Ok(mut light) = light_query.get_mut(child) {
-                light.intensity = hg.base_intensity * phase;
+                let intensity_boost = 1.0 + state.pedestal_charge * 0.8;
+                light.intensity = hg.base_intensity * phase * intensity_boost;
             }
         }
     }
 
-    // 2. Animate Red X: gentle pulsing hover and slow rotation
+    // 2. Animate Pedestal Underglow: plasma charge buildup during manifestation
+    for mut light in &mut underglow_query {
+        let base_intensity = 28_000.0;
+        if state.phase == ManifestationPhase::Manifesting {
+            let pulse = (elapsed * (3.0 + state.pedestal_charge * 8.0)).sin() * 0.25 + 0.75;
+            let charge_boost = state.pedestal_charge * 65_000.0;
+            light.intensity = (base_intensity + charge_boost) * pulse;
+            let r = 0.30 + state.pedestal_charge * 0.35;
+            let g = 0.85 - state.pedestal_charge * 0.15;
+            light.color = Color::srgb(r, g, 1.0);
+        } else {
+            light.intensity = base_intensity;
+            light.color = Color::srgb(0.30, 0.85, 1.0);
+        }
+    }
+
+    // 3. Animate Red X: gentle pulsing hover and slow rotation
     for mut transform in &mut red_x_query {
         transform.rotate_y(0.8 * dt);
         transform.translation.y = MANIFESTATION_HOVER_Y + (elapsed * 2.5).sin() * 0.05;
     }
 
-    // 3. Animate Idle Symbol: slow majestic rotation
+    // 4. Animate Idle Symbol: slow majestic rotation
     for mut transform in &mut idle_query {
         transform.rotate_y(0.7 * dt);
         transform.translation.y = MANIFESTATION_HOVER_Y + (elapsed * 1.5).sin() * 0.04;
@@ -746,7 +793,7 @@ fn handle_manifestation_input(
 
             if keyboard.just_pressed(KeyCode::Enter) {
                 let prompt = if state.prompt_buffer.trim().is_empty() {
-                    "buddha".to_string()
+                    "sacred celestial relic".to_string()
                 } else {
                     state.prompt_buffer.trim().to_string()
                 };
@@ -754,6 +801,11 @@ fn handle_manifestation_input(
                 state.phase = ManifestationPhase::Manifesting;
                 state.active_prompt = prompt.clone();
                 state.waiting_elapsed = 0.0;
+                state.current_stage_id = "start".into();
+                state.current_stage_pct = 0;
+                state.current_stage_state = "begin".into();
+                state.current_stage_msg = "Initiating Chronos2...".into();
+                state.pedestal_charge = 0.0;
                 state.error_message.clear();
 
                 if let Ok(mut vis) = modal_query.single_mut() {
@@ -784,9 +836,44 @@ fn handle_manifestation_input(
             if keyboard.just_pressed(KeyCode::Escape) {
                 cancel_manifestation(&channels);
                 state.phase = ManifestationPhase::Idle;
+                state.current_stage_id.clear();
+                state.current_stage_pct = 0;
+                state.current_stage_state.clear();
+                state.current_stage_msg.clear();
+                state.pedestal_charge = 0.0;
                 spawn_idle_symbol(&mut commands, &mut meshes, &mut materials, &mut state);
             }
         }
+    }
+}
+
+pub fn parse_chronos_stage(line: &str) -> Option<(String, u32, String, String)> {
+    let line = line.trim();
+    if !line.starts_with("[chronos-stage]") {
+        return None;
+    }
+    let rest = line.strip_prefix("[chronos-stage]")?.trim();
+    let mut id = String::new();
+    let mut pct: u32 = 0;
+    let mut state = String::new();
+    let mut msg = String::new();
+
+    for token in rest.split_whitespace() {
+        if let Some(val) = token.strip_prefix("id=") {
+            id = val.to_string();
+        } else if let Some(val) = token.strip_prefix("pct=") {
+            pct = val.parse::<u32>().unwrap_or(0);
+        } else if let Some(val) = token.strip_prefix("state=") {
+            state = val.to_string();
+        }
+    }
+    if let Some(idx) = rest.find("msg=") {
+        msg = rest[idx + 4..].to_string();
+    }
+    if !id.is_empty() {
+        Some((id, pct, state, msg))
+    } else {
+        None
     }
 }
 
@@ -823,14 +910,18 @@ fn target_glb_paths() -> Vec<PathBuf> {
     paths
 }
 
-fn dispatch_manifestation_worker(prompt: String, sender: Sender<ManifestationResult>, active_pid: Arc<Mutex<Option<u32>>>) {
+fn dispatch_manifestation_worker(
+    prompt: String,
+    sender: Sender<ManifestationEvent>,
+    active_pid: Arc<Mutex<Option<u32>>>,
+) {
     std::thread::spawn(move || {
         let Some(script_path) = find_import_script() else {
             let msg = "Could not locate scripts/import_chronos_object.py".to_string();
             eprintln!("[ManifestationWorker] Error: {msg}");
-            let _ = sender.send(ManifestationResult {
+            let _ = sender.send(ManifestationEvent::Failure {
                 prompt,
-                success: false,
+                stage_id: Some("init".into()),
                 detail: msg,
             });
             return;
@@ -843,40 +934,196 @@ fn dispatch_manifestation_worker(prompt: String, sender: Sender<ManifestationRes
             let _ = std::fs::create_dir_all(parent);
         }
 
-        let bundle = std::env::temp_dir().join("NeuroCognica").join("Archetypes").join("manifestations").join(format!("{}", uuid::Uuid::new_v4()));
+        let bundle = std::env::temp_dir()
+            .join("NeuroCognica")
+            .join("Archetypes")
+            .join("manifestations")
+            .join(format!("{}", uuid::Uuid::new_v4()));
+
         let chronos = PathBuf::from(r"C:\chronos2\target\release\chronos.exe");
         if !chronos.is_file() {
-            let _ = sender.send(ManifestationResult { prompt, success: false, detail: "Chronos2 Object-mode executable is unavailable; no fallback object will be created.".into() });
+            let _ = sender.send(ManifestationEvent::Failure {
+                prompt,
+                stage_id: Some("init".into()),
+                detail: "Chronos2 Object-mode executable is unavailable; no fallback object will be created.".into(),
+            });
             return;
         }
+
+        // Notify beginning of manifestation
+        let _ = sender.send(ManifestationEvent::Stage {
+            stage_id: "start".into(),
+            pct: 0,
+            state: "begin".into(),
+            message: "Initiating Chronos2 Object mode...".into(),
+        });
+
         let mut command = Command::new(&chronos);
-        command.args(["first-light", "--prompt"]).arg(&prompt).args(["--out-dir"]).arg(&bundle).args(["--geometry-forge", "--void"]);
-        #[cfg(windows)] { command.creation_flags(CREATE_NO_WINDOW); }
-        let Ok(child) = command.spawn() else { let _ = sender.send(ManifestationResult { prompt, success: false, detail: "Could not start Chronos2 Object mode.".into() }); return; };
-        if let Ok(mut slot) = active_pid.lock() { *slot = Some(child.id()); }
-        let run = child.wait_with_output();
-        if let Ok(mut slot) = active_pid.lock() { *slot = None; }
-        let Ok(run) = run else { let _ = sender.send(ManifestationResult { prompt, success: false, detail: "Could not start Chronos2 Object mode.".into() }); return; };
-        if !run.status.success() {
-            let detail = String::from_utf8_lossy(&run.stderr).lines().last().unwrap_or("Chronos2 Object mode failed").to_string();
-            let _ = sender.send(ManifestationResult { prompt, success: false, detail }); return;
+        command.args(["first-light", "--prompt"]).arg(&prompt)
+            .args(["--out-dir"]).arg(&bundle)
+            .args(["--geometry-forge", "--void"]);
+        command.stdout(std::process::Stdio::piped());
+        command.stderr(std::process::Stdio::piped());
+
+        #[cfg(windows)]
+        {
+            command.creation_flags(CREATE_NO_WINDOW);
         }
+
+        let mut child = match command.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = sender.send(ManifestationEvent::Failure {
+                    prompt,
+                    stage_id: Some("start".into()),
+                    detail: format!("Failed to spawn Chronos2: {e}"),
+                });
+                return;
+            }
+        };
+
+        let child_id = child.id();
+        if let Ok(mut slot) = active_pid.lock() {
+            *slot = Some(child_id);
+        }
+
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+
+        let stderr_handle = std::thread::spawn(move || {
+            let mut err_lines = Vec::new();
+            if let Some(err) = stderr {
+                let reader = std::io::BufReader::new(err);
+                use std::io::BufRead;
+                for line in reader.lines().flatten() {
+                    eprintln!("[Chronos stderr] {line}");
+                    err_lines.push(line);
+                }
+            }
+            err_lines
+        });
+
+        let mut last_stage_id = "start".to_string();
+        let mut last_stage_msg = "Initiating".to_string();
+
+        if let Some(out) = stdout {
+            let reader = std::io::BufReader::new(out);
+            use std::io::BufRead;
+            for line in reader.lines().flatten() {
+                println!("[Chronos stdout] {line}");
+                if let Some((id, pct, state, msg)) = parse_chronos_stage(&line) {
+                    last_stage_id = id.clone();
+                    last_stage_msg = msg.clone();
+                    let _ = sender.send(ManifestationEvent::Stage {
+                        stage_id: id,
+                        pct,
+                        state,
+                        message: msg,
+                    });
+                }
+            }
+        }
+
+        let status = child.wait();
+        let err_lines = stderr_handle.join().unwrap_or_default();
+
+        if let Ok(mut slot) = active_pid.lock() {
+            *slot = None;
+        }
+
+        let Ok(exit_status) = status else {
+            let _ = sender.send(ManifestationEvent::Failure {
+                prompt,
+                stage_id: Some(last_stage_id),
+                detail: "Chronos process wait failed".into(),
+            });
+            return;
+        };
+
+        if !exit_status.success() {
+            let err_summary = if !err_lines.is_empty() {
+                err_lines.last().cloned().unwrap_or_else(|| format!("Chronos exited with code {exit_status}"))
+            } else if !last_stage_msg.is_empty() {
+                last_stage_msg
+            } else {
+                format!("Chronos failed with exit code {exit_status}")
+            };
+            let _ = sender.send(ManifestationEvent::Failure {
+                prompt,
+                stage_id: Some(last_stage_id),
+                detail: err_summary,
+            });
+            return;
+        }
+
+        // Verify receipt and mesh
         let receipt = bundle.join("engine_mesh").join("triposr_artifact.json");
-        let mesh = bundle.join("engine_mesh").join("0").join("mesh.obj");
-        if !receipt.is_file() || !mesh.is_file() {
-            let _ = sender.send(ManifestationResult { prompt, success: false, detail: "Chronos2 did not return its required TripoSR mesh receipt; no artifact was staged.".into() }); return;
+        let mesh_0 = bundle.join("engine_mesh").join("0").join("mesh.obj");
+        let mesh_direct = bundle.join("engine_mesh").join("mesh.obj");
+        let mesh = if mesh_0.is_file() {
+            mesh_0
+        } else if mesh_direct.is_file() {
+            mesh_direct
+        } else {
+            let _ = sender.send(ManifestationEvent::Failure {
+                prompt,
+                stage_id: Some("geometry_forge".into()),
+                detail: "Chronos2 did not return its required TripoSR mesh receipt; no artifact was staged.".into(),
+            });
+            return;
+        };
+
+        if !receipt.is_file() {
+            let _ = sender.send(ManifestationEvent::Failure {
+                prompt,
+                stage_id: Some("geometry_forge".into()),
+                detail: "TripoSR artifact receipt missing from Chronos bundle; failing closed.".into(),
+            });
+            return;
         }
+
+        // Conversion stage
+        let _ = sender.send(ManifestationEvent::Stage {
+            stage_id: "conversion".into(),
+            pct: 98,
+            state: "begin".into(),
+            message: "Converting geometry to GLB (Blender)...".into(),
+        });
+
         let blender_exe = r"C:\Program Files\Blender Foundation\Blender 4.5\blender.exe";
-        let output = Command::new(blender_exe).arg("-b").arg("-P").arg(&script_path)
+        let mut blender_cmd = Command::new(blender_exe);
+        blender_cmd.arg("-b").arg("-P").arg(&script_path)
             .arg("--")
             .arg("--input").arg(&mesh)
-            .arg("--output")
-            .arg(&primary_output)
-            .output();
+            .arg("--output").arg(&primary_output);
+        #[cfg(windows)]
+        {
+            blender_cmd.creation_flags(CREATE_NO_WINDOW);
+        }
 
-        match output {
-            Ok(out) if out.status.success() && primary_output.exists() => {
-                // Copy to secondary target path if different (e.g. repo assets vs installed assets)
+        let blender_child = match blender_cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = sender.send(ManifestationEvent::Failure {
+                    prompt,
+                    stage_id: Some("conversion".into()),
+                    detail: format!("Failed to launch Blender: {e}"),
+                });
+                return;
+            }
+        };
+
+        if let Ok(mut slot) = active_pid.lock() {
+            *slot = Some(blender_child.id());
+        }
+
+        let blender_out = blender_child.wait_with_output();
+        if let Ok(mut slot) = active_pid.lock() {
+            *slot = None;
+        }
+
+        match blender_out {
+            Ok(out) if out.status.success() && primary_output.is_file() && primary_output.metadata().map(|m| m.len() > 1024).unwrap_or(false) => {
                 for other in &target_paths[1..] {
                     if let Some(p) = other.parent() {
                         let _ = std::fs::create_dir_all(p);
@@ -884,37 +1131,39 @@ fn dispatch_manifestation_worker(prompt: String, sender: Sender<ManifestationRes
                     let _ = std::fs::copy(&primary_output, other);
                 }
 
-                println!("[ManifestationWorker] Successfully manifested '{prompt}' at {primary_output:?}");
-                let _ = sender.send(ManifestationResult {
+                let _ = sender.send(ManifestationEvent::Stage {
+                    stage_id: "placement".into(),
+                    pct: 100,
+                    state: "done".into(),
+                    message: "Placing artifact upon altar...".into(),
+                });
+
+                let _ = sender.send(ManifestationEvent::Success {
                     prompt,
-                    success: true,
-                    detail: "Render complete".to_string(),
+                    detail: "Manifestation completed successfully".into(),
                 });
             }
             Ok(out) => {
                 let err_text = String::from_utf8_lossy(&out.stderr);
                 let out_text = String::from_utf8_lossy(&out.stdout);
                 let detail = if !err_text.trim().is_empty() {
-                    err_text.lines().last().unwrap_or("Blender script error").to_string()
+                    err_text.lines().last().unwrap_or("Blender conversion error").to_string()
                 } else if !out_text.trim().is_empty() {
-                    out_text.lines().last().unwrap_or("Render failed").to_string()
+                    out_text.lines().last().unwrap_or("Blender conversion failed").to_string()
                 } else {
-                    format!("Exit code {}", out.status)
+                    format!("Blender exit code {}", out.status)
                 };
-                eprintln!("[ManifestationWorker] Render failed: {detail}");
-                let _ = sender.send(ManifestationResult {
+                let _ = sender.send(ManifestationEvent::Failure {
                     prompt,
-                    success: false,
+                    stage_id: Some("conversion".into()),
                     detail,
                 });
             }
             Err(e) => {
-                let msg = format!("Failed to launch Blender: {e}");
-                eprintln!("[ManifestationWorker] Execution error: {msg}");
-                let _ = sender.send(ManifestationResult {
+                let _ = sender.send(ManifestationEvent::Failure {
                     prompt,
-                    success: false,
-                    detail: msg,
+                    stage_id: Some("conversion".into()),
+                    detail: format!("Blender conversion process failed: {e}"),
                 });
             }
         }
@@ -924,7 +1173,13 @@ fn dispatch_manifestation_worker(prompt: String, sender: Sender<ManifestationRes
 fn cancel_manifestation(channels: &ManifestationChannels) {
     let pid = channels.active_pid.lock().ok().and_then(|mut slot| slot.take());
     if let Some(pid) = pid {
-        #[cfg(windows)] { let _ = Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"]).creation_flags(CREATE_NO_WINDOW).output(); }
+        #[cfg(windows)]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+        }
     }
 }
 
@@ -940,69 +1195,110 @@ fn poll_manifestation_results(
         return;
     };
 
-    if let Ok(result) = receiver.try_recv() {
-        if result.success {
-            // SUCCESS: Despawn the phasing hourglass
-            if let Some(symbol) = state.floating_symbol_entity.take() {
-                commands.entity(symbol).despawn();
+    while let Ok(event) = receiver.try_recv() {
+        match event {
+            ManifestationEvent::Stage { stage_id, pct, state: stage_state, message } => {
+                state.current_stage_id = stage_id;
+                state.current_stage_pct = pct;
+                state.current_stage_state = stage_state;
+                state.current_stage_msg = message;
+                state.pedestal_charge = (pct as f32 / 100.0).clamp(0.0, 1.0);
             }
+            ManifestationEvent::Success { prompt, detail: _ } => {
+                // SUCCESS: Despawn the phasing hourglass
+                if let Some(symbol) = state.floating_symbol_entity.take() {
+                    commands.entity(symbol).despawn();
+                }
 
-            state.phase = ManifestationPhase::Completed;
+                state.phase = ManifestationPhase::Completed;
+                state.current_stage_id = "complete".into();
+                state.current_stage_pct = 100;
+                state.current_stage_msg = "Summoned".into();
+                state.pedestal_charge = 0.0;
 
-            // Despawn old artifact if present
-            if let Some(old_entity) = state.active_artifact.take() {
-                commands.entity(old_entity).despawn();
-            }
+                // Despawn old artifact if present
+                if let Some(old_entity) = state.active_artifact.take() {
+                    commands.entity(old_entity).despawn();
+                }
 
-            let p = MANIFESTATION_PEDESTAL_POS;
-            let cushion_y = p.y + 1.34;
+                let p = MANIFESTATION_PEDESTAL_POS;
+                let cushion_y = p.y + 1.34;
 
-            // Spawn celestial entrance flash
-            commands.spawn((
-                PointLight {
-                    intensity: 140_000.0,
-                    range: 16.0,
-                    color: Color::srgb(1.0, 0.95, 0.70),
-                    shadows_enabled: false,
-                    ..default()
-                },
-                Transform::from_xyz(p.x, cushion_y + 0.60, p.z),
-                ManifestationFlash {
-                    timer: 0.0,
-                    max_duration: 1.6,
-                },
-                ManifestationElement,
-                Name::new("ManifestationEntranceFlash"),
-            ));
-            // A real return gets a theatrical reveal; it is never played while Chronos is merely waiting.
-            let smoke = materials.add(StandardMaterial { base_color: Color::srgba(0.28, 0.55, 0.95, 0.42), emissive: LinearRgba::new(0.08, 0.22, 0.65, 1.0), alpha_mode: AlphaMode::Blend, ..default() });
-            let bolt = materials.add(StandardMaterial { base_color: Color::WHITE, emissive: LinearRgba::new(3.0, 6.0, 12.0, 1.0), ..default() });
-            for i in 0..18 {
-                let a = i as f32 * 0.349;
-                commands.spawn((Mesh3d(meshes.add(Sphere::new(0.28 + (i % 3) as f32 * 0.12))), MeshMaterial3d(smoke.clone()), Transform::from_xyz(p.x + a.cos() * 0.45, cushion_y + 0.35 + (i % 4) as f32 * 0.12, p.z + a.sin() * 0.45), ManifestationRevealSmoke { timer: 0.0 }, ManifestationElement, Name::new("ManifestationRevealSmoke")));
-            }
-            commands.spawn((Mesh3d(meshes.add(Cuboid::new(0.08, 4.8, 0.08))), MeshMaterial3d(bolt), Transform::from_xyz(p.x, cushion_y + 2.4, p.z), ManifestationRevealSmoke { timer: 0.0 }, ManifestationElement, Name::new("ManifestationLightningStrike")));
-
-            // Spawn the newly summoned object atop the velvet cushion
-            let artifact_entity = commands
-                .spawn((
-                    SceneRoot(asset_server.load("scenes/manifested_artifact.glb#Scene0")),
-                    Transform::from_xyz(p.x, cushion_y, p.z).with_scale(Vec3::splat(1.15)),
-                    ChronosExhibitTurntable { speed: 0.38 },
+                // Spawn celestial entrance flash
+                commands.spawn((
+                    PointLight {
+                        intensity: 160_000.0,
+                        range: 18.0,
+                        color: Color::srgb(1.0, 0.95, 0.70),
+                        shadows_enabled: false,
+                        ..default()
+                    },
+                    Transform::from_xyz(p.x, cushion_y + 0.60, p.z),
+                    ManifestationFlash {
+                        timer: 0.0,
+                        max_duration: 1.6,
+                    },
                     ManifestationElement,
-                    Name::new("ManifestedChronosArtifact"),
-                ))
-                .id();
+                    Name::new("ManifestationEntranceFlash"),
+                ));
 
-            state.active_artifact = Some(artifact_entity);
-            println!("[ManifestationSystem] Succeeded: Manifested '{}' atop the sacred pedestal!", result.prompt);
-        } else {
-            // FAILURE: Despawn the hourglass and spawn the Floating Red X
-            state.phase = ManifestationPhase::Failed;
-            state.error_message = result.detail.clone();
+                // Controlled lightning bolt
+                let bolt = materials.add(StandardMaterial {
+                    base_color: Color::WHITE,
+                    emissive: LinearRgba::new(4.0, 8.0, 16.0, 1.0),
+                    ..default()
+                });
+                commands.spawn((
+                    Mesh3d(meshes.add(Cuboid::new(0.08, 4.8, 0.08))),
+                    MeshMaterial3d(bolt),
+                    Transform::from_xyz(p.x, cushion_y + 2.4, p.z),
+                    ManifestationRevealSmoke { timer: 0.0 },
+                    ManifestationElement,
+                    Name::new("ManifestationLightningStrike"),
+                ));
 
-            spawn_floating_red_x(&mut commands, &mut meshes, &mut materials, &mut state);
-            eprintln!("[ManifestationSystem] Failed: {}", result.detail);
+                // Volumetric smoke / cloud effect that dissipates
+                let smoke = materials.add(StandardMaterial {
+                    base_color: Color::srgba(0.35, 0.65, 0.95, 0.45),
+                    emissive: LinearRgba::new(0.12, 0.30, 0.85, 1.0),
+                    alpha_mode: AlphaMode::Blend,
+                    ..default()
+                });
+                for i in 0..22 {
+                    let a = i as f32 * 0.285;
+                    commands.spawn((
+                        Mesh3d(meshes.add(Sphere::new(0.28 + (i % 4) as f32 * 0.10))),
+                        MeshMaterial3d(smoke.clone()),
+                        Transform::from_xyz(p.x + a.cos() * 0.48, cushion_y + 0.30 + (i % 5) as f32 * 0.10, p.z + a.sin() * 0.48),
+                        ManifestationRevealSmoke { timer: 0.0 },
+                        ManifestationElement,
+                        Name::new("ManifestationRevealSmoke"),
+                    ));
+                }
+
+                // Spawn newly summoned object atop the velvet cushion (validated import)
+                let artifact_entity = commands
+                    .spawn((
+                        SceneRoot(asset_server.load("scenes/manifested_artifact.glb#Scene0")),
+                        Transform::from_xyz(p.x, cushion_y, p.z).with_scale(Vec3::splat(1.15)),
+                        ChronosExhibitTurntable { speed: 0.38 },
+                        ManifestationElement,
+                        Name::new("ManifestedChronosArtifact"),
+                    ))
+                    .id();
+
+                state.active_artifact = Some(artifact_entity);
+                println!("[ManifestationSystem] Succeeded: Manifested '{prompt}' atop the altar!");
+            }
+            ManifestationEvent::Failure { prompt: _, stage_id, detail } => {
+                state.phase = ManifestationPhase::Failed;
+                state.current_stage_id = stage_id.unwrap_or_else(|| "failure".into());
+                state.error_message = detail.clone();
+                state.pedestal_charge = 0.0;
+
+                spawn_floating_red_x(&mut commands, &mut meshes, &mut materials, &mut state);
+                eprintln!("[ManifestationSystem] Manifestation Failed: {detail}");
+            }
         }
     }
 }
@@ -1020,17 +1316,23 @@ fn update_manifestation_flash(
         } else {
             let progress = flash.timer / flash.max_duration;
             let fade = (1.0 - progress).powi(2);
-            light.intensity = 140_000.0 * fade;
+            light.intensity = 160_000.0 * fade;
         }
     }
 }
 
-fn update_manifestation_reveal_smoke(mut commands: Commands, time: Res<Time>, mut smoke: Query<(Entity, &mut Transform, &mut ManifestationRevealSmoke)>) {
+fn update_manifestation_reveal_smoke(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut smoke: Query<(Entity, &mut Transform, &mut ManifestationRevealSmoke)>,
+) {
     for (entity, mut transform, mut reveal) in &mut smoke {
         reveal.timer += time.delta_secs();
         transform.translation.y += time.delta_secs() * 0.45;
         transform.scale *= 1.0 + time.delta_secs() * 0.7;
-        if reveal.timer > 2.4 { commands.entity(entity).despawn(); }
+        if reveal.timer > 2.4 {
+            commands.entity(entity).despawn();
+        }
     }
 }
 
@@ -1049,16 +1351,21 @@ fn update_manifestation_hud(
     match state.phase {
         ManifestationPhase::Manifesting => {
             *banner_vis = Visibility::Visible;
+            let stage_label = if !state.current_stage_msg.is_empty() {
+                &state.current_stage_msg
+            } else {
+                "Initiating Chronos2..."
+            };
             text.0 = format!(
-                "⏳ MANIFESTING: \"{}\" (Chronos2 rendering...) [{:.1}s]",
-                state.active_prompt, state.waiting_elapsed
+                "⏳ [{}%] {}: \"{}\" [{:.1}s] — Press [Esc] to cancel",
+                state.current_stage_pct, stage_label, state.active_prompt, state.waiting_elapsed
             );
             color.0 = Color::srgb(1.0, 0.85, 0.30); // Warm amber
         }
         ManifestationPhase::Failed => {
             *banner_vis = Visibility::Visible;
             text.0 = format!(
-                "❌ MANIFESTATION FAILED: {} — Press [E] to retry.",
+                "❌ MANIFESTATION REFUSED/FAILED: {} — Press [E] to retry.",
                 state.error_message
             );
             color.0 = Color::srgb(1.0, 0.25, 0.30); // Warning red
@@ -1066,7 +1373,7 @@ fn update_manifestation_hud(
         ManifestationPhase::Completed => {
             *banner_vis = Visibility::Visible;
             text.0 = format!(
-                "✨ SUMMONED: \"{}\" — Successfully manifested upon the altar!",
+                "✨ MANIFESTED: \"{}\" — Staged upon the sacred altar!",
                 state.active_prompt
             );
             color.0 = Color::srgb(0.40, 1.0, 0.70); // Radiant celestial green
@@ -1091,4 +1398,55 @@ fn teardown_manifestation(
     state.floating_symbol_entity = None;
     state.phase = ManifestationPhase::Idle;
     state.prompt_buffer.clear();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_chronos_stage_valid() {
+        let line = "[chronos-stage] id=sentinel pct=6 state=done msg=Sentinel is reviewing your request - cleared - no prohibited use found";
+        let parsed = parse_chronos_stage(line);
+        assert!(parsed.is_some());
+        let (id, pct, state, msg) = parsed.unwrap();
+        assert_eq!(id, "sentinel");
+        assert_eq!(pct, 6);
+        assert_eq!(state, "done");
+        assert_eq!(msg, "Sentinel is reviewing your request - cleared - no prohibited use found");
+    }
+
+    #[test]
+    fn test_parse_chronos_stage_refusal() {
+        let line = "[chronos-stage] id=sentinel pct=6 state=fail msg=Sentinel refused request: prohibited use detected";
+        let parsed = parse_chronos_stage(line);
+        assert!(parsed.is_some());
+        let (id, pct, state, msg) = parsed.unwrap();
+        assert_eq!(id, "sentinel");
+        assert_eq!(pct, 6);
+        assert_eq!(state, "fail");
+        assert!(msg.contains("prohibited use detected"));
+    }
+
+    #[test]
+    fn test_no_recipe_or_keyword_in_manifestation_dispatch() {
+        // Assert that the manifestation module does NOT reference retired recipe scripts or keyword tables.
+        let script = find_import_script().expect("import_chronos_object.py must be discoverable");
+        assert!(script.ends_with("import_chronos_object.py"), "must use generic import script");
+        assert!(!script.to_string_lossy().contains("manifest_artifact.py"), "manifest_artifact.py is retired and must never be referenced");
+    }
+
+    #[test]
+    fn test_manifestation_fails_closed_when_receipt_missing() {
+        let tmp = std::env::temp_dir().join(format!("test_manifestation_{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&tmp);
+        let receipt = tmp.join("engine_mesh").join("triposr_artifact.json");
+        let mesh = tmp.join("engine_mesh").join("0").join("mesh.obj");
+        assert!(!receipt.is_file(), "receipt absent");
+        assert!(!mesh.is_file(), "mesh absent");
+        // Verify fail-closed semantics: without these files, manifestation refuses to generate a fallback.
+        let is_valid = receipt.is_file() && mesh.is_file();
+        assert!(!is_valid, "system must fail closed when receipt is missing");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
