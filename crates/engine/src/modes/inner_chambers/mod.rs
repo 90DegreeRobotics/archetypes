@@ -8,6 +8,7 @@ use bevy::prelude::*;
 pub mod camera;
 pub mod catalog;
 pub mod extraction;
+pub mod manifestation;
 pub mod seed;
 pub mod world;
 
@@ -38,6 +39,7 @@ impl Plugin for InnerChambersPlugin {
                 world::WorldPlugin,
                 camera::CameraPlugin,
                 extraction::ExtractionPlugin,
+                manifestation::ManifestationPlugin,
             ));
     }
 }

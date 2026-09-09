@@ -72,7 +72,7 @@ impl Default for CameraController {
             velocity_y: 0.0,
             gravity: 16.0,
             jump_impulse: 5.6,
-            sensitivity: 0.00045, // Calmed, smooth, non-twitchy head movement
+            sensitivity: 0.0013,  // Responsive, standard FPS mouse look
             pitch: -0.18,         // Looking slightly downward at the objects (~10.3 degrees)
             yaw: 0.0,
             is_grounded: true,
@@ -160,11 +160,21 @@ fn player_locomotion(
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    manifestation_state: Option<Res<super::manifestation::ManifestationState>>,
     mut query: Query<(&mut Transform, &mut CameraController), With<PlayerCamera>>,
 ) {
     let Ok((mut transform, mut controller)) = query.single_mut() else {
         return;
     };
+
+    // If player is currently typing into the manifestation conduit, pause camera locomotion
+    if manifestation_state
+        .as_ref()
+        .map(|s| s.phase == super::manifestation::ManifestationPhase::Prompting)
+        .unwrap_or(false)
+    {
+        return;
+    }
 
     // Re-lock and hide cursor if clicked inside window
     if mouse_buttons.just_pressed(MouseButton::Left) {
@@ -188,8 +198,8 @@ fn player_locomotion(
     }
 
     if mouse_delta != Vec2::ZERO {
-        let dx = mouse_delta.x.clamp(-60.0, 60.0);
-        let dy = mouse_delta.y.clamp(-60.0, 60.0);
+        let dx = mouse_delta.x.clamp(-240.0, 240.0);
+        let dy = mouse_delta.y.clamp(-240.0, 240.0);
 
         controller.yaw -= dx * controller.sensitivity;
         controller.pitch -= dy * controller.sensitivity;
@@ -291,28 +301,29 @@ fn player_locomotion(
                 }
             }
 
-            // Central Table collision (radius ~2.35m)
+            // Central Table collision (radius 1.41m)
             let center_dist = (transform.translation.x * transform.translation.x
                 + transform.translation.z * transform.translation.z)
                 .sqrt();
-            if center_dist < 2.35 {
+            if center_dist < 1.41 {
                 let push = if center_dist > 0.01 {
                     Vec2::new(transform.translation.x, transform.translation.z) / center_dist
                 } else {
                     Vec2::Y
                 };
-                let corrected = push * 2.35;
+                let corrected = push * 1.41;
                 transform.translation.x = corrected.x;
                 transform.translation.z = corrected.y;
             }
 
-            // Archetype council character obstacle collisions (each figure on the floor)
+            // Archetype council character and manifestation altar obstacle collisions
             let character_obstacles = [
                 (Vec2::new(-9.6, 13.5), 0.85), // Sentinel
                 (Vec2::new(-5.0, 10.2), 0.85), // Aura
                 (Vec2::new(0.0, 7.5), 0.85),   // Empath
                 (Vec2::new(5.0, 10.2), 0.85),  // Oracle
                 (Vec2::new(9.6, 13.5), 0.95),  // Nebula Jester (wide shoulders)
+                (Vec2::new(0.0, 3.4), 1.25),   // Manifestation Altar Pedestal
             ];
             for (char_pos, radius) in character_obstacles {
                 let to_char = Vec2::new(transform.translation.x, transform.translation.z) - char_pos;

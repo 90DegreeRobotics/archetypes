@@ -93,13 +93,13 @@ fn setup_inner_world(
     ));
 
     // --- 2. ANIMATED COUNCIL TABLE WITH STARGATE PORTAL ---
-    // Feet authored at local z = -0.784. At scale 2.6, feet reach 2.0384m below origin.
-    // Resting on dais top (y = 0.30m) requires origin y = 0.30 + 2.04 = 2.34m.
+    // Scaled to 60% of original size (scale 1.56). Feet authored at local z = -0.784.
+    // Resting on dais top (y = 0.30m) requires origin y = 0.30 + (0.784 * 1.56) = 1.523m.
     // Entity named "RotundaCouncilTable" so ritual visibility gates never hide it.
     // Child entity "Stargate_Portal" inside table.glb is auto-bound and animated by PortalPlugin.
     commands.spawn((
         SceneRoot(asset_server.load("scenes/table.glb#Scene0")),
-        Transform::from_xyz(0.0, 2.34, 0.0).with_scale(Vec3::splat(2.6)),
+        Transform::from_xyz(0.0, 1.523, 0.0).with_scale(Vec3::splat(1.56)),
         InnerWorldElement,
         Name::new("RotundaCouncilTable"),
     ));
@@ -107,13 +107,13 @@ fn setup_inner_world(
     // Subtle glow light illuminating the stargate vortex disc
     commands.spawn((
         PointLight {
-            intensity: 30_000.0,
-            range: 12.0,
+            intensity: 22_000.0,
+            range: 9.0,
             color: Color::srgb(0.25, 0.75, 1.0),
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(0.0, 2.7, 0.0),
+        Transform::from_xyz(0.0, 1.74, 0.0),
         InnerWorldElement,
         Name::new("PortalDiscGlowLight"),
     ));
