@@ -65,11 +65,34 @@ The following interpretations are proposed gameplay uses of the existing archety
 | **Empath — Luma Resonance** | Warm rose palette, breathing cadence, soft harmony. [1] | A luminous conservatory/living room with cushions, lamps, soft furnishings, and responsive light forms. | “When a room gets tense, offer it a **_____**.” | **Cushioned.** Props feel soft, squash visually, and impart low impact; comedy comes from bounce and recoverability. | Soft household clutter and gentle spring targets. |
 | **Jester** | Chalk/off-white, near-black, bruise indigo, sparing truth-sting red; asymmetric/bouncy motion; dissonant glitch. [1] | A worn carnival repair workshop: impossible tool racks, upside-down lamps, clown-dummy rigs, and comic reset machinery. | “Every safe circus needs a **_____**.” | **Slapstick.** Props bounce, squeak, wobble, and create controlled exaggerated feedback. | Carnival clown dummy, balloon-light rig, and resettable prop stack. |
 
-### 2.2 The first fully playable room is Jester
+### 2.2 Locked Oracle encounter — The Terrible Responsibility
 
-The **Jester chamber** is the correct vertical slice, even if Architect remains the most natural environment-art reference. The requested premise is not “a generated object can be imported.” It is “a dinner turkey can fight a circus clown and the result is funny.” Jester is the room that makes this undeniable.
+This encounter is **approved game canon**. Preserve its dead-serious delivery, ridiculous object, refusal to explain, and player agency:
 
-The first Jester slice should include a compelling entry silhouette, a manifestation pad, one **Smash Stand** that can mount player-created objects, a non-sentient carnival clown dummy, a breakable household-light rig, a Lost & Found return chute, and enough open floor for a held object to swing without clipping walls. Architect becomes the second room, where the same system proves it can create satisfying *structure* rather than only slapstick.
+> **Oracle:** “Take the rubber chicken. In the futures where you ask why, you do not survive.”
+
+The chamber door opens. The Oracle offers no further context. The player leaves carrying the rubber chicken and a terrible responsibility.
+
+The Oracle does not equip, use, demonstrate, or destroy the object. The player is the eighth sphere and remains the sole embodied actor. The comedy comes from the Oracle treating an absurd generated object as a cosmically precise necessity—not from the Oracle behaving comedically or acknowledging the joke.
+
+This establishes a reusable Oracle comedy law:
+
+1. Name an ordinary or ridiculous object with absolute prophetic specificity.
+2. Attach a grave but unexplained consequence to accepting or questioning it.
+3. Refuse elaboration.
+4. Open the path and return control immediately to the player.
+
+Variations may change the object and forecast, but must not weaken this encounter through winking, punchline explanation, random humor, or taking agency away from the player.
+
+### 2.3 Locked roles — Host, Council, and Eighth Sphere
+
+The **Jester is the host**, not a playable archetype and not the embodied agent who demonstrates the props. The Jester greets the player at entry to the game mode, conducts the threshold into the main Council Chamber, introduces the available inner chambers, and frames transitions without taking control.
+
+The **player is the eighth sphere** and the sole embodied actor. The player chooses a chamber, supplies the object noun, receives or manifests the object, and decides whether to equip, place, test, preserve, or destroy it.
+
+The other archetypes are encountered in their own completely stylized Inner Chambers. Each chamber translates its archetype profile into a distinct object-creation experience through architecture, language, material, light, sound, motion, ritual, and behavioral constraints. The archetypes may propose, interpret, warn, reframe, or react; they do not become playable characters.
+
+This role definition supersedes later draft language in this document that describes a playable “Jester room” or depicts the Jester physically using Smash Room assets. Those passages remain historical planning material until the full plan is reconciled around the host/eighth-sphere structure.
 
 ## 3. The council’s job: guide, provoke, react
 
