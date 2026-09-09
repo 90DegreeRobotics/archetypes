@@ -106,9 +106,9 @@ fn setup_camera(
         cam.is_active = false;
     }
 
-    // Spawn player standing on the floor (eye height 2.85m) in front of the dais
-    let spawn_pos = Vec3::new(0.0, 2.85, 11.8);
-    let initial_pitch = -0.18; // Looking slightly downward (~10.3 degrees)
+    // Spawn player standing on the floor (eye height 2.85m) at the entrance of the exhibition court
+    let spawn_pos = Vec3::new(0.0, 2.85, 17.5);
+    let initial_pitch = -0.14; // Looking slightly downward (~8.0 degrees)
     let initial_yaw = 0.0;
 
     commands.spawn((
@@ -306,15 +306,23 @@ fn player_locomotion(
                 transform.translation.z = corrected.y;
             }
 
-            // Empath statue obstacle collision (radius ~0.85m at (0.0, 7.2))
-            let empath_pos = Vec2::new(0.0, 7.2);
-            let to_empath = Vec2::new(transform.translation.x, transform.translation.z) - empath_pos;
-            let dist_empath = to_empath.length();
-            if dist_empath < 0.85 {
-                let push = if dist_empath > 0.01 { to_empath / dist_empath } else { Vec2::Y };
-                let corrected = empath_pos + push * 0.85;
-                transform.translation.x = corrected.x;
-                transform.translation.z = corrected.y;
+            // Archetype council character obstacle collisions (each figure on the floor)
+            let character_obstacles = [
+                (Vec2::new(-9.6, 13.5), 0.85), // Sentinel
+                (Vec2::new(-5.0, 10.2), 0.85), // Aura
+                (Vec2::new(0.0, 7.5), 0.85),   // Empath
+                (Vec2::new(5.0, 10.2), 0.85),  // Oracle
+                (Vec2::new(9.6, 13.5), 0.95),  // Nebula Jester (wide shoulders)
+            ];
+            for (char_pos, radius) in character_obstacles {
+                let to_char = Vec2::new(transform.translation.x, transform.translation.z) - char_pos;
+                let dist_char = to_char.length();
+                if dist_char < radius {
+                    let push = if dist_char > 0.01 { to_char / dist_char } else { Vec2::Y };
+                    let corrected = char_pos + push * radius;
+                    transform.translation.x = corrected.x;
+                    transform.translation.z = corrected.y;
+                }
             }
 
             // Ground height resolution

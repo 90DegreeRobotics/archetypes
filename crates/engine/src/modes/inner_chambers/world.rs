@@ -288,59 +288,168 @@ fn setup_inner_world(
         ));
     }
 
-    // --- 2c. EMBODIED EMPATH ARCHETYPE FIGURE (STANDS ON FLOOR AT EYE LEVEL) ---
-    // Scaled by 1.60 so the face visor stands at y = 2.85m (exact eye-level with the player).
-    // Positioned on the floor at y = 0.0 in front of the dais, facing the entering player.
-    commands.spawn((
-        SceneRoot(asset_server.load("scenes/empath.glb#Scene0")),
-        Transform::from_xyz(0.0, 0.0, 7.2)
-            .with_rotation(Quat::from_rotation_y(std::f32::consts::PI))
-            .with_scale(Vec3::splat(1.60)),
-        InnerWorldElement,
-        Name::new("EmpathArchetypeFigure"),
-    ));
+    // --- 2c. EMBODIED ARCHETYPE COUNCIL FIGURES (FLOOR EXHIBITION AT PLAYER EYE LEVEL) ---
+    // All characters stand directly on the polished stone floor (y = 0.0) at player eye height (2.85m).
+    // Arranged in a grand exhibition crescent in the southern rotunda court, spaced ~5.7m apart,
+    // allowing the player to freely walk up to, inspect, and circle around each figure individually.
+    struct ArchetypeFigure {
+        name: &'static str,
+        asset_path: &'static str,
+        pos: Vec3,
+        scale: f32,
+        rotation_y: f32,
+        key_pos: Vec3,
+        key_color: Color,
+        key_intensity: f32,
+        rim_pos: Vec3,
+        rim_color: Color,
+        rim_intensity: f32,
+        core_pos: Vec3,
+        core_color: Color,
+        core_intensity: f32,
+    }
 
-    // Key light: angled from front-upper-left, illuminating facial contours, collarbone, and chest
-    commands.spawn((
-        PointLight {
-            intensity: 95_000.0,
-            range: 14.0,
-            color: Color::srgb(1.0, 0.94, 0.96),
-            shadows_enabled: false,
-            ..default()
+    let figures = [
+        // 1. Sentinel — Tactical obsidian steel & emerald/teal vigilance (left flank)
+        ArchetypeFigure {
+            name: "SentinelArchetypeFigure",
+            asset_path: "scenes/sentinel.glb#Scene0",
+            pos: Vec3::new(-9.6, 0.0, 13.5),
+            scale: 1.614,
+            rotation_y: 2.45, // Angled inward facing the central promenade
+            key_pos: Vec3::new(-8.2, 4.2, 15.3),
+            key_color: Color::srgb(0.90, 0.96, 1.0),
+            key_intensity: 85_000.0,
+            rim_pos: Vec3::new(-11.2, 3.8, 11.7),
+            rim_color: Color::srgb(0.35, 0.85, 0.70),
+            rim_intensity: 55_000.0,
+            core_pos: Vec3::new(-9.4, 2.3, 13.8),
+            core_color: Color::srgb(0.30, 0.90, 0.80),
+            core_intensity: 16_000.0,
         },
-        Transform::from_xyz(1.8, 4.2, 9.8),
-        InnerWorldElement,
-        Name::new("EmpathKeyLight"),
-    ));
+        // 2. Aura — Radiant celestial gold & solar amber (mid left)
+        ArchetypeFigure {
+            name: "AuraArchetypeFigure",
+            asset_path: "scenes/aura.glb#Scene0",
+            pos: Vec3::new(-5.0, 0.0, 10.2),
+            scale: 1.614,
+            rotation_y: 2.75, // Welcoming gaze toward approach
+            key_pos: Vec3::new(-3.8, 4.2, 12.0),
+            key_color: Color::srgb(1.0, 0.88, 0.65),
+            key_intensity: 90_000.0,
+            rim_pos: Vec3::new(-6.5, 3.8, 8.5),
+            rim_color: Color::srgb(0.80, 0.95, 1.0),
+            rim_intensity: 55_000.0,
+            core_pos: Vec3::new(-4.9, 2.2, 10.5),
+            core_color: Color::srgb(1.0, 0.75, 0.35),
+            core_intensity: 18_000.0,
+        },
+        // 3. Empath — Iridescent synth & psychic resonance (center)
+        ArchetypeFigure {
+            name: "EmpathArchetypeFigure",
+            asset_path: "scenes/empath.glb#Scene0",
+            pos: Vec3::new(0.0, 0.0, 7.5),
+            scale: 1.60,
+            rotation_y: std::f32::consts::PI, // Facing player entrance
+            key_pos: Vec3::new(1.8, 4.2, 9.9),
+            key_color: Color::srgb(1.0, 0.94, 0.96),
+            key_intensity: 95_000.0,
+            rim_pos: Vec3::new(-2.2, 3.8, 5.1),
+            rim_color: Color::srgb(0.70, 0.45, 1.0),
+            rim_intensity: 60_000.0,
+            core_pos: Vec3::new(0.0, 2.2, 7.8),
+            core_color: Color::srgb(0.50, 0.85, 1.0),
+            core_intensity: 18_000.0,
+        },
+        // 4. Oracle — Astral twilight & cosmic sapphire (mid right)
+        ArchetypeFigure {
+            name: "OracleArchetypeFigure",
+            asset_path: "scenes/oracle.glb#Scene0",
+            pos: Vec3::new(5.0, 0.0, 10.2),
+            scale: 1.602,
+            rotation_y: -2.75, // Welcoming gaze toward approach
+            key_pos: Vec3::new(3.8, 4.2, 12.0),
+            key_color: Color::srgb(0.80, 0.88, 1.0),
+            key_intensity: 90_000.0,
+            rim_pos: Vec3::new(6.5, 3.8, 8.5),
+            rim_color: Color::srgb(0.65, 0.40, 1.0),
+            rim_intensity: 55_000.0,
+            core_pos: Vec3::new(4.9, 2.3, 10.5),
+            core_color: Color::srgb(0.55, 0.65, 1.0),
+            core_intensity: 18_000.0,
+        },
+        // 5. Nebula Jester — Cosmic velvet & electric neon magenta (right flank)
+        ArchetypeFigure {
+            name: "NebulaJesterArchetypeFigure",
+            asset_path: "scenes/nebula_jester.glb#Scene0",
+            pos: Vec3::new(9.6, 0.0, 13.5),
+            scale: 1.615,
+            rotation_y: -2.45, // Angled inward facing the central promenade
+            key_pos: Vec3::new(8.2, 4.2, 15.3),
+            key_color: Color::srgb(1.0, 0.78, 0.92),
+            key_intensity: 85_000.0,
+            rim_pos: Vec3::new(11.2, 3.8, 11.7),
+            rim_color: Color::srgb(0.95, 0.30, 0.85),
+            rim_intensity: 55_000.0,
+            core_pos: Vec3::new(9.4, 2.2, 13.8),
+            core_color: Color::srgb(0.90, 0.40, 1.0),
+            core_intensity: 18_000.0,
+        },
+    ];
 
-    // Rim / kicker light: angled from back-upper-right, catching the metallic shoulder and silhouette
-    commands.spawn((
-        PointLight {
-            intensity: 60_000.0,
-            range: 10.0,
-            color: Color::srgb(0.70, 0.45, 1.0),
-            shadows_enabled: false,
-            ..default()
-        },
-        Transform::from_xyz(-2.2, 4.0, 5.0),
-        InnerWorldElement,
-        Name::new("EmpathRimLight"),
-    ));
+    for fig in figures.iter() {
+        // Character Figure
+        commands.spawn((
+            SceneRoot(asset_server.load(fig.asset_path)),
+            Transform::from_translation(fig.pos)
+                .with_rotation(Quat::from_rotation_y(fig.rotation_y))
+                .with_scale(Vec3::splat(fig.scale)),
+            InnerWorldElement,
+            Name::new(fig.name),
+        ));
 
-    // Core resonance glow: nestled just in front of the chest disc, accentuating the concentric rings
-    commands.spawn((
-        PointLight {
-            intensity: 18_000.0,
-            range: 4.5,
-            color: Color::srgb(0.50, 0.85, 1.0),
-            shadows_enabled: false,
-            ..default()
-        },
-        Transform::from_xyz(0.0, 2.2, 7.5),
-        InnerWorldElement,
-        Name::new("EmpathCoreGlow"),
-    ));
+        // Tailored Key Light
+        commands.spawn((
+            PointLight {
+                intensity: fig.key_intensity,
+                range: 14.0,
+                color: fig.key_color,
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_translation(fig.key_pos),
+            InnerWorldElement,
+            Name::new(format!("{}_KeyLight", fig.name)),
+        ));
+
+        // Tailored Rim / Kicker Light
+        commands.spawn((
+            PointLight {
+                intensity: fig.rim_intensity,
+                range: 11.0,
+                color: fig.rim_color,
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_translation(fig.rim_pos),
+            InnerWorldElement,
+            Name::new(format!("{}_RimLight", fig.name)),
+        ));
+
+        // Thematic Core / Visor Glow
+        commands.spawn((
+            PointLight {
+                intensity: fig.core_intensity,
+                range: 5.0,
+                color: fig.core_color,
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_translation(fig.core_pos),
+            InnerWorldElement,
+            Name::new(format!("{}_CoreGlow", fig.name)),
+        ));
+    }
 
     // --- 3. ENCLOSING CASTLE WALLS & BUTTRESS PILLARS ---
     let wall_mat = materials.add(StandardMaterial {
