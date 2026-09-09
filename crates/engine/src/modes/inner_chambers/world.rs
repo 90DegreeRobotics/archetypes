@@ -1,8 +1,6 @@
-use super::catalog::{council_chambers, node_positions, ChamberSpec};
 use super::InnerChambersState;
 use crate::chamber::boot::spawn_main_menu;
 use crate::modes::ModeRegistry;
-use crate::theme::Archetype;
 use bevy::prelude::*;
 
 pub struct WorldPlugin;
@@ -16,12 +14,6 @@ impl Plugin for WorldPlugin {
 
 #[derive(Component)]
 pub struct InnerWorldElement;
-
-#[derive(Component)]
-pub struct InnerTruthNode {
-    pub chamber_index: usize,
-    pub node_index: usize,
-}
 
 #[derive(Component)]
 pub struct InnerChambersHint;
@@ -84,11 +76,27 @@ fn setup_inner_world(
     // --- 2. ANIMATED COUNCIL TABLE WITH STARGATE PORTAL ---
     // Feet authored at local z = -0.784. At scale 2.6, feet reach 2.0384m below origin.
     // Resting on dais top (y = 0.30m) requires origin y = 0.30 + 2.04 = 2.34m.
+    // Entity named "RotundaCouncilTable" so ritual visibility gates never hide it.
+    // Child entity "Stargate_Portal" inside table.glb is auto-bound and animated by PortalPlugin.
     commands.spawn((
         SceneRoot(asset_server.load("scenes/table.glb#Scene0")),
         Transform::from_xyz(0.0, 2.34, 0.0).with_scale(Vec3::splat(2.6)),
         InnerWorldElement,
-        Name::new("PortalTable"),
+        Name::new("RotundaCouncilTable"),
+    ));
+
+    // Subtle glow light illuminating the stargate vortex disc
+    commands.spawn((
+        PointLight {
+            intensity: 30_000.0,
+            range: 12.0,
+            color: Color::srgb(0.25, 0.75, 1.0),
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 2.7, 0.0),
+        InnerWorldElement,
+        Name::new("PortalDiscGlowLight"),
     ));
 
     // --- 3. ENCLOSING CASTLE WALLS & BUTTRESS PILLARS ---
@@ -221,7 +229,7 @@ fn setup_inner_world(
     // Central overhead point light directly above the table
     commands.spawn((
         PointLight {
-            intensity: 150_000.0,
+            intensity: 160_000.0,
             range: 35.0,
             color: Color::srgb(0.90, 0.94, 1.0),
             shadows_enabled: false,
@@ -299,12 +307,7 @@ fn setup_inner_world(
         ));
     }
 
-    // --- 6. ARCHETYPE SATELLITE CHAMBERS (R = 22m) ---
-    for (chamber_index, spec) in council_chambers().iter().enumerate() {
-        spawn_chamber(&mut commands, &mut meshes, &mut materials, chamber_index, spec);
-    }
-
-    // --- 7. HUD OVERLAY ---
+    // --- 6. HUD OVERLAY ---
     commands
         .spawn((
             Node {
@@ -334,165 +337,6 @@ fn setup_inner_world(
         });
 
     next_state.set(InnerChambersState::Navigating);
-}
-
-fn spawn_chamber(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    chamber_index: usize,
-    spec: &ChamberSpec,
-) {
-    let theme = spec.archetype.theme();
-    let floor = materials.add(StandardMaterial {
-        base_color: theme.bg_void,
-        perceptual_roughness: 0.55,
-        ..default()
-    });
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(16.0, 16.0))),
-        MeshMaterial3d(floor),
-        Transform::from_translation(spec.origin),
-        InnerWorldElement,
-        Name::new(format!("{}Floor", spec.title)),
-    ));
-
-    spawn_law_geometry(commands, meshes, materials, spec);
-
-    let node_mesh = meshes.add(Cuboid::new(1.4, 1.4, 1.4));
-    let node_mat = materials.add(StandardMaterial {
-        base_color: theme.accent_primary,
-        emissive: LinearRgba::from(theme.accent_primary) * theme.glow_intensity,
-        metallic: 0.4,
-        perceptual_roughness: 0.2,
-        ..default()
-    });
-    for (node_index, position) in node_positions(spec).into_iter().enumerate() {
-        commands.spawn((
-            Mesh3d(node_mesh.clone()),
-            MeshMaterial3d(node_mat.clone()),
-            Transform::from_translation(position),
-            InnerTruthNode {
-                chamber_index,
-                node_index,
-            },
-            InnerWorldElement,
-            Name::new(format!("{}Node_{node_index}", spec.title)),
-        ));
-        commands.spawn((
-            PointLight {
-                intensity: 55_000.0,
-                range: 12.0,
-                color: theme.accent_primary,
-                shadows_enabled: false,
-                ..default()
-            },
-            Transform::from_translation(position + Vec3::Y * 2.4),
-            InnerWorldElement,
-        ));
-    }
-}
-
-fn spawn_law_geometry(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    spec: &ChamberSpec,
-) {
-    let theme = spec.archetype.theme();
-    let accent = materials.add(StandardMaterial {
-        base_color: theme.accent_primary,
-        emissive: LinearRgba::from(theme.accent_primary) * 0.35,
-        unlit: true,
-        ..default()
-    });
-    match spec.archetype {
-        Archetype::Architect => {
-            let line = meshes.add(Cuboid::new(16.0, 0.05, 0.06));
-            for i in -2..=2 {
-                let offset = i as f32 * 3.0;
-                commands.spawn((
-                    Mesh3d(line.clone()),
-                    MeshMaterial3d(accent.clone()),
-                    Transform::from_translation(spec.origin + Vec3::new(0.0, 0.04, offset)),
-                    InnerWorldElement,
-                ));
-            }
-        }
-        Archetype::Sentinel => {
-            let wall = meshes.add(Cuboid::new(14.0, 6.0, 0.2));
-            for yaw in [0.0, std::f32::consts::FRAC_PI_2] {
-                commands.spawn((
-                    Mesh3d(wall.clone()),
-                    MeshMaterial3d(accent.clone()),
-                    Transform::from_translation(spec.origin + Vec3::Y * 3.0)
-                        .with_rotation(Quat::from_rotation_y(yaw)),
-                    InnerWorldElement,
-                ));
-            }
-        }
-        Archetype::Mentor => {
-            for radius in [2.0, 3.6, 5.2] {
-                commands.spawn((
-                    Mesh3d(meshes.add(Cuboid::new(radius * 2.0, 0.08, 0.08))),
-                    MeshMaterial3d(accent.clone()),
-                    Transform::from_translation(spec.origin + Vec3::Y * 0.2),
-                    InnerWorldElement,
-                ));
-            }
-        }
-        Archetype::Explorer => {
-            for i in 0..5 {
-                let t = i as f32 / 4.0;
-                commands.spawn((
-                    Mesh3d(meshes.add(Cuboid::new(0.4, 0.4, 2.4))),
-                    MeshMaterial3d(accent.clone()),
-                    Transform::from_translation(
-                        spec.origin + Vec3::new((t - 0.5) * 8.0, 0.4, (t - 0.5) * 6.0),
-                    ),
-                    InnerWorldElement,
-                ));
-            }
-        }
-        Archetype::Oracle => {
-            let veil = meshes.add(Cuboid::new(8.0, 7.0, 0.08));
-            commands.spawn((
-                Mesh3d(veil),
-                MeshMaterial3d(accent),
-                Transform::from_translation(spec.origin + Vec3::new(0.0, 3.4, -4.0)),
-                InnerWorldElement,
-            ));
-        }
-        Archetype::Empath => {
-            let orb = meshes.add(Sphere::new(0.55));
-            for i in 0..6 {
-                let a = i as f32 * std::f32::consts::TAU / 6.0;
-                commands.spawn((
-                    Mesh3d(orb.clone()),
-                    MeshMaterial3d(accent.clone()),
-                    Transform::from_translation(
-                        spec.origin + Vec3::new(a.sin() * 3.2, 1.6, a.cos() * 3.2),
-                    ),
-                    InnerWorldElement,
-                ));
-            }
-        }
-        Archetype::Jester => {
-            let cube = meshes.add(Cuboid::new(1.1, 1.1, 1.1));
-            for i in 0..4 {
-                commands.spawn((
-                    Mesh3d(cube.clone()),
-                    MeshMaterial3d(accent.clone()),
-                    Transform::from_translation(
-                        spec.origin + Vec3::new((i as f32 - 1.5) * 2.2, 1.0 + (i % 2) as f32, 1.5),
-                    )
-                    .with_rotation(Quat::from_euler(EulerRot::XYZ, 0.4, 0.7 * i as f32, 0.2)),
-                    InnerWorldElement,
-                ));
-            }
-        }
-        Archetype::Codex | Archetype::Viren => {}
-    }
 }
 
 fn teardown_inner_world(

@@ -115,11 +115,13 @@ fn gate_boot_and_table_visibility(
                 };
             }
             "PortalTable" => {
-                *visibility = if table_visible {
-                    Visibility::Visible
-                } else {
-                    Visibility::Hidden
-                };
+                if !exclusive {
+                    *visibility = if table_visible {
+                        Visibility::Visible
+                    } else {
+                        Visibility::Hidden
+                    };
+                }
             }
             _ => {}
         }
