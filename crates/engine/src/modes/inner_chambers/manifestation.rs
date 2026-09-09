@@ -17,7 +17,12 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub const MANIFESTATION_PEDESTAL_POS: Vec3 = Vec3::new(0.0, 0.30, 3.4);
 pub const MANIFESTATION_CUSHION_HEIGHT: f32 = 1.62;
@@ -31,6 +36,7 @@ impl Plugin for ManifestationPlugin {
         app.insert_resource(ManifestationChannels {
             sender: tx,
             receiver: Mutex::new(rx),
+            active_pid: Arc::new(Mutex::new(None)),
         })
         .init_resource::<ManifestationState>()
         .add_systems(
@@ -44,6 +50,7 @@ impl Plugin for ManifestationPlugin {
                 animate_pedestal_symbols,
                 poll_manifestation_results,
                 update_manifestation_flash,
+                update_manifestation_reveal_smoke,
                 update_manifestation_hud,
             )
                 .run_if(in_state(InnerChambersState::Navigating)),
@@ -65,6 +72,7 @@ pub struct ManifestationResult {
 pub struct ManifestationChannels {
     pub sender: Sender<ManifestationResult>,
     pub receiver: Mutex<Receiver<ManifestationResult>>,
+    pub active_pid: Arc<Mutex<Option<u32>>>,
 }
 
 #[derive(Resource, Default)]
@@ -107,6 +115,9 @@ pub struct ManifestationFlash {
     pub timer: f32,
     pub max_duration: f32,
 }
+
+#[derive(Component)]
+pub struct ManifestationRevealSmoke { pub timer: f32 }
 
 #[derive(Component)]
 pub struct ManifestationPromptUi;
@@ -762,7 +773,7 @@ fn handle_manifestation_input(
                 spawn_phasing_hourglass(&mut commands, &mut meshes, &mut materials, &mut state);
 
                 // Dispatch background render worker
-                dispatch_manifestation_worker(prompt, channels.sender.clone());
+                dispatch_manifestation_worker(prompt, channels.sender.clone(), channels.active_pid.clone());
             }
         }
         ManifestationPhase::Manifesting => {
@@ -770,6 +781,11 @@ fn handle_manifestation_input(
                 *vis = Visibility::Hidden;
             }
             state.waiting_elapsed += time.delta_secs();
+            if keyboard.just_pressed(KeyCode::Escape) {
+                cancel_manifestation(&channels);
+                state.phase = ManifestationPhase::Idle;
+                spawn_idle_symbol(&mut commands, &mut meshes, &mut materials, &mut state);
+            }
         }
     }
 }
@@ -807,7 +823,7 @@ fn target_glb_paths() -> Vec<PathBuf> {
     paths
 }
 
-fn dispatch_manifestation_worker(prompt: String, sender: Sender<ManifestationResult>) {
+fn dispatch_manifestation_worker(prompt: String, sender: Sender<ManifestationResult>, active_pid: Arc<Mutex<Option<u32>>>) {
     std::thread::spawn(move || {
         let Some(script_path) = find_import_script() else {
             let msg = "Could not locate scripts/import_chronos_object.py".to_string();
@@ -833,7 +849,13 @@ fn dispatch_manifestation_worker(prompt: String, sender: Sender<ManifestationRes
             let _ = sender.send(ManifestationResult { prompt, success: false, detail: "Chronos2 Object-mode executable is unavailable; no fallback object will be created.".into() });
             return;
         }
-        let run = Command::new(&chronos).args(["first-light", "--prompt"]).arg(&prompt).args(["--out-dir"]).arg(&bundle).args(["--geometry-forge", "--void"]).output();
+        let mut command = Command::new(&chronos);
+        command.args(["first-light", "--prompt"]).arg(&prompt).args(["--out-dir"]).arg(&bundle).args(["--geometry-forge", "--void"]);
+        #[cfg(windows)] { command.creation_flags(CREATE_NO_WINDOW); }
+        let Ok(child) = command.spawn() else { let _ = sender.send(ManifestationResult { prompt, success: false, detail: "Could not start Chronos2 Object mode.".into() }); return; };
+        if let Ok(mut slot) = active_pid.lock() { *slot = Some(child.id()); }
+        let run = child.wait_with_output();
+        if let Ok(mut slot) = active_pid.lock() { *slot = None; }
         let Ok(run) = run else { let _ = sender.send(ManifestationResult { prompt, success: false, detail: "Could not start Chronos2 Object mode.".into() }); return; };
         if !run.status.success() {
             let detail = String::from_utf8_lossy(&run.stderr).lines().last().unwrap_or("Chronos2 Object mode failed").to_string();
@@ -899,6 +921,13 @@ fn dispatch_manifestation_worker(prompt: String, sender: Sender<ManifestationRes
     });
 }
 
+fn cancel_manifestation(channels: &ManifestationChannels) {
+    let pid = channels.active_pid.lock().ok().and_then(|mut slot| slot.take());
+    if let Some(pid) = pid {
+        #[cfg(windows)] { let _ = Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"]).creation_flags(CREATE_NO_WINDOW).output(); }
+    }
+}
+
 fn poll_manifestation_results(
     mut commands: Commands,
     channels: Res<ManifestationChannels>,
@@ -945,6 +974,14 @@ fn poll_manifestation_results(
                 ManifestationElement,
                 Name::new("ManifestationEntranceFlash"),
             ));
+            // A real return gets a theatrical reveal; it is never played while Chronos is merely waiting.
+            let smoke = materials.add(StandardMaterial { base_color: Color::srgba(0.28, 0.55, 0.95, 0.42), emissive: LinearRgba::new(0.08, 0.22, 0.65, 1.0), alpha_mode: AlphaMode::Blend, ..default() });
+            let bolt = materials.add(StandardMaterial { base_color: Color::WHITE, emissive: LinearRgba::new(3.0, 6.0, 12.0, 1.0), ..default() });
+            for i in 0..18 {
+                let a = i as f32 * 0.349;
+                commands.spawn((Mesh3d(meshes.add(Sphere::new(0.28 + (i % 3) as f32 * 0.12))), MeshMaterial3d(smoke.clone()), Transform::from_xyz(p.x + a.cos() * 0.45, cushion_y + 0.35 + (i % 4) as f32 * 0.12, p.z + a.sin() * 0.45), ManifestationRevealSmoke { timer: 0.0 }, ManifestationElement, Name::new("ManifestationRevealSmoke")));
+            }
+            commands.spawn((Mesh3d(meshes.add(Cuboid::new(0.08, 4.8, 0.08))), MeshMaterial3d(bolt), Transform::from_xyz(p.x, cushion_y + 2.4, p.z), ManifestationRevealSmoke { timer: 0.0 }, ManifestationElement, Name::new("ManifestationLightningStrike")));
 
             // Spawn the newly summoned object atop the velvet cushion
             let artifact_entity = commands
@@ -985,6 +1022,15 @@ fn update_manifestation_flash(
             let fade = (1.0 - progress).powi(2);
             light.intensity = 140_000.0 * fade;
         }
+    }
+}
+
+fn update_manifestation_reveal_smoke(mut commands: Commands, time: Res<Time>, mut smoke: Query<(Entity, &mut Transform, &mut ManifestationRevealSmoke)>) {
+    for (entity, mut transform, mut reveal) in &mut smoke {
+        reveal.timer += time.delta_secs();
+        transform.translation.y += time.delta_secs() * 0.45;
+        transform.scale *= 1.0 + time.delta_secs() * 0.7;
+        if reveal.timer > 2.4 { commands.entity(entity).despawn(); }
     }
 }
 
@@ -1035,7 +1081,9 @@ fn teardown_manifestation(
     mut commands: Commands,
     query: Query<Entity, With<ManifestationElement>>,
     mut state: ResMut<ManifestationState>,
+    channels: Res<ManifestationChannels>,
 ) {
+    cancel_manifestation(&channels);
     for entity in &query {
         commands.entity(entity).despawn();
     }
