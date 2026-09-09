@@ -101,6 +101,35 @@ $LauncherExe = Join-Path $DistRoot "launcher.exe"
 Remove-NeuroCognicaLegacyShortcut
 New-NeuroCognicaShortcut -TargetPath $LauncherExe -WorkingDirectory $DistRoot -IconLocation $IcoPath | Out-Null
 New-NeuroCognicaDesktopShortcut -TargetPath $LauncherExe -WorkingDirectory $DistRoot -IconLocation $IcoPath | Out-Null
+
+# Also automatically synchronize the freshly built product to the user's installed Programs
+# root (%LOCALAPPDATA%\Programs\Archetypes) where pinned Taskbar shortcuts point.
+$userPrograms = Join-Path $env:LOCALAPPDATA "Programs\Archetypes"
+if (Test-Path $userPrograms) {
+    Write-Host "Syncing build to installed Programs directory: $userPrograms"
+    & (Join-Path $PSScriptRoot "install_product.ps1") -SourceRoot $DistRoot -InstallRoot $userPrograms
+}
+
+# Update Windows pinned Taskbar shortcut if present
+$taskbarLnk = Join-Path $env:APPDATA 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\Archetypes.lnk'
+if (Test-Path $taskbarLnk) {
+    Write-Host "Refreshing Taskbar pinned shortcut: $taskbarLnk"
+    $sh = New-Object -ComObject WScript.Shell
+    $taskbarShortcut = $sh.CreateShortcut($taskbarLnk)
+    $installedLauncher = Join-Path $userPrograms "launcher.exe"
+    if (Test-Path $installedLauncher) {
+        $taskbarShortcut.TargetPath = $installedLauncher
+        $taskbarShortcut.WorkingDirectory = $userPrograms
+        $taskbarShortcut.IconLocation = Join-Path $userPrograms "archetypes.ico"
+    } else {
+        $taskbarShortcut.TargetPath = $LauncherExe
+        $taskbarShortcut.WorkingDirectory = $DistRoot
+        $taskbarShortcut.IconLocation = $IcoPath
+    }
+    $taskbarShortcut.Save()
+}
+
 Update-WindowsIconCache
 
-Write-Host "`nDone. All council voices are installed. Launch Archetypes from the Desktop, or Start Menu > NeuroCognica."
+Write-Host "`nDone. All council voices are installed. Launch Archetypes from Taskbar, Desktop, or Start Menu > NeuroCognica."
+
