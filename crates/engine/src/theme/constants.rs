@@ -62,7 +62,7 @@ pub fn theme_sentinel() -> ArchetypeTheme {
 pub fn theme_jester() -> ArchetypeTheme {
     ArchetypeTheme {
         archetype: Archetype::Jester,
-        name: "Mulligan Engine",
+        name: "Jester",
         bg_void: hex_color(245, 245, 244), // #f5f5f4
         bg_elevated: hex_color(230, 230, 230),
         text_primary: hex_color(28, 25, 23),            // #1c1917

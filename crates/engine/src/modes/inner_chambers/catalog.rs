@@ -39,7 +39,7 @@ pub fn council_chambers() -> [ChamberSpec; 7] {
             ["Breath", "Heart", "Rose"],
             ["Hold", "Warmth", "Tide"],
         ]),
-        chamber(6, Archetype::Jester, "MULLIGAN ENGINE", [
+        chamber(6, Archetype::Jester, "JESTER", [
             ["Crack", "Joke", "Door"],
             ["Glitch", "Flip", "Key"],
         ]),
