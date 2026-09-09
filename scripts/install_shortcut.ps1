@@ -64,6 +64,7 @@ Copy-Item (Join-Path $RepoRoot "scripts\uninstall_product.ps1") (Join-Path $Scri
 # uninstall_product.ps1 dot-sources this from its own directory, so the installed
 # tree needs it too or uninstall throws instead of removing the shortcut.
 Copy-Item (Join-Path $RepoRoot "scripts\neurocognica_start_menu.ps1") (Join-Path $ScriptsDst "neurocognica_start_menu.ps1") -Force
+Copy-Item (Join-Path $RepoRoot "scripts\manifest_artifact.py") (Join-Path $ScriptsDst "manifest_artifact.py") -Force
 
 $HelpSrc = Join-Path $RepoRoot "assets\help"
 $HelpDst = Join-Path $DistRoot "help"

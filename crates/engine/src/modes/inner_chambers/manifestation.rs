@@ -2,19 +2,26 @@
 //!
 //! Enables the player to walk up to the sacred manifestation pedestal on the dais,
 //! press 'E' to open the prompt conduit, and trigger a headless Chronos2 render
-//! that creates, grounds, and manifests the 3D artifact directly onto the pedestal
-//! with a hovering wait indicator, grand entrance flash, and smooth turntable rotation.
+//! that creates, grounds, and manifests the 3D artifact directly onto the pedestal.
+//!
+//! Visual State Machine atop the Pedestal:
+//! 1. Idle: Floating subtle celestial diamond symbol above the empty velvet cushion.
+//! 2. Waiting: A 3D floating hourglass that slowly rotates and phases in and out (pulsing light/opacity) with a live timer.
+//! 3. Failed: A 3D floating luminous Red 'X' with a crimson warning beacon and explicit error message.
+//! 4. Succeeded: Grand golden radiance flash, despawning the hourglass, and revealing the newly summoned 3D object rotating atop the cushion.
 
 use super::world::ChronosExhibitTurntable;
 use super::InnerChambersState;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Mutex;
 
 pub const MANIFESTATION_PEDESTAL_POS: Vec3 = Vec3::new(0.0, 0.30, 3.4);
 pub const MANIFESTATION_CUSHION_HEIGHT: f32 = 1.62;
+pub const MANIFESTATION_HOVER_Y: f32 = 2.40;
 
 pub struct ManifestationPlugin;
 
@@ -34,9 +41,10 @@ impl Plugin for ManifestationPlugin {
             Update,
             (
                 handle_manifestation_input,
-                animate_wait_indicator,
+                animate_pedestal_symbols,
                 poll_manifestation_results,
                 update_manifestation_flash,
+                update_manifestation_hud,
             )
                 .run_if(in_state(InnerChambersState::Navigating)),
         )
@@ -63,9 +71,11 @@ pub struct ManifestationChannels {
 pub struct ManifestationState {
     pub phase: ManifestationPhase,
     pub prompt_buffer: String,
-    pub status_message: String,
+    pub active_prompt: String,
+    pub waiting_elapsed: f32,
+    pub error_message: String,
     pub active_artifact: Option<Entity>,
-    pub wait_indicator_root: Option<Entity>,
+    pub floating_symbol_entity: Option<Entity>,
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Debug)]
@@ -82,15 +92,15 @@ pub enum ManifestationPhase {
 pub struct ManifestationElement;
 
 #[derive(Component)]
-pub struct WaitIndicatorRing {
-    pub axis: Vec3,
-    pub speed: f32,
+pub struct PhasingHourglass {
+    pub base_intensity: f32,
 }
 
 #[derive(Component)]
-pub struct WaitIndicatorBeacon {
-    pub base_intensity: f32,
-}
+pub struct FloatingRedX;
+
+#[derive(Component)]
+pub struct FloatingIdleSymbol;
 
 #[derive(Component)]
 pub struct ManifestationFlash {
@@ -107,6 +117,12 @@ pub struct ManifestationPromptText;
 #[derive(Component)]
 pub struct ManifestationProximityPrompt;
 
+#[derive(Component)]
+pub struct ManifestationStatusBanner;
+
+#[derive(Component)]
+pub struct ManifestationStatusText;
+
 fn setup_manifestation_pedestal(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -115,9 +131,11 @@ fn setup_manifestation_pedestal(
 ) {
     state.phase = ManifestationPhase::Idle;
     state.prompt_buffer.clear();
-    state.status_message = "Walk up and press [E] to manifest an artifact.".to_string();
+    state.active_prompt.clear();
+    state.waiting_elapsed = 0.0;
+    state.error_message.clear();
     state.active_artifact = None;
-    state.wait_indicator_root = None;
+    state.floating_symbol_entity = None;
 
     let p = MANIFESTATION_PEDESTAL_POS;
 
@@ -199,7 +217,6 @@ fn setup_manifestation_pedestal(
     ));
 
     // 6. Altar Dual Lighting
-    // Overhead spotlight
     commands.spawn((
         PointLight {
             intensity: 75_000.0,
@@ -213,7 +230,6 @@ fn setup_manifestation_pedestal(
         Name::new("ManifestationPedestal_Spotlight"),
     ));
 
-    // Underglow point light beneath the cushion
     commands.spawn((
         PointLight {
             intensity: 28_000.0,
@@ -227,7 +243,10 @@ fn setup_manifestation_pedestal(
         Name::new("ManifestationPedestal_Underglow"),
     ));
 
-    // 7. Proximity prompt HUD (hidden by default)
+    // 7. Initial Idle Symbol (Floating subtle celestial diamond above the empty cushion)
+    spawn_idle_symbol(&mut commands, &mut meshes, &mut materials, &mut state);
+
+    // 8. Proximity prompt HUD (hidden by default)
     commands.spawn((
         Node {
             position_type: PositionType::Absolute,
@@ -252,7 +271,38 @@ fn setup_manifestation_pedestal(
         ));
     });
 
-    // 8. Text Input Prompt Modal (hidden by default)
+    // 9. Real-Time Status Banner (Top Center)
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Percent(25.0),
+            top: Val::Px(20.0),
+            width: Val::Percent(50.0),
+            padding: UiRect::axes(Val::Px(20.0), Val::Px(8.0)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            border: UiRect::all(Val::Px(1.0)),
+            ..default()
+        },
+        BorderColor::all(Color::srgb(0.4, 0.6, 0.8)),
+        BackgroundColor(Color::srgba(0.03, 0.04, 0.08, 0.90)),
+        GlobalZIndex(950),
+        ManifestationElement,
+        ManifestationStatusBanner,
+        Visibility::Hidden,
+    )).with_children(|parent| {
+        parent.spawn((
+            Text::new(""),
+            TextFont {
+                font_size: 16.0,
+                ..default()
+            },
+            TextColor(Color::srgb(1.0, 1.0, 1.0)),
+            ManifestationStatusText,
+        ));
+    });
+
+    // 10. Text Input Prompt Modal (hidden by default)
     commands.spawn((
         Node {
             position_type: PositionType::Absolute,
@@ -322,6 +372,275 @@ fn setup_manifestation_pedestal(
     });
 }
 
+fn spawn_idle_symbol(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    state: &mut ManifestationState,
+) {
+    if let Some(existing) = state.floating_symbol_entity.take() {
+        commands.entity(existing).despawn();
+    }
+
+    let p = MANIFESTATION_PEDESTAL_POS;
+    let idle_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.40, 0.80, 1.0),
+        emissive: LinearRgba::new(0.30, 0.70, 0.95, 1.0),
+        perceptual_roughness: 0.2,
+        metallic: 0.7,
+        ..default()
+    });
+
+    let entity = commands
+        .spawn((
+            Transform::from_xyz(p.x, MANIFESTATION_HOVER_Y, p.z),
+            Visibility::Visible,
+            ManifestationElement,
+            FloatingIdleSymbol,
+            Name::new("ManifestationIdleSymbol"),
+        ))
+        .with_children(|parent| {
+            // Slender rotating diamond octahedron
+            parent.spawn((
+                Mesh3d(meshes.add(Cuboid::new(0.24, 0.24, 0.24))),
+                MeshMaterial3d(idle_mat),
+                Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, 0.785, 0.615, 0.0)),
+                Name::new("IdleDiamondMesh"),
+            ));
+            // Gentle hovering light
+            parent.spawn((
+                PointLight {
+                    intensity: 15_000.0,
+                    range: 4.5,
+                    color: Color::srgb(0.40, 0.85, 1.0),
+                    shadows_enabled: false,
+                    ..default()
+                },
+                Transform::default(),
+                Name::new("IdleDiamondLight"),
+            ));
+        })
+        .id();
+
+    state.floating_symbol_entity = Some(entity);
+}
+
+fn spawn_phasing_hourglass(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    state: &mut ManifestationState,
+) {
+    if let Some(existing) = state.floating_symbol_entity.take() {
+        commands.entity(existing).despawn();
+    }
+
+    let p = MANIFESTATION_PEDESTAL_POS;
+
+    let gold_frame_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.95, 0.82, 0.35),
+        emissive: LinearRgba::new(0.60, 0.50, 0.15, 1.0),
+        metallic: 0.90,
+        perceptual_roughness: 0.20,
+        ..default()
+    });
+
+    let glass_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.85, 0.95, 1.0, 0.55),
+        emissive: LinearRgba::new(0.40, 0.75, 1.0, 1.0),
+        perceptual_roughness: 0.10,
+        metallic: 0.1,
+        ..default()
+    });
+
+    let sands_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(1.0, 0.75, 0.25),
+        emissive: LinearRgba::new(1.0, 0.70, 0.20, 1.0),
+        perceptual_roughness: 0.4,
+        metallic: 0.0,
+        ..default()
+    });
+
+    let entity = commands
+        .spawn((
+            Transform::from_xyz(p.x, MANIFESTATION_HOVER_Y, p.z),
+            Visibility::Visible,
+            ManifestationElement,
+            PhasingHourglass {
+                base_intensity: 55_000.0,
+            },
+            Name::new("ManifestationHourglassRoot"),
+        ))
+        .with_children(|parent| {
+            // Upper cone (pointing downward to waist)
+            parent.spawn((
+                Mesh3d(meshes.add(Cone { radius: 0.22, height: 0.30 })),
+                MeshMaterial3d(glass_mat.clone()),
+                Transform::from_xyz(0.0, 0.15, 0.0).with_rotation(Quat::from_rotation_x(std::f32::consts::PI)),
+                Name::new("Hourglass_UpperGlass"),
+            ));
+
+            // Lower cone (pointing upward to waist)
+            parent.spawn((
+                Mesh3d(meshes.add(Cone { radius: 0.22, height: 0.30 })),
+                MeshMaterial3d(glass_mat.clone()),
+                Transform::from_xyz(0.0, -0.15, 0.0),
+                Name::new("Hourglass_LowerGlass"),
+            ));
+
+            // Top golden plate
+            parent.spawn((
+                Mesh3d(meshes.add(Cylinder::new(0.25, 0.035))),
+                MeshMaterial3d(gold_frame_mat.clone()),
+                Transform::from_xyz(0.0, 0.315, 0.0),
+                Name::new("Hourglass_TopCap"),
+            ));
+
+            // Bottom golden plate
+            parent.spawn((
+                Mesh3d(meshes.add(Cylinder::new(0.25, 0.035))),
+                MeshMaterial3d(gold_frame_mat.clone()),
+                Transform::from_xyz(0.0, -0.315, 0.0),
+                Name::new("Hourglass_BottomCap"),
+            ));
+
+            // Central golden waist ring
+            parent.spawn((
+                Mesh3d(meshes.add(Torus::new(0.065, 0.015))),
+                MeshMaterial3d(gold_frame_mat.clone()),
+                Transform::default(),
+                Name::new("Hourglass_WaistRing"),
+            ));
+
+            // Golden sands core in waist
+            parent.spawn((
+                Mesh3d(meshes.add(Sphere::new(0.045))),
+                MeshMaterial3d(sands_mat),
+                Transform::default(),
+                Name::new("Hourglass_SandsCore"),
+            ));
+
+            // Phasing amber/golden light beacon
+            parent.spawn((
+                PointLight {
+                    intensity: 55_000.0,
+                    range: 9.0,
+                    color: Color::srgb(1.0, 0.85, 0.40),
+                    shadows_enabled: false,
+                    ..default()
+                },
+                Transform::default(),
+                Name::new("Hourglass_BeaconLight"),
+            ));
+        })
+        .id();
+
+    state.floating_symbol_entity = Some(entity);
+}
+
+fn spawn_floating_red_x(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    state: &mut ManifestationState,
+) {
+    if let Some(existing) = state.floating_symbol_entity.take() {
+        commands.entity(existing).despawn();
+    }
+
+    let p = MANIFESTATION_PEDESTAL_POS;
+
+    let red_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(1.0, 0.05, 0.12),
+        emissive: LinearRgba::new(1.0, 0.05, 0.15, 1.0),
+        perceptual_roughness: 0.20,
+        metallic: 0.80,
+        ..default()
+    });
+
+    let entity = commands
+        .spawn((
+            Transform::from_xyz(p.x, MANIFESTATION_HOVER_Y, p.z),
+            Visibility::Visible,
+            ManifestationElement,
+            FloatingRedX,
+            Name::new("ManifestationFailureRedX"),
+        ))
+        .with_children(|parent| {
+            // First diagonal beam (+45 deg)
+            parent.spawn((
+                Mesh3d(meshes.add(Cuboid::new(0.65, 0.09, 0.07))),
+                MeshMaterial3d(red_mat.clone()),
+                Transform::from_rotation(Quat::from_rotation_z(0.785)),
+                Name::new("RedX_Beam1"),
+            ));
+
+            // Second diagonal beam (-45 deg)
+            parent.spawn((
+                Mesh3d(meshes.add(Cuboid::new(0.65, 0.09, 0.07))),
+                MeshMaterial3d(red_mat),
+                Transform::from_rotation(Quat::from_rotation_z(-0.785)),
+                Name::new("RedX_Beam2"),
+            ));
+
+            // Crimson warning point light
+            parent.spawn((
+                PointLight {
+                    intensity: 50_000.0,
+                    range: 8.0,
+                    color: Color::srgb(1.0, 0.10, 0.15),
+                    shadows_enabled: false,
+                    ..default()
+                },
+                Transform::default(),
+                Name::new("RedX_WarningLight"),
+            ));
+        })
+        .id();
+
+    state.floating_symbol_entity = Some(entity);
+}
+
+fn animate_pedestal_symbols(
+    time: Res<Time>,
+    mut hourglass_query: Query<(&mut Transform, &Children, &PhasingHourglass)>,
+    mut red_x_query: Query<&mut Transform, (With<FloatingRedX>, Without<PhasingHourglass>)>,
+    mut idle_query: Query<&mut Transform, (With<FloatingIdleSymbol>, Without<PhasingHourglass>, Without<FloatingRedX>)>,
+    mut light_query: Query<&mut PointLight>,
+) {
+    let dt = time.delta_secs();
+    let elapsed = time.elapsed_secs();
+
+    // 1. Animate Hourglass: rotate and phase in/out
+    for (mut transform, children, hg) in &mut hourglass_query {
+        transform.rotate_y(1.6 * dt);
+
+        // Phasing calculation: smooth sine oscillation between 0.15 and 1.0
+        let phase = (elapsed * 2.8).sin() * 0.425 + 0.575;
+
+        // Hover bobbing
+        transform.translation.y = MANIFESTATION_HOVER_Y + (elapsed * 2.0).sin() * 0.06;
+
+        for child in children.iter() {
+            if let Ok(mut light) = light_query.get_mut(child) {
+                light.intensity = hg.base_intensity * phase;
+            }
+        }
+    }
+
+    // 2. Animate Red X: gentle pulsing hover and slow rotation
+    for mut transform in &mut red_x_query {
+        transform.rotate_y(0.8 * dt);
+        transform.translation.y = MANIFESTATION_HOVER_Y + (elapsed * 2.5).sin() * 0.05;
+    }
+
+    // 3. Animate Idle Symbol: slow majestic rotation
+    for mut transform in &mut idle_query {
+        transform.rotate_y(0.7 * dt);
+        transform.translation.y = MANIFESTATION_HOVER_Y + (elapsed * 1.5).sin() * 0.04;
+    }
+}
+
 fn handle_manifestation_input(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -333,8 +652,8 @@ fn handle_manifestation_input(
     mut modal_query: Query<&mut Visibility, (With<ManifestationPromptUi>, Without<ManifestationProximityPrompt>)>,
     mut text_query: Query<&mut Text, With<ManifestationPromptText>>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
-    meshes: ResMut<Assets<Mesh>>,
-    materials: ResMut<Assets<StandardMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let Ok(player_transform) = camera_query.single() else {
         return;
@@ -344,8 +663,8 @@ fn handle_manifestation_input(
     let pedestal_pos_2d = Vec2::new(MANIFESTATION_PEDESTAL_POS.x, MANIFESTATION_PEDESTAL_POS.z);
     let dist = (player_pos_2d - pedestal_pos_2d).length();
 
-    // 1. Proximity detection
-    let is_near = dist <= 3.0;
+    let is_near = dist <= 3.2;
+
     if let Ok(mut vis) = proximity_query.single_mut() {
         *vis = if is_near && state.phase != ManifestationPhase::Prompting && state.phase != ManifestationPhase::Manifesting {
             Visibility::Visible
@@ -354,7 +673,6 @@ fn handle_manifestation_input(
         };
     }
 
-    // 2. Interaction state machine
     match state.phase {
         ManifestationPhase::Idle | ManifestationPhase::Completed | ManifestationPhase::Failed => {
             if is_near && keyboard.just_pressed(KeyCode::KeyE) {
@@ -374,7 +692,6 @@ fn handle_manifestation_input(
                 *vis = Visibility::Visible;
             }
 
-            // Keyboard input handling
             if keyboard.just_pressed(KeyCode::Escape) {
                 state.phase = ManifestationPhase::Idle;
                 if let Ok(mut vis) = modal_query.single_mut() {
@@ -391,7 +708,6 @@ fn handle_manifestation_input(
                 state.prompt_buffer.pop();
             }
 
-            // Capture alphanumeric typing
             for (key, ch) in [
                 (KeyCode::KeyA, 'a'), (KeyCode::KeyB, 'b'), (KeyCode::KeyC, 'c'),
                 (KeyCode::KeyD, 'd'), (KeyCode::KeyE, 'e'), (KeyCode::KeyF, 'f'),
@@ -405,29 +721,29 @@ fn handle_manifestation_input(
                 (KeyCode::Digit0, '0'), (KeyCode::Digit1, '1'), (KeyCode::Digit2, '2'),
                 (KeyCode::Digit3, '3'), (KeyCode::Digit4, '4'), (KeyCode::Digit5, '5'),
                 (KeyCode::Digit6, '6'), (KeyCode::Digit7, '7'), (KeyCode::Digit8, '8'),
-                (KeyCode::Digit9, '9'),
+                (KeyCode::Digit9, '9'), (KeyCode::Minus, '-'),
             ] {
                 if keyboard.just_pressed(key) && state.prompt_buffer.len() < 64 {
                     state.prompt_buffer.push(ch);
                 }
             }
 
-            // Update modal text display with blinking cursor
             if let Ok(mut text) = text_query.single_mut() {
                 let cursor = if (time.elapsed_secs() * 2.0).fract() < 0.5 { "_" } else { " " };
                 text.0 = format!("> {}{}", state.prompt_buffer, cursor);
             }
 
-            // Submit on Enter
             if keyboard.just_pressed(KeyCode::Enter) {
                 let prompt = if state.prompt_buffer.trim().is_empty() {
-                    "a glowing crystalline reliquary".to_string()
+                    "buddha".to_string()
                 } else {
                     state.prompt_buffer.trim().to_string()
                 };
 
                 state.phase = ManifestationPhase::Manifesting;
-                state.status_message = format!("Manifesting '{prompt}'...");
+                state.active_prompt = prompt.clone();
+                state.waiting_elapsed = 0.0;
+                state.error_message.clear();
 
                 if let Ok(mut vis) = modal_query.single_mut() {
                     *vis = Visibility::Hidden;
@@ -437,10 +753,15 @@ fn handle_manifestation_input(
                     cursor.grab_mode = CursorGrabMode::Locked;
                 }
 
-                // Spawn hovering wait indicator above the pedestal
-                spawn_wait_indicator(&mut commands, meshes, materials, &mut state);
+                // Despawn previous artifact if present when new manifestation begins
+                if let Some(old_entity) = state.active_artifact.take() {
+                    commands.entity(old_entity).despawn();
+                }
 
-                // Dispatch background worker thread
+                // Spawn floating 3D Hourglass that phases in and out
+                spawn_phasing_hourglass(&mut commands, &mut meshes, &mut materials, &mut state);
+
+                // Dispatch background render worker
                 dispatch_manifestation_worker(prompt, channels.sender.clone());
             }
         }
@@ -448,117 +769,69 @@ fn handle_manifestation_input(
             if let Ok(mut vis) = modal_query.single_mut() {
                 *vis = Visibility::Hidden;
             }
+            state.waiting_elapsed += time.delta_secs();
         }
     }
 }
 
-fn spawn_wait_indicator(
-    commands: &mut Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    state: &mut ManifestationState,
-) {
-    let p = MANIFESTATION_PEDESTAL_POS;
-    let center_y = p.y + 2.75; // Hovering 1.13m above the cushion
-
-    let outer_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.95, 0.80, 0.30),
-        emissive: LinearRgba::new(0.95, 0.80, 0.30, 1.0),
-        perceptual_roughness: 0.2,
-        metallic: 0.9,
-        ..default()
-    });
-
-    let inner_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.25, 0.85, 1.0),
-        emissive: LinearRgba::new(0.25, 0.85, 1.0, 1.0),
-        perceptual_roughness: 0.1,
-        metallic: 0.5,
-        ..default()
-    });
-
-    let root = commands
-        .spawn((
-            Transform::from_xyz(p.x, center_y, p.z),
-            Visibility::Visible,
-            ManifestationElement,
-            Name::new("ManifestationWaitIndicatorRoot"),
-        ))
-        .with_children(|parent| {
-            // Outer rotating ring (rotates around Y)
-            parent.spawn((
-                Mesh3d(meshes.add(Torus::new(0.55, 0.025))),
-                MeshMaterial3d(outer_mat),
-                Transform::default(),
-                WaitIndicatorRing {
-                    axis: Vec3::Y,
-                    speed: 2.2,
-                },
-                Name::new("WaitIndicator_OuterRing"),
-            ));
-
-            // Inner tilted rotating ring (rotates around X)
-            parent.spawn((
-                Mesh3d(meshes.add(Torus::new(0.40, 0.02))),
-                MeshMaterial3d(inner_mat),
-                Transform::from_rotation(Quat::from_rotation_z(0.65)),
-                WaitIndicatorRing {
-                    axis: Vec3::X,
-                    speed: 3.4,
-                },
-                Name::new("WaitIndicator_InnerRing"),
-            ));
-
-            // Central pulsing beacon light
-            parent.spawn((
-                PointLight {
-                    intensity: 45_000.0,
-                    range: 8.0,
-                    color: Color::srgb(0.35, 0.85, 1.0),
-                    shadows_enabled: false,
-                    ..default()
-                },
-                Transform::default(),
-                WaitIndicatorBeacon {
-                    base_intensity: 45_000.0,
-                },
-                Name::new("WaitIndicator_BeaconLight"),
-            ));
-        })
-        .id();
-
-    state.wait_indicator_root = Some(root);
+fn find_manifest_script() -> Option<PathBuf> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join("scripts").join("manifest_artifact.py");
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let candidate = cwd.join("scripts").join("manifest_artifact.py");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    let fallback = PathBuf::from(r"C:\archetypes\scripts\manifest_artifact.py");
+    if fallback.is_file() {
+        return Some(fallback);
+    }
+    None
 }
 
-fn animate_wait_indicator(
-    time: Res<Time>,
-    mut ring_query: Query<(&mut Transform, &WaitIndicatorRing)>,
-    mut beacon_query: Query<(&mut PointLight, &WaitIndicatorBeacon)>,
-) {
-    let dt = time.delta_secs();
-    let elapsed = time.elapsed_secs();
-
-    for (mut transform, ring) in &mut ring_query {
-        transform.rotate_axis(Dir3::new_unchecked(ring.axis), ring.speed * dt);
+fn target_glb_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            paths.push(dir.join("assets").join("scenes").join("manifested_artifact.glb"));
+        }
     }
-
-    for (mut light, beacon) in &mut beacon_query {
-        let pulse = (elapsed * 5.0).sin() * 0.5 + 0.5;
-        light.intensity = beacon.base_intensity * (0.6 + 0.8 * pulse);
-    }
+    paths.push(PathBuf::from(r"C:\archetypes\assets\scenes\manifested_artifact.glb"));
+    paths
 }
 
 fn dispatch_manifestation_worker(prompt: String, sender: Sender<ManifestationResult>) {
     std::thread::spawn(move || {
-        let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(r"C:\archetypes"));
-        let script_path = repo_root.join("scripts").join("manifest_artifact.py");
-        let output_glb = repo_root.join("assets").join("scenes").join("manifested_artifact.glb");
+        let Some(script_path) = find_manifest_script() else {
+            let msg = "Could not locate scripts/manifest_artifact.py".to_string();
+            eprintln!("[ManifestationWorker] Error: {msg}");
+            let _ = sender.send(ManifestationResult {
+                prompt,
+                success: false,
+                detail: msg,
+            });
+            return;
+        };
+
+        let target_paths = target_glb_paths();
+        let primary_output = target_paths[0].clone();
+
+        if let Some(parent) = primary_output.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
 
         let blender_exe = r"C:\Program Files\Blender Foundation\Blender 4.5\blender.exe";
 
-        println!("[ManifestationWorker] Executing headless Chronos render for: '{prompt}'");
+        println!("[ManifestationWorker] Executing Chronos2 headless render for '{prompt}' via {script_path:?}");
 
-        let status = Command::new(blender_exe)
+        let output = Command::new(blender_exe)
             .arg("-b")
             .arg("-P")
             .arg(&script_path)
@@ -566,30 +839,46 @@ fn dispatch_manifestation_worker(prompt: String, sender: Sender<ManifestationRes
             .arg("--prompt")
             .arg(&prompt)
             .arg("--output")
-            .arg(&output_glb)
-            .status();
+            .arg(&primary_output)
+            .output();
 
-        match status {
-            Ok(s) if s.success() && output_glb.exists() => {
-                println!("[ManifestationWorker] Successfully generated '{prompt}' at {output_glb:?}");
+        match output {
+            Ok(out) if out.status.success() && primary_output.exists() => {
+                // Copy to secondary target path if different (e.g. repo assets vs installed assets)
+                for other in &target_paths[1..] {
+                    if let Some(p) = other.parent() {
+                        let _ = std::fs::create_dir_all(p);
+                    }
+                    let _ = std::fs::copy(&primary_output, other);
+                }
+
+                println!("[ManifestationWorker] Successfully manifested '{prompt}' at {primary_output:?}");
                 let _ = sender.send(ManifestationResult {
                     prompt,
                     success: true,
                     detail: "Render complete".to_string(),
                 });
             }
-            Ok(s) => {
-                let msg = format!("Blender exit code {s}");
-                eprintln!("[ManifestationWorker] Render failed: {msg}");
+            Ok(out) => {
+                let err_text = String::from_utf8_lossy(&out.stderr);
+                let out_text = String::from_utf8_lossy(&out.stdout);
+                let detail = if !err_text.trim().is_empty() {
+                    err_text.lines().last().unwrap_or("Blender script error").to_string()
+                } else if !out_text.trim().is_empty() {
+                    out_text.lines().last().unwrap_or("Render failed").to_string()
+                } else {
+                    format!("Exit code {}", out.status)
+                };
+                eprintln!("[ManifestationWorker] Render failed: {detail}");
                 let _ = sender.send(ManifestationResult {
                     prompt,
                     success: false,
-                    detail: msg,
+                    detail,
                 });
             }
             Err(e) => {
-                let msg = format!("Failed to spawn Blender: {e}");
-                eprintln!("[ManifestationWorker] Process spawn failed: {msg}");
+                let msg = format!("Failed to launch Blender: {e}");
+                eprintln!("[ManifestationWorker] Execution error: {msg}");
                 let _ = sender.send(ManifestationResult {
                     prompt,
                     success: false,
@@ -605,30 +894,31 @@ fn poll_manifestation_results(
     channels: Res<ManifestationChannels>,
     mut state: ResMut<ManifestationState>,
     asset_server: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let Ok(receiver) = channels.receiver.lock() else {
         return;
     };
 
     if let Ok(result) = receiver.try_recv() {
-        // Despawn wait indicator immediately before object manifests
-        if let Some(indicator) = state.wait_indicator_root.take() {
-            commands.entity(indicator).despawn();
-        }
-
         if result.success {
-            state.phase = ManifestationPhase::Completed;
-            state.status_message = format!("✦ Manifested: '{}' ✦", result.prompt);
+            // SUCCESS: Despawn the phasing hourglass
+            if let Some(symbol) = state.floating_symbol_entity.take() {
+                commands.entity(symbol).despawn();
+            }
 
-            // Despawn previous artifact if present
+            state.phase = ManifestationPhase::Completed;
+
+            // Despawn old artifact if present
             if let Some(old_entity) = state.active_artifact.take() {
                 commands.entity(old_entity).despawn();
             }
 
             let p = MANIFESTATION_PEDESTAL_POS;
-            let cushion_y = p.y + 1.34; // Top of cushion
+            let cushion_y = p.y + 1.34;
 
-            // Spawn celestial manifestation entrance flash
+            // Spawn celestial entrance flash
             commands.spawn((
                 PointLight {
                     intensity: 140_000.0,
@@ -646,7 +936,7 @@ fn poll_manifestation_results(
                 Name::new("ManifestationEntranceFlash"),
             ));
 
-            // Spawn manifested object rotating atop the pedestal cushion
+            // Spawn the newly summoned object atop the velvet cushion
             let artifact_entity = commands
                 .spawn((
                     SceneRoot(asset_server.load("scenes/manifested_artifact.glb#Scene0")),
@@ -658,10 +948,14 @@ fn poll_manifestation_results(
                 .id();
 
             state.active_artifact = Some(artifact_entity);
-            println!("[ManifestationSystem] Manifested '{}' atop the sacred pedestal!", result.prompt);
+            println!("[ManifestationSystem] Succeeded: Manifested '{}' atop the sacred pedestal!", result.prompt);
         } else {
+            // FAILURE: Despawn the hourglass and spawn the Floating Red X
             state.phase = ManifestationPhase::Failed;
-            state.status_message = format!("Manifestation failed: {}", result.detail);
+            state.error_message = result.detail.clone();
+
+            spawn_floating_red_x(&mut commands, &mut meshes, &mut materials, &mut state);
+            eprintln!("[ManifestationSystem] Failed: {}", result.detail);
         }
     }
 }
@@ -684,6 +978,49 @@ fn update_manifestation_flash(
     }
 }
 
+fn update_manifestation_hud(
+    state: Res<ManifestationState>,
+    mut banner_query: Query<&mut Visibility, With<ManifestationStatusBanner>>,
+    mut text_query: Query<(&mut Text, &mut TextColor), With<ManifestationStatusText>>,
+) {
+    let Ok(mut banner_vis) = banner_query.single_mut() else {
+        return;
+    };
+    let Ok((mut text, mut color)) = text_query.single_mut() else {
+        return;
+    };
+
+    match state.phase {
+        ManifestationPhase::Manifesting => {
+            *banner_vis = Visibility::Visible;
+            text.0 = format!(
+                "⏳ MANIFESTING: \"{}\" (Chronos2 rendering...) [{:.1}s]",
+                state.active_prompt, state.waiting_elapsed
+            );
+            color.0 = Color::srgb(1.0, 0.85, 0.30); // Warm amber
+        }
+        ManifestationPhase::Failed => {
+            *banner_vis = Visibility::Visible;
+            text.0 = format!(
+                "❌ MANIFESTATION FAILED: {} — Press [E] to retry.",
+                state.error_message
+            );
+            color.0 = Color::srgb(1.0, 0.25, 0.30); // Warning red
+        }
+        ManifestationPhase::Completed => {
+            *banner_vis = Visibility::Visible;
+            text.0 = format!(
+                "✨ SUMMONED: \"{}\" — Successfully manifested upon the altar!",
+                state.active_prompt
+            );
+            color.0 = Color::srgb(0.40, 1.0, 0.70); // Radiant celestial green
+        }
+        ManifestationPhase::Idle | ManifestationPhase::Prompting => {
+            *banner_vis = Visibility::Hidden;
+        }
+    }
+}
+
 fn teardown_manifestation(
     mut commands: Commands,
     query: Query<Entity, With<ManifestationElement>>,
@@ -693,7 +1030,7 @@ fn teardown_manifestation(
         commands.entity(entity).despawn();
     }
     state.active_artifact = None;
-    state.wait_indicator_root = None;
+    state.floating_symbol_entity = None;
     state.phase = ManifestationPhase::Idle;
     state.prompt_buffer.clear();
 }

@@ -155,6 +155,77 @@ def build_artifact_mesh(prompt_text):
             foliage.data.materials.append(emerald_mat)
             created_objs.append(foliage)
 
+    elif any(k in p for k in ["buddha", "statue", "monk", "deity", "idol", "figure", "meditation"]):
+        # Sacred Meditative Buddha Statue with Lotus Throne & Halo
+        # 1. Lotus Throne Base
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.45, depth=0.10, location=(0, 0, 0.05))
+        ped_base = bpy.context.active_object
+        ped_base.data.materials.append(obsidian_mat)
+        created_objs.append(ped_base)
+
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.42, minor_radius=0.06, location=(0, 0, 0.12))
+        lotus_tier = bpy.context.active_object
+        lotus_tier.data.materials.append(gold_mat)
+        created_objs.append(lotus_tier)
+
+        # Petals around the lotus throne
+        num_petals = 12
+        for i in range(num_petals):
+            angle = (2 * math.pi / num_petals) * i
+            x = 0.40 * math.cos(angle)
+            y = 0.40 * math.sin(angle)
+            bpy.ops.mesh.primitive_cone_add(radius1=0.08, depth=0.14, location=(x, y, 0.15))
+            petal = bpy.context.active_object
+            petal.rotation_euler = (0.35 * math.sin(angle), -0.35 * math.cos(angle), angle)
+            petal.data.materials.append(gold_mat)
+            created_objs.append(petal)
+
+        # 2. Seated Lotus Posture (Crossed Legs)
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.35, depth=0.14, location=(0, 0, 0.24))
+        legs = bpy.context.active_object
+        legs.scale = (1.2, 0.85, 1.0)
+        legs.data.materials.append(gold_mat)
+        created_objs.append(legs)
+
+        # 3. Torso with Robes
+        bpy.ops.mesh.primitive_cone_add(radius1=0.24, radius2=0.16, depth=0.36, location=(0, 0, 0.48))
+        torso = bpy.context.active_object
+        torso.scale = (1.0, 0.8, 1.0)
+        torso.data.materials.append(gold_mat)
+        created_objs.append(torso)
+
+        # 4. Shoulders & Draped Arms
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.22, minor_radius=0.06, location=(0, -0.02, 0.38))
+        arms = bpy.context.active_object
+        arms.scale = (1.1, 0.7, 1.0)
+        arms.data.materials.append(gold_mat)
+        created_objs.append(arms)
+
+        # 5. Serene Head & Ushnisha
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.13, location=(0, 0, 0.73))
+        head = bpy.context.active_object
+        head.scale = (0.9, 0.95, 1.1)
+        head.data.materials.append(gold_mat)
+        created_objs.append(head)
+
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.05, location=(0, 0, 0.88))
+        ushnisha = bpy.context.active_object
+        ushnisha.data.materials.append(gold_mat)
+        created_objs.append(ushnisha)
+
+        # 6. Radiant Aureole / Halo Disc
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.36, depth=0.03, location=(0, 0.08, 0.72))
+        halo = bpy.context.active_object
+        halo.rotation_euler = (math.radians(90), 0, 0)
+        halo.data.materials.append(crystal_mat)
+        created_objs.append(halo)
+
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.37, minor_radius=0.02, location=(0, 0.08, 0.72))
+        halo_ring = bpy.context.active_object
+        halo_ring.rotation_euler = (math.radians(90), 0, 0)
+        halo_ring.data.materials.append(ruby_mat)
+        created_objs.append(halo_ring)
+
     else:
         # Sacred Stellar Reliquary / Crystalline Monolith
         bpy.ops.mesh.primitive_cylinder_add(radius=0.40, depth=0.12, location=(0, 0, 0.06))
