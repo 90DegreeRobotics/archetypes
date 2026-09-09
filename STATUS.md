@@ -1,10 +1,11 @@
 # Archetypes Status
 
-**Last Updated: 2026-08-16 (honest RC 0.3.0)**
+**Last Updated: 2026-09-09 (Inner Chambers Enclosed Castle Rotunda & Animated Council Table)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Inner Chambers Castle Rotunda & Animated Council Table (2026-09-09):** Inner Chambers was overhauled from an empty open void into a massive enclosed castle great hall ($76\text{m} \times 76\text{m}$, $22\text{m}$ high). Features a dark polished stone floor at $y = 0.0$, a two-tiered raised stone dais ($R = 6.0\text{m}$ step, $R = 4.8\text{m}$ platform at $y = 0.30\text{m}$), 4 solid enclosing perimeter walls with stone buttress pillars, an enclosed vaulted ceiling with dark iron/timber cross-beams, 8 perimeter wall sconce braziers, and dual overhead spotlights. Centered on the dais is the animated Flower-of-Life Council Table (`assets/scenes/table.glb`, scale 2.6, origin $y = 2.34\text{m}$) with its rotating, pulsing `Stargate_Portal` cyan vortex. The player spectator camera spawns elevated looking directly at the table with smooth 6DOF flight (WASD fly, Space rise, Shift/C descend, Mouse 360° look). All legacy placeholder primitives (cubes, lines, spheres) were purged from the room. Fixed table visibility gating in `crates/engine/src/chamber/camera.rs` so exclusive modes never hide non-ritual scene elements. Verified with 100/100 workspace tests and staged to Desktop via `pwsh -File scripts\install_shortcut.ps1`.
 - **NeuroCognica Start Menu identity + family icon (2026-08-25):** Archetypes now installs one flat
   `Programs\NeuroCognica\Archetypes.lnk` beside ChronoSophia2, NC Company Database, EOAI-MGS and Chirox, per
   `C:\NeuroCognica_Brand\docs\START_MENU_FAMILY.md`. It previously wrote three top-level shortcuts (`Archetypes`,
@@ -93,6 +94,7 @@ This document tracks time-sensitive status, current blockers, and recent test ru
 - **Table geometry:** the physical table shell still reads as thin against near-black lighting. Blocked on the operator's reference image.
 
 ## Verification
+- **Inner Chambers Castle Rotunda & Animated Council Table (2026-09-09):** `cargo test --workspace` passed 100/100 tests (79 engine, 16 launcher, 5 windows_identity). Desktop restaged via `scripts\install_shortcut.ps1` with fresh `dist\engine.exe` release binary and staged `assets\scenes\table.glb`. Table visibility unblocked in `chamber/camera.rs`, legacy primitive shapes purged from `world.rs`, 6DOF flight verified.
 - **Honest RC (2026-08-16):** `cargo test --workspace` passed (79 engine + 16 launcher). Sentinel `certify --strict` **PASS**; readiness **candidate**. ARP install/uninstall proven (HKCU, per-user Programs\Archetypes, AppData kept). Desktop restage; capture `00_title_arch.png` / `01_title_subtitle.png` / `02_lore_main_menu.png`. PE FileVersion 0.3.0.0.
 - **Product depth (2026-08-16):** `cargo test --workspace` passed (78 engine + 15 launcher). Sentinel `adoption_readiness` PASS (candidate). Hexagram camera, seven Inner Chambers, council interior crossing, world-memory lineage, and launcher sidecar start are covered by unit tests. Desktop restage via `scripts\install_shortcut.ps1`.
 - **Product rebuild (2026-08-16):** `cargo test --workspace` passed (68 engine + 13 launcher). Identity: Standard = council ritual, Consciousness = 1:1 chat. Inner Chambers and Living Engine unlocked with tested loops. Launcher fail-visible + TTS sidecar repair covered by unit tests for hash/manifest path. Desktop restage via `scripts\install_shortcut.ps1`.
