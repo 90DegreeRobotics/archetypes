@@ -14,6 +14,7 @@
 use bevy::prelude::*;
 
 use super::{ChamberState, CurrentFocus, COUNCIL_CENTER};
+use crate::modes::inner_chambers::InnerChambersState;
 use crate::theme::Archetype;
 
 /// Deep-space navy — the resting backdrop of the chamber. Deliberately not pure
@@ -56,6 +57,7 @@ impl Plugin for InteriorPlugin {
 /// while inside its world, and back to the ceremonial void otherwise.
 fn drive_interior_environment(
     state: Res<State<ChamberState>>,
+    inner_state: Option<Res<State<InnerChambersState>>>,
     focus: Res<CurrentFocus>,
     time: Res<Time>,
     mut clear: ResMut<ClearColor>,
@@ -68,21 +70,36 @@ fn drive_interior_environment(
         return;
     }
 
+    // While navigating the Inner Chambers rotunda, elevate ambient lighting
+    // so the grand 76m hall, pillars, and 22m ceiling vaulting are clearly visible.
+    let is_inner_chambers = inner_state
+        .as_ref()
+        .map(|s| *s.get() == InnerChambersState::Navigating || *s.get() == InnerChambersState::Loading)
+        .unwrap_or(false);
+
     // While a council member holds the floor, the world takes on that archetype's
     // environment; at all other times it rests in the ceremonial void.
     let inside_world = matches!(state.get(), ChamberState::CouncilSpeaking);
 
-    let (ambient_color, brightness) = match (inside_world, focus.0) {
-        (true, Some(archetype)) => {
-            let theme = archetype.theme();
-            let light = theme.accent_secondary.unwrap_or(theme.bg_void);
-            (light, INTERIOR_BRIGHTNESS)
+    let (ambient_color, brightness) = if is_inner_chambers {
+        (Color::srgb(0.78, 0.82, 0.95), 480.0)
+    } else {
+        match (inside_world, focus.0) {
+            (true, Some(archetype)) => {
+                let theme = archetype.theme();
+                let light = theme.accent_secondary.unwrap_or(theme.bg_void);
+                (light, INTERIOR_BRIGHTNESS)
+            }
+            _ => (CEREMONIAL_AMBIENT, CEREMONIAL_BRIGHTNESS),
         }
-        _ => (CEREMONIAL_AMBIENT, CEREMONIAL_BRIGHTNESS),
     };
 
     let t = (time.delta_secs() * ENV_RESPONSE).min(1.0);
-    clear.0 = CEREMONIAL_VOID;
+    clear.0 = if is_inner_chambers {
+        Color::srgb(0.08, 0.09, 0.12)
+    } else {
+        CEREMONIAL_VOID
+    };
     ambient.color = lerp_color(ambient.color, ambient_color, t);
     ambient.brightness += (brightness - ambient.brightness) * t;
 }

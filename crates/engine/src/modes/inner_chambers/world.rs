@@ -45,12 +45,12 @@ fn setup_inner_world(
     mut next_state: ResMut<NextState<InnerChambersState>>,
     asset_server: Res<AssetServer>,
 ) {
-    clear.0 = Color::srgb(0.04, 0.045, 0.06);
+    clear.0 = Color::srgb(0.08, 0.09, 0.12);
 
     // --- 1. FLOOR & CENTRAL DAIS ---
     let floor_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.07, 0.075, 0.09),
-        perceptual_roughness: 0.85,
+        base_color: Color::srgb(0.16, 0.17, 0.20),
+        perceptual_roughness: 0.80,
         metallic: 0.05,
         ..default()
     });
@@ -64,14 +64,14 @@ fn setup_inner_world(
 
     // Raised circular stone dais beneath the Council Table
     let dais_step_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.11, 0.12, 0.14),
-        perceptual_roughness: 0.75,
+        base_color: Color::srgb(0.22, 0.24, 0.28),
+        perceptual_roughness: 0.72,
         metallic: 0.1,
         ..default()
     });
     let dais_top_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.15, 0.16, 0.19),
-        perceptual_roughness: 0.65,
+        base_color: Color::srgb(0.28, 0.30, 0.35),
+        perceptual_roughness: 0.60,
         metallic: 0.15,
         ..default()
     });
@@ -290,13 +290,13 @@ fn setup_inner_world(
 
     // --- 3. ENCLOSING CASTLE WALLS & BUTTRESS PILLARS ---
     let wall_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.08, 0.085, 0.10),
-        perceptual_roughness: 0.9,
+        base_color: Color::srgb(0.24, 0.25, 0.29),
+        perceptual_roughness: 0.75,
         ..default()
     });
     let pillar_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.05, 0.055, 0.07),
-        perceptual_roughness: 0.92,
+        base_color: Color::srgb(0.19, 0.20, 0.24),
+        perceptual_roughness: 0.80,
         ..default()
     });
 
@@ -362,8 +362,8 @@ fn setup_inner_world(
 
     // --- 4. CEILING SLAB & VAULTED CROSS-BEAMS ---
     let ceiling_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.045, 0.048, 0.06),
-        perceptual_roughness: 0.95,
+        base_color: Color::srgb(0.18, 0.19, 0.23),
+        perceptual_roughness: 0.85,
         ..default()
     });
     // Ceiling slab enclosing the roof at y = 22.0m
@@ -377,9 +377,9 @@ fn setup_inner_world(
 
     // Dark iron/timber structural cross-beams
     let beam_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.03, 0.03, 0.04),
-        metallic: 0.3,
-        perceptual_roughness: 0.7,
+        base_color: Color::srgb(0.13, 0.13, 0.16),
+        metallic: 0.35,
+        perceptual_roughness: 0.65,
         ..default()
     });
     let beam_y = wall_height - 0.6; // 21.4m
@@ -418,47 +418,77 @@ fn setup_inner_world(
     // Central overhead point light directly above the table
     commands.spawn((
         PointLight {
-            intensity: 160_000.0,
-            range: 35.0,
-            color: Color::srgb(0.90, 0.94, 1.0),
+            intensity: 240_000.0,
+            range: 50.0,
+            color: Color::srgb(0.92, 0.95, 1.0),
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(0.0, 8.5, 0.0),
+        Transform::from_xyz(0.0, 10.0, 0.0),
         InnerWorldElement,
         Name::new("CentralTableLight"),
     ));
-    // High ambient fill point light near the vaulted ceiling
+    // High ambient fill point light near the vaulted ceiling illuminating rafters and entire hall
     commands.spawn((
         PointLight {
-            intensity: 80_000.0,
-            range: 45.0,
-            color: Color::srgb(0.75, 0.80, 0.95),
+            intensity: 450_000.0,
+            range: 95.0,
+            color: Color::srgb(0.85, 0.88, 1.0),
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(0.0, 18.0, 0.0),
+        Transform::from_xyz(0.0, 20.0, 0.0),
         InnerWorldElement,
         Name::new("HighVaultFillLight"),
     ));
-    // Directional rim/key light
+    // Directional sunlight shaft cutting through the rotunda
     commands.spawn((
         DirectionalLight {
-            illuminance: 1_800.0,
+            illuminance: 15_000.0,
             shadows_enabled: true,
-            color: Color::srgb(0.92, 0.94, 1.0),
+            color: Color::srgb(0.95, 0.96, 1.0),
             ..default()
         },
-        Transform::from_xyz(10.0, 22.0, 8.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(14.0, 26.0, 12.0).looking_at(Vec3::ZERO, Vec3::Y),
         InnerWorldElement,
         Name::new("CastleSunShaft"),
     ));
 
-    // Perimeter wall sconces / braziers
+    // Upper perimeter wall wash lights to reveal masonry height and room scale
+    let upper_wall_positions = [
+        Vec3::new(0.0, 16.0, -wall_half + 4.0),
+        Vec3::new(-20.0, 16.0, -wall_half + 4.0),
+        Vec3::new(20.0, 16.0, -wall_half + 4.0),
+        Vec3::new(0.0, 16.0, wall_half - 4.0),
+        Vec3::new(-20.0, 16.0, wall_half - 4.0),
+        Vec3::new(20.0, 16.0, wall_half - 4.0),
+        Vec3::new(-wall_half + 4.0, 16.0, 0.0),
+        Vec3::new(-wall_half + 4.0, 16.0, -18.0),
+        Vec3::new(-wall_half + 4.0, 16.0, 18.0),
+        Vec3::new(wall_half - 4.0, 16.0, 0.0),
+        Vec3::new(wall_half - 4.0, 16.0, -18.0),
+        Vec3::new(wall_half - 4.0, 16.0, 18.0),
+    ];
+    for (i, pos) in upper_wall_positions.iter().enumerate() {
+        commands.spawn((
+            PointLight {
+                intensity: 110_000.0,
+                range: 45.0,
+                color: Color::srgb(0.88, 0.90, 0.98),
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_translation(*pos),
+            InnerWorldElement,
+            Name::new(format!("UpperWallWashLight_{i}")),
+        ));
+    }
+
+    // Lower perimeter wall sconces / braziers
     let sconce_mesh = meshes.add(Cuboid::new(0.4, 0.6, 0.4));
     let sconce_glow_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(1.0, 0.6, 0.2),
-        emissive: LinearRgba::new(2.0, 1.2, 0.4, 1.0),
+        emissive: LinearRgba::new(2.5, 1.5, 0.5, 1.0),
         unlit: true,
         ..default()
     });
@@ -484,9 +514,9 @@ fn setup_inner_world(
         // Torch warm flame light
         commands.spawn((
             PointLight {
-                intensity: 36_000.0,
-                range: 22.0,
-                color: Color::srgb(1.0, 0.68, 0.35),
+                intensity: 75_000.0,
+                range: 32.0,
+                color: Color::srgb(1.0, 0.72, 0.40),
                 shadows_enabled: false,
                 ..default()
             },
@@ -514,7 +544,7 @@ fn setup_inner_world(
         .with_children(|parent| {
             parent.spawn((
                 Text::new(
-                    "COUNCIL ROTUNDA  •  [STATUS: GROUND WALKING]\nWASD: Walk & Strafe  •  Space: Jump  •  Mouse: Look (Tilted Down)\nDouble-Jump + Hold Space (2s): Free Flight Mode  •  Esc: Menu",
+                    "COUNCIL ROTUNDA  •  [STATUS: GROUND WALKING]\nWASD: Move & Strafe  •  Space: Jump (Double-Tap: Fly)  •  Mouse: Look  •  Esc: Menu",
                 ),
                 TextFont {
                     font_size: 18.0,
@@ -526,6 +556,7 @@ fn setup_inner_world(
         });
 
     next_state.set(InnerChambersState::Navigating);
+
 }
 
 fn teardown_inner_world(
