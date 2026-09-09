@@ -8,6 +8,10 @@ pub struct WorldPlugin;
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(InnerChambersState::Loading), setup_inner_world)
+            .add_systems(
+                Update,
+                rotate_chronos_exhibits.run_if(in_state(InnerChambersState::Navigating)),
+            )
             .add_systems(OnEnter(InnerChambersState::Exiting), teardown_inner_world);
     }
 }
@@ -17,6 +21,21 @@ pub struct InnerWorldElement;
 
 #[derive(Component)]
 pub struct InnerChambersHint;
+
+#[derive(Component)]
+pub struct ChronosExhibitTurntable {
+    pub speed: f32,
+}
+
+fn rotate_chronos_exhibits(
+    time: Res<Time>,
+    mut query: Query<(&mut Transform, &ChronosExhibitTurntable)>,
+) {
+    let delta = time.delta_secs();
+    for (mut transform, turntable) in &mut query {
+        transform.rotate_y(turntable.speed * delta);
+    }
+}
 
 fn setup_inner_world(
     mut commands: Commands,
@@ -98,6 +117,176 @@ fn setup_inner_world(
         InnerWorldElement,
         Name::new("PortalDiscGlowLight"),
     ));
+
+    // --- 2b. CHRONOSOPHIA ARTIFACT EXHIBITION PEDESTALS ---
+    let pedestal_base_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.09, 0.095, 0.11),
+        perceptual_roughness: 0.8,
+        metallic: 0.1,
+        ..default()
+    });
+    let pedestal_shaft_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.05, 0.055, 0.07),
+        perceptual_roughness: 0.35,
+        metallic: 0.25,
+        ..default()
+    });
+    let pedestal_cap_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.12, 0.125, 0.15),
+        perceptual_roughness: 0.5,
+        metallic: 0.2,
+        ..default()
+    });
+    let pedestal_gold_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.85, 0.68, 0.28),
+        perceptual_roughness: 0.3,
+        metallic: 0.85,
+        ..default()
+    });
+    let pedestal_cushion_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.08, 0.07, 0.13),
+        perceptual_roughness: 0.9,
+        metallic: 0.0,
+        ..default()
+    });
+
+    let pedestal_base_mesh = meshes.add(Cylinder::new(1.35, 0.25));
+    let pedestal_shaft_mesh = meshes.add(Cylinder::new(0.95, 1.0));
+    let pedestal_cap_mesh = meshes.add(Cylinder::new(1.20, 0.20));
+    let pedestal_gold_mesh = meshes.add(Cylinder::new(1.22, 0.04));
+    let pedestal_cushion_mesh = meshes.add(Cylinder::new(0.85, 0.05));
+
+    struct ChronosExhibit {
+        name: &'static str,
+        asset_path: &'static str,
+        pos: Vec3,
+        scale: f32,
+        light_color: Color,
+        turntable_speed: f32,
+    }
+
+    let exhibits = [
+        ChronosExhibit {
+            name: "ChronosArtifact_CeramicTeapot",
+            asset_path: "scenes/chronos_teapot.glb#Scene0",
+            pos: Vec3::new(7.42, 0.0, 7.42),
+            scale: 1.0,
+            light_color: Color::srgb(1.0, 0.88, 0.65), // Warm porcelain amber
+            turntable_speed: 0.35,
+        },
+        ChronosExhibit {
+            name: "ChronosArtifact_AltarWeddingCake",
+            asset_path: "scenes/chronos_cake.glb#Scene0",
+            pos: Vec3::new(-7.42, 0.0, 7.42),
+            scale: 1.0,
+            light_color: Color::srgb(1.0, 0.75, 0.85), // Soft rose ivory
+            turntable_speed: 0.30,
+        },
+        ChronosExhibit {
+            name: "ChronosArtifact_GoldenPinecone",
+            asset_path: "scenes/chronos_pinecone.glb#Scene0",
+            pos: Vec3::new(-7.42, 0.0, -7.42),
+            scale: 1.0,
+            light_color: Color::srgb(1.0, 0.82, 0.35), // Deep gold
+            turntable_speed: 0.35,
+        },
+        ChronosExhibit {
+            name: "ChronosArtifact_EvergreenPine",
+            asset_path: "scenes/chronos_pinetree.glb#Scene0",
+            pos: Vec3::new(7.42, 0.0, -7.42),
+            scale: 1.0,
+            light_color: Color::srgb(0.55, 0.95, 0.65), // Verdant forest glow
+            turntable_speed: 0.25,
+        },
+    ];
+
+    for exhibit in exhibits.iter() {
+        let p = exhibit.pos;
+
+        // 1. Pedestal base stepped tier (y: 0.0 to 0.25)
+        commands.spawn((
+            Mesh3d(pedestal_base_mesh.clone()),
+            MeshMaterial3d(pedestal_base_mat.clone()),
+            Transform::from_xyz(p.x, 0.125, p.z),
+            InnerWorldElement,
+            Name::new(format!("{}_BasePlinth", exhibit.name)),
+        ));
+
+        // 2. Pedestal main column shaft (y: 0.25 to 1.25)
+        commands.spawn((
+            Mesh3d(pedestal_shaft_mesh.clone()),
+            MeshMaterial3d(pedestal_shaft_mat.clone()),
+            Transform::from_xyz(p.x, 0.75, p.z),
+            InnerWorldElement,
+            Name::new(format!("{}_Shaft", exhibit.name)),
+        ));
+
+        // 3. Pedestal upper capital (y: 1.25 to 1.45)
+        commands.spawn((
+            Mesh3d(pedestal_cap_mesh.clone()),
+            MeshMaterial3d(pedestal_cap_mat.clone()),
+            Transform::from_xyz(p.x, 1.35, p.z),
+            InnerWorldElement,
+            Name::new(format!("{}_Capital", exhibit.name)),
+        ));
+
+        // 4. Gold trim rim ring (y: 1.45 to 1.49)
+        commands.spawn((
+            Mesh3d(pedestal_gold_mesh.clone()),
+            MeshMaterial3d(pedestal_gold_mat.clone()),
+            Transform::from_xyz(p.x, 1.47, p.z),
+            InnerWorldElement,
+            Name::new(format!("{}_GoldTrim", exhibit.name)),
+        ));
+
+        // 5. Display velvet cushion (y: 1.49 to 1.54)
+        commands.spawn((
+            Mesh3d(pedestal_cushion_mesh.clone()),
+            MeshMaterial3d(pedestal_cushion_mat.clone()),
+            Transform::from_xyz(p.x, 1.515, p.z),
+            InnerWorldElement,
+            Name::new(format!("{}_Cushion", exhibit.name)),
+        ));
+
+        // 6. ChronoSophia Object model placed on cushion (y = 1.54)
+        commands.spawn((
+            SceneRoot(asset_server.load(exhibit.asset_path)),
+            Transform::from_xyz(p.x, 1.54, p.z).with_scale(Vec3::splat(exhibit.scale)),
+            ChronosExhibitTurntable {
+                speed: exhibit.turntable_speed,
+            },
+            InnerWorldElement,
+            Name::new(exhibit.name),
+        ));
+
+        // 7. Showcase underglow point light
+        commands.spawn((
+            PointLight {
+                intensity: 22_000.0,
+                range: 4.5,
+                color: exhibit.light_color,
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_xyz(p.x, 1.75, p.z),
+            InnerWorldElement,
+            Name::new(format!("{}_UnderglowLight", exhibit.name)),
+        ));
+
+        // 8. Overhead spotlight illuminating the artifact from above
+        commands.spawn((
+            PointLight {
+                intensity: 65_000.0,
+                range: 12.0,
+                color: Color::srgb(1.0, 0.98, 0.94),
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_xyz(p.x, 5.2, p.z),
+            InnerWorldElement,
+            Name::new(format!("{}_Spotlight", exhibit.name)),
+        ));
+    }
 
     // --- 3. ENCLOSING CASTLE WALLS & BUTTRESS PILLARS ---
     let wall_mat = materials.add(StandardMaterial {
@@ -325,7 +514,7 @@ fn setup_inner_world(
         .with_children(|parent| {
             parent.spawn((
                 Text::new(
-                    "COUNCIL ROTUNDA\nWASD: Fly  •  Space: Up  •  Shift / C: Down  •  Mouse: Look 360°\nViewing Council Table & Stargate Portal  •  Esc: Return to Menu",
+                    "COUNCIL ROTUNDA & CHRONOS ARTIFACT EXHIBITION\nWASD: Fly  •  Space: Up  •  Shift / C: Down  •  Mouse: Look 360°\nViewing Council Table & 4 Illuminated Chronos Artifact Pedestals  •  Esc: Return to Menu",
                 ),
                 TextFont {
                     font_size: 18.0,
