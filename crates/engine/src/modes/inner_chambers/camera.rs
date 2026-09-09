@@ -30,9 +30,9 @@ pub struct CameraController {
 impl Default for CameraController {
     fn default() -> Self {
         Self {
-            speed: 5.0,
+            speed: 10.0,
             sensitivity: 0.002,
-            pitch: 0.0,
+            pitch: -0.194,
             yaw: 0.0,
         }
     }
@@ -53,11 +53,24 @@ fn setup_camera(
         cam.is_active = false;
     }
 
+    let spawn_pos = Vec3::new(0.0, 4.2, 9.5);
+    let target = Vec3::new(0.0, 2.34, 0.0);
+    let initial_pitch = ((target.y - spawn_pos.y) / (spawn_pos.z - target.z)).atan();
+    let initial_yaw = 0.0;
+
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 2.0, 0.0).looking_at(Vec3::new(0.0, 2.0, -1.0), Vec3::Y),
+        Transform::from_translation(spawn_pos).with_rotation(
+            Quat::from_axis_angle(Vec3::Y, initial_yaw)
+                * Quat::from_axis_angle(Vec3::X, initial_pitch),
+        ),
         PlayerCamera,
-        CameraController::default(),
+        CameraController {
+            speed: 10.0,
+            sensitivity: 0.002,
+            pitch: initial_pitch,
+            yaw: initial_yaw,
+        },
         crate::chamber::camera::RuntimeGameplayCamera,
     ));
 }
@@ -124,7 +137,10 @@ fn camera_movement(
     if keyboard.pressed(KeyCode::Space) {
         direction.y += 1.0;
     }
-    if keyboard.pressed(KeyCode::ShiftLeft) {
+    if keyboard.pressed(KeyCode::ShiftLeft)
+        || keyboard.pressed(KeyCode::ShiftRight)
+        || keyboard.pressed(KeyCode::KeyC)
+    {
         direction.y -= 1.0;
     }
 

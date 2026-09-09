@@ -46,7 +46,7 @@ fn check_extraction(
                 words[2]
             )
         } else {
-            "Seven minds surround the hub. Walk into a chamber. E reads only when aligned. Esc returns."
+            "COUNCIL ROTUNDA\nWASD: Fly  •  Space: Up  •  Shift / C: Down  •  Mouse: Look 360°\nOrbit and inspect the Council Table & Stargate Portal  •  Esc returns"
                 .to_owned()
         };
     }
