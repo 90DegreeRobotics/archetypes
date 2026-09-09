@@ -1,8 +1,4 @@
-"""
-Headless Chronos Manifestation Pipeline for Archetypes.
-Synthesizes, grounds, and exports game-ready 3D artifacts live based on player prompts.
-Executed via Blender 4.5 background mode.
-"""
+"""RETIRED RECIPE SCRIPT — preserved as audit evidence; never invoke for manifestation."""
 
 import os
 import sys
@@ -29,6 +25,7 @@ def create_material(name, base_color, metallic=0.85, roughness=0.25, emissive_co
     return mat
 
 def build_artifact_mesh(prompt_text):
+    raise RuntimeError("RETIRED: manifestation may only import a Sentinel-cleared Chronos2 TripoSR mesh; recipe geometry is prohibited")
     p = prompt_text.lower()
     
     gold_mat = create_material("ChronosGold", (0.95, 0.78, 0.28), metallic=0.92, roughness=0.20)

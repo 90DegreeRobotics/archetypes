@@ -774,22 +774,22 @@ fn handle_manifestation_input(
     }
 }
 
-fn find_manifest_script() -> Option<PathBuf> {
+fn find_import_script() -> Option<PathBuf> {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let candidate = dir.join("scripts").join("manifest_artifact.py");
+            let candidate = dir.join("scripts").join("import_chronos_object.py");
             if candidate.is_file() {
                 return Some(candidate);
             }
         }
     }
     if let Ok(cwd) = std::env::current_dir() {
-        let candidate = cwd.join("scripts").join("manifest_artifact.py");
+        let candidate = cwd.join("scripts").join("import_chronos_object.py");
         if candidate.is_file() {
             return Some(candidate);
         }
     }
-    let fallback = PathBuf::from(r"C:\archetypes\scripts\manifest_artifact.py");
+    let fallback = PathBuf::from(r"C:\archetypes\scripts\import_chronos_object.py");
     if fallback.is_file() {
         return Some(fallback);
     }
@@ -809,8 +809,8 @@ fn target_glb_paths() -> Vec<PathBuf> {
 
 fn dispatch_manifestation_worker(prompt: String, sender: Sender<ManifestationResult>) {
     std::thread::spawn(move || {
-        let Some(script_path) = find_manifest_script() else {
-            let msg = "Could not locate scripts/manifest_artifact.py".to_string();
+        let Some(script_path) = find_import_script() else {
+            let msg = "Could not locate scripts/import_chronos_object.py".to_string();
             eprintln!("[ManifestationWorker] Error: {msg}");
             let _ = sender.send(ManifestationResult {
                 prompt,
@@ -827,17 +827,27 @@ fn dispatch_manifestation_worker(prompt: String, sender: Sender<ManifestationRes
             let _ = std::fs::create_dir_all(parent);
         }
 
+        let bundle = std::env::temp_dir().join("NeuroCognica").join("Archetypes").join("manifestations").join(format!("{}", uuid::Uuid::new_v4()));
+        let chronos = PathBuf::from(r"C:\chronos2\target\release\chronos.exe");
+        if !chronos.is_file() {
+            let _ = sender.send(ManifestationResult { prompt, success: false, detail: "Chronos2 Object-mode executable is unavailable; no fallback object will be created.".into() });
+            return;
+        }
+        let run = Command::new(&chronos).args(["first-light", "--prompt"]).arg(&prompt).args(["--out-dir"]).arg(&bundle).args(["--geometry-forge", "--void"]).output();
+        let Ok(run) = run else { let _ = sender.send(ManifestationResult { prompt, success: false, detail: "Could not start Chronos2 Object mode.".into() }); return; };
+        if !run.status.success() {
+            let detail = String::from_utf8_lossy(&run.stderr).lines().last().unwrap_or("Chronos2 Object mode failed").to_string();
+            let _ = sender.send(ManifestationResult { prompt, success: false, detail }); return;
+        }
+        let receipt = bundle.join("engine_mesh").join("triposr_artifact.json");
+        let mesh = bundle.join("engine_mesh").join("0").join("mesh.obj");
+        if !receipt.is_file() || !mesh.is_file() {
+            let _ = sender.send(ManifestationResult { prompt, success: false, detail: "Chronos2 did not return its required TripoSR mesh receipt; no artifact was staged.".into() }); return;
+        }
         let blender_exe = r"C:\Program Files\Blender Foundation\Blender 4.5\blender.exe";
-
-        println!("[ManifestationWorker] Executing Chronos2 headless render for '{prompt}' via {script_path:?}");
-
-        let output = Command::new(blender_exe)
-            .arg("-b")
-            .arg("-P")
-            .arg(&script_path)
+        let output = Command::new(blender_exe).arg("-b").arg("-P").arg(&script_path)
             .arg("--")
-            .arg("--prompt")
-            .arg(&prompt)
+            .arg("--input").arg(&mesh)
             .arg("--output")
             .arg(&primary_output)
             .output();
