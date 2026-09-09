@@ -29,6 +29,13 @@ These are absolute. If you would violate one of them to "finish" a task, stop an
 15. **Two-Lane Development and Delivery Law — Reconciling Fast Dev & Formal Releases.**
     - *Fast Inner Loop (Rapid Iteration):* When tuning gameplay, shaders, 3D scenes, or camera motion, run `pwsh -File scripts\install_shortcut.ps1`. This updates `dist/`, syncs directly to `%LOCALAPPDATA%\Programs\Archetypes`, and refreshes the operator's pinned Windows Taskbar shortcut instantly without walking an installer wizard.
     - *Formal Versioned Releases:* When cutting a versioned release, run `pwsh installer\build.ps1`. Every formal release must increment `build_serial` in `installer/version.json`, record in `version-history.json`, emit `release.json`, and automatically deliver a hash-verified `Archetypes_Setup_<version>.exe` directly into `%USERPROFILE%\Downloads`. The operator tests installations like a buyer from `Downloads`. See [VERSIONING_AND_RELEASES.md](file:///C:/archetypes/docs/windows/VERSIONING_AND_RELEASES.md) and [INSTALLER_WIZARD_SPEC.md](file:///C:/archetypes/docs/windows/INSTALLER_WIZARD_SPEC.md).
+16. **Chronos-to-Game 3D Asset Import & Exhibition Doctrine — The Gold Standard.** Whenever assets created in ChronoSophia or 3D models are introduced into Archetypes, every agent must follow the exact 5-law pipeline documented in [CHRONOS_TO_GAME_ASSET_PIPELINE.md](file:///C:/archetypes/docs/architecture/CHRONOS_TO_GAME_ASSET_PIPELINE.md):
+    - Ground mesh geometry ($Y=0$) and center ($X=0, Z=0$) via headless Blender 4.5 background export (`scripts/export_chronos_assets.py`).
+    - Bind vertex color attributes (`Color` or `carve`) to Principled BSDF materials via `ShaderNodeVertexColor`.
+    - Mount models atop multi-tiered architectural pedestals (granite base, polished obsidian shaft, gold trim, velvet cushion).
+    - Apply the Dual-Lighting Doctrine: an overhead crisp spotlight combined with a thematic underglow point light tailored to the object's narrative essence.
+    - Attach the `ChronosExhibitTurntable` component for smooth 360-degree rotation.
+    - Never stop at raw source code edits: always run `cargo test --workspace` and `pwsh -File scripts\install_shortcut.ps1` so the operator can inspect the live rotating assets immediately from their pinned Windows Taskbar icon.
 
 ## 2. Branching and remotes — THE ONLY BRANCH IS MAIN
 
