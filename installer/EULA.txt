@@ -1,0 +1,12 @@
+ARCHETYPES EARLY DEVELOPMENT LICENSE
+
+Copyright (c) 2026 Michael Holt / NeuroCognica. All rights reserved.
+
+This early development build is provided for personal evaluation and testing by
+the authorized recipient. It may not be redistributed, sold, reverse engineered,
+or represented as a finished commercial release without written permission from
+the copyright holder.
+
+The software is under active development and is provided without warranty.
+Player-created data under the documented local application-data directory is
+preserved during normal uninstall.

@@ -15,3 +15,4 @@
 /tools/signing/
 /installer/output/
 installer/signing/azure-metadata.json
+/Archetypes_Setup_*.exe

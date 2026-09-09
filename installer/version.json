@@ -7,14 +7,14 @@
   "min_os_version": "10.0.18362",
   "distribution": "direct",
   "signing": {
-    "status": "signed",
-    "authenticode": true,
+    "status": "required",
+    "authenticode": false,
     "channels_requiring_signature": [
       "stable",
       "beta"
     ],
     "certificate": "Azure Artifact Signing, Public Trust, individual path. Subject is CN=Michael Holt.",
     "enforced_by": "ISCC compile-time signing flag -sarchetypes and Get-AuthenticodeSignature verification",
-    "note": "Product-level posture. Per-build truth recorded in release.json off the emitted installer."
+    "note": "Release policy requires signing. Actual per-build signature truth is recorded from emitted files in installer/output/release.json."
   }
 }

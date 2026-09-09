@@ -1,0 +1,12 @@
+ARCHETYPES SYSTEM AND DEPENDENCY NOTICE
+
+Archetypes is an early-development 64-bit Windows game. The current build
+requires Windows 10 version 1903 or newer and a graphics adapter/driver capable
+of running the Bevy rendering backend. The installer contains the game runtime
+and its current assets. It does not install cloud services or third-party model
+runtimes.
+
+Immutable application files install under Program Files. Mutable saves,
+profiles, configuration, and logs remain under:
+
+%LOCALAPPDATA%\NeuroCognica\Archetypes
