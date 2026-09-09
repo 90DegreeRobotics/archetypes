@@ -1,7 +1,7 @@
 # Plan: versioned-signed-title-release — 2026-09-09 17:00
 
 ## Status
-IN-PROGRESS
+COMPLETED
 
 ## Goal
 
@@ -42,7 +42,11 @@ copy.
   Installer, engine, and launcher signatures are `Valid` for `CN=Michael Holt`.
   The installer was then run silently and installed its signed payload to
   `C:\Program Files\Archetypes`. That 1.0.3 artifact is retained but
-  superseded; the same checks will be rerun for the committed-source 1.0.4.
+  superseded. 1.0.4/build 5 was then emitted from committed source
+  `f414259452e4`; its Downloads installer SHA-256 is
+  `2d9e25b36a1310f6e7a547ce119117679988d27650b30f0084a1bb3a77b7fba5`.
+  The output and Downloads hashes match, all signatures are valid, and the
+  installer completed into `C:\Program Files\Archetypes`.
 
 ### Step 4 — Rebind and witness the Taskbar path
 - [x] Action: Verify the installed signed executable identity and the pinned
@@ -52,13 +56,15 @@ copy.
 - Expected outcome: The next screenshot identifies the formal release in its
   native title bar.
 - Result: The installed engine PE reports file/product version `1.0.3.4` and a
-  valid `CN=Michael Holt` signature. The existing pinned Taskbar link was
+  valid `CN=Michael Holt` signature. The superseding installed engine PE
+  reports file/product version `1.0.4.5` with the same valid signature. The
+  existing pinned Taskbar link was
   rebound and reread as `C:\Program Files\Archetypes\launcher.exe` with
   `C:\Program Files\Archetypes` as its working directory. A foreground click
   from that pin remains the final visual witness.
 
 ### Step 5 — Commit and publish
-- [ ] Action: Review generated metadata, commit named source/release records,
+- [x] Action: Review generated metadata, commit named source/release records,
   push `main`, and record what was actually witnessed versus what still needs
   player confirmation.
 - Files touched: named files from this plan.

@@ -44,12 +44,12 @@
     {
       "normalized_version": "1.0.4",
       "build_serial": 5,
-      "source_commit": "",
-      "built_utc": "",
-      "installer_sha256": "",
-      "size_bytes": 0,
-      "package_available": false,
-      "note": "Pending formal signed release from committed source."
+      "source_commit": "f414259452e4",
+      "built_utc": "2026-09-09T22:03:21.9760960Z",
+      "installer_sha256": "2d9e25b36a1310f6e7a547ce119117679988d27650b30f0084a1bb3a77b7fba5",
+      "size_bytes": 206691928,
+      "package_available": true,
+      "note": "Emitted and verified by installer/build.ps1."
     }
   ]
 }
