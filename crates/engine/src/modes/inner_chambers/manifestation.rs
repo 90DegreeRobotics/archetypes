@@ -3,6 +3,7 @@
 //! Enables the player to walk up to the sacred manifestation pedestal on the dais,
 //! press 'E' to open the prompt conduit, and trigger a headless Chronos2 render
 //! that creates, grounds, and manifests the 3D artifact directly onto the pedestal.
+//! Follows the absolute NO-RECIPE LAW and streams real Chronos2 pipeline stages.
 //!
 //! Visual State Machine atop the Pedestal:
 //! 1. Idle: Floating subtle celestial diamond symbol above the empty velvet cushion.

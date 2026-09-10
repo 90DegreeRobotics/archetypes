@@ -1,10 +1,13 @@
 # Plan: Manifestation Pipeline and Broken Windows Release Recovery — 2026-09-09 17:55
 
 ## Status
+
 IN-PROGRESS
 
 ## Goal
+
 Recover the broken 1.0.4 Windows release and complete the manifestation pipeline under the absolute NO-RECIPE LAW.
+
 1. Repair formal speech packaging, dependency manifest staging, and user-writable speech repair under `%LOCALAPPDATA%\NeuroCognica\Archetypes`. Align speech root precedence across launcher and engine and replace raw Notepad failure with a proper buyer error surface.
 2. Complete the no-recipe manifestation pipeline connecting Chronos2 Object mode (TripoSR) with live streaming `[chronos-stage]` progress, Sentinel review/refusal handling, clean headless OBJ-to-GLB conversion, and reliable process tree termination on cancel/exit.
 3. Add physical stone courses / mesh relief to the chamber floor that reacts to chamber lighting and is visibly legible from the normal player camera.
@@ -14,6 +17,7 @@ Recover the broken 1.0.4 Windows release and complete the manifestation pipeline
 ## Steps
 
 ### Step 1 — Audit & Fix Speech Packaging and Writable Repair
+
 - [x] Action:
   - In `installer/archetypes_setup.iss`, package `dist\speech\*` into `{app}\speech`, `scripts\dependencies.json` into `{app}\scripts`, and `scripts\import_chronos_object.py` into `{app}\scripts`.
   - In `installer/build.ps1`, ensure `dist\speech` is verified and ready before ISCC compilation.
@@ -32,6 +36,7 @@ Recover the broken 1.0.4 Windows release and complete the manifestation pipeline
   - `crates/engine/src/chamber/speech.rs`
 
 ### Step 2 — Audit Recipes & Build Streaming Manifestation Bridge
+
 - [x] Action:
   - Search both repos for `recipe|preset|fallback|primitive|keyword|mock|stub` and classify matches.
   - Add fail-closed regression tests prohibiting recipe execution.
@@ -47,6 +52,7 @@ Recover the broken 1.0.4 Windows release and complete the manifestation pipeline
   - regression tests in engine
 
 ### Step 3 — Construct Physical Floor Relief & Visual Comparison
+
 - [x] Action:
   - In `crates/engine/src/modes/inner_chambers/world.rs`, replace the single flat plane with physical stone courses featuring raised flagstones, beveled edges, and recessed mortar courses.
   - Retain light-reactive PBR normal mapping and roughness for basalt stone response.
@@ -55,6 +61,7 @@ Recover the broken 1.0.4 Windows release and complete the manifestation pipeline
   - `crates/engine/src/modes/inner_chambers/world.rs`
 
 ### Step 4 — Implement Phased Magical Entrance Effect
+
 - [x] Action:
   - Bind visual effects to real stages: pedestal charging glow and plasma pulse buildup during model execution, controlled lightning strike and smoke volume upon validated placement, followed by smoke dissipation revealing the rotating object.
   - Keep particle and light counts bounded for smooth performance on RTX 3060.
@@ -62,6 +69,7 @@ Recover the broken 1.0.4 Windows release and complete the manifestation pipeline
   - `crates/engine/src/modes/inner_chambers/manifestation.rs`
 
 ### Step 5 — Verify, Advance Release Identity & Commit Source
+
 - [x] Action:
   - Advance `installer/version.json` to version `1.0.5` and `build_serial` 6.
   - Verify native window title format: `Archetypes 1.0.5 (build 6) — Council Chamber`.
@@ -72,6 +80,7 @@ Recover the broken 1.0.4 Windows release and complete the manifestation pipeline
   - source files
 
 ### Step 6 — Signed Formal Build, Installation & Buyer Verification
+
 - [ ] Action:
   - Verify signing readiness with `scripts/check_signing_ready.ps1`.
   - Run `installer/build.ps1` with Azure Trusted Signing enabled.
@@ -88,3 +97,4 @@ Recover the broken 1.0.4 Windows release and complete the manifestation pipeline
 - Files touched:
   - `installer/version-history.json`
   - `installer/output/release.json`
+
