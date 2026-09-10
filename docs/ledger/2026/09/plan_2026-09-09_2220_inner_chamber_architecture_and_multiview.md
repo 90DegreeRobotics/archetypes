@@ -1,7 +1,7 @@
 # Plan: Inner Chamber architecture and real multiview evaluation — 2026-09-09 22:20
 
 ## Status
-IN PROGRESS — Steps 2-4 landed and verified in a follow-up session (2026-09-10); Step 5 (multiview evaluation) not started.
+IN PROGRESS — Steps 2-4 landed and verified in follow-up sessions (2026-09-10); Step 5 (multiview evaluation) not started.
 
 ## Goal
 Replace the current open warehouse-like Council Chamber blockout with a legible central rotunda, a physical light-reactive floor, and one explorable chamber for each of the five standing archetype meshes (Sentinel, Aura, Empath, Oracle, and Nebula Jester). Use those rooms as the first live test bed for distinct archetype design languages. In parallel, evaluate an additional reconstruction view honestly: validation-only while TripoSR remains single-view, and geometry-constraining only after a 12 GB-safe multiview engine proves it consumes distinct persisted views.
@@ -25,8 +25,8 @@ Replace the current open warehouse-like Council Chamber blockout with a legible 
 - Expected outcome: A measured plan that cannot strand the player, overlap the table, hide a figure, or break the manifestation approach.
 
 ### Step 2 — Build the central rotunda as architecture
-- [ ] Replace the featureless box impression with a circular/segmented rotunda: articulated wall bays, columns, cornice/rib structure, readable entrances, ceiling treatment, and deliberate sightlines to the council table and altar.
-- [ ] Keep collision simple and explicit even when visible architecture is layered.
+- [x] Replace the featureless box impression with a circular/segmented rotunda: articulated wall bays, columns, cornice/rib structure, readable entrances, ceiling treatment, and deliberate sightlines to the council table and altar.
+- [x] Keep collision simple and explicit even when visible architecture is layered.
 - Files touched: `crates/engine/src/modes/inner_chambers/world.rs` and focused tests/helpers.
 - Expected outcome: The main room reads as a chamber, not a dark warehouse with objects placed in it.
 
@@ -37,10 +37,10 @@ Replace the current open warehouse-like Council Chamber blockout with a legible 
 - Expected outcome: Screenshots visibly show stone/metal surface structure and light direction without relying on emissive paint.
 
 ### Step 4 — Build five connected archetype chambers
-- [ ] Create one accessible chamber bay for Sentinel, Aura, Empath, Oracle, and Nebula Jester, each containing its existing standing mesh as the focal presence.
-- [ ] Derive style from each archetype's canonical profile and measurable material/light/geometry parameters; avoid decorative clutter that has no functional or symbolic job.
-- [ ] Give every room a distinct threshold, floor treatment, wall rhythm, ceiling/vertical silhouette, key light, rim light, and navigable inspection space.
-- [ ] Keep reusable architecture procedural and parameterized; do not hardcode premade chamber meshes masquerading as generated work.
+- [x] Create one accessible chamber bay for Sentinel, Aura, Empath, Oracle, and Nebula Jester, each containing its existing standing mesh as the focal presence.
+- [x] Derive style from each archetype's canonical profile and measurable material/light/geometry parameters; avoid decorative clutter that has no functional or symbolic job.
+- [x] Give every room a distinct threshold, floor treatment, wall rhythm, ceiling/vertical silhouette, key light, rim light, and navigable inspection space.
+- [x] Keep reusable architecture procedural and parameterized; do not hardcode premade chamber meshes masquerading as generated work.
 - Files touched: `world.rs`, archetype profile data/helpers, tests, and architecture documentation.
 - Expected outcome: Five rooms are unmistakably different in mood and form while remaining one coherent building.
 
@@ -125,5 +125,19 @@ noted honestly rather than checking that box). What actually landed, source-veri
 - **Step 7 — pending this commit.** This plan and `STATUS.md` are being updated in the same
   change that commits and pushes the work.
 
-**What remains open for a future session:** the outer wall is still a flat-sided box (true
-circular drum not built), and Step 5's multiview evaluation hasn't been touched at all.
+## Session update — 2026-09-10 (segmented drum continuation)
+
+- **Step 2 (central rotunda) — completed.** The remaining four-slab outer-wall gap was closed
+  in `plan_2026-09-10_0904_segmented_rotunda_drum.md`: a procedural 64-bay annular drum now
+  replaces the visible square shell, with 16 radial buttresses, continuous cornice, four
+  cardinal processional portal frames, circular roof cap, and twelve radial ribs. The existing
+  +/-36m movement clamp remains deliberately unchanged; the cardinal frames are readable
+  interior axes rather than out-of-bounds exits.
+- **Verification:** focused drum geometry regression plus `cargo test --workspace` passed
+  117/117. The release was restaged and hash-verified; eight new rendered frames are under
+  `artifacts/visual-proof/inner-chambers-rotunda-drum-2026-09-10/`. The dedicated
+  `07_rotunda_drum_and_portal.png` frame proves the new curved wall/cornice/rib geometry.
+  The proof is geometrical and runtime-real, not aesthetic approval: palette and large niche
+  cylinders need a separate art-direction decision if they are to change.
+
+**What remains open for a future session:** Step 5's multiview evaluation has not been touched.

@@ -112,6 +112,21 @@ This document tracks time-sensitive status, current blockers, and recent test ru
 - **Table geometry:** the physical table shell still reads as thin against near-black lighting. Blocked on the operator's reference image.
 
 ## Verification
+- **Segmented circular Inner Chambers rotunda drum (2026-09-10):** The former four visible
+  square-wall slabs are replaced in `world.rs` by a procedural 64-bay annular drum at 37.5m
+  radius, with 16 radial buttresses, annular cornice, four cardinal processional portal frames,
+  circular roof cap, and 12 radial ribs. The conservative +/-36m camera clamp remains unchanged;
+  the portal frames are interior visual/processional axes, not unsafe exits. Focused mesh test
+  proves all 64 closed bays remain in the 37.5–39m annulus; `cargo test --workspace` passed
+  117/117 (93 engine, 19 launcher, 5 Windows identity). `scripts\\install_shortcut.ps1` rebuilt
+  and restaged the release, SHA-verified the installed engine/launcher, and refreshed the Taskbar
+  target. Eight fresh real frames from the staged installed engine are under
+  `artifacts/visual-proof/inner-chambers-rotunda-drum-2026-09-10/`, with
+  `07_rotunda_drum_and_portal.png` specifically showing the curved shell, cornice, portal frame,
+  and radial roof ribs. This is geometry/render proof, not an aesthetic approval: the palette and
+  large niche cylinders remain visually austere. The shell-launched capture command did not yield
+  a visible process/log witness in this noninteractive session, so launcher E2E capture is not
+  claimed beyond installed staging and Taskbar-target verification.
 - **Inner Chambers archetype niche chambers (2026-09-10):** `cargo test --workspace` passed
   116/116 (92 engine incl. 4 new focused tests on the new mesh builder and niche geometry, 19
   launcher, 5 windows_identity). `pwsh -File scripts\install_shortcut.ps1` rebuilt the release

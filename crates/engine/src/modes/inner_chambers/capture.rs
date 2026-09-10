@@ -85,6 +85,14 @@ impl InnerCaptureRun {
             eye: Vec3::new(0.0, 34.0, 7.0),
             look_at: Vec3::new(0.0, 0.0, 6.9),
         });
+        shots.push(CaptureShot {
+            name: "07_rotunda_drum_and_portal".to_string(),
+            // A low interior long view proves the new circular shell as actual
+            // rendered architecture: curved 64-bay masonry, radial roof ribs,
+            // continuous cornice, and the north processional portal frame.
+            eye: Vec3::new(0.0, 3.5, 22.0),
+            look_at: Vec3::new(0.0, 8.0, -36.0),
+        });
 
         Some(Self {
             dir,

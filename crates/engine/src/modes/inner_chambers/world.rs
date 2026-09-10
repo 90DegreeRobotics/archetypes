@@ -649,91 +649,54 @@ fn setup_inner_world(
         ..default()
     });
 
+    // The playable collision/movement envelope stays a conservative square (+/-36m
+    // in `camera.rs`), but the visible building is a 64-bay circular drum just
+    // outside it. Keeping those concerns separate prevents a visual rebuild from
+    // introducing a player-trapping collision regression.
     let wall_half = 38.0;
+    let drum_radius = 37.5;
     let wall_height = 22.0;
     let wall_thick = 1.5;
     let wall_y = wall_height / 2.0; // 11.0m
 
-    // North Wall (Z = -38.0)
+    // A continuous 64-bay annular shell replaces the former four box-wall slabs.
+    // Deliberate segmentation catches the wall-wash light as masonry courses rather
+    // than reading as a single dark cylinder.
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(wall_half * 2.0, wall_height, wall_thick))),
+        Mesh3d(meshes.add(build_wall_ring_mesh(
+            drum_radius,
+            wall_height,
+            wall_thick,
+            64,
+            0.0,
+            0.0,
+        ))),
         MeshMaterial3d(wall_mat.clone()),
-        Transform::from_xyz(0.0, wall_y, -wall_half),
+        Transform::IDENTITY,
         InnerWorldElement,
-        Name::new("CastleWallNorth"),
-    ));
-    // South Wall (Z = +38.0)
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(wall_half * 2.0, wall_height, wall_thick))),
-        MeshMaterial3d(wall_mat.clone()),
-        Transform::from_xyz(0.0, wall_y, wall_half),
-        InnerWorldElement,
-        Name::new("CastleWallSouth"),
-    ));
-    // West Wall (X = -38.0)
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(wall_thick, wall_height, wall_half * 2.0))),
-        MeshMaterial3d(wall_mat.clone()),
-        Transform::from_xyz(-wall_half, wall_y, 0.0),
-        InnerWorldElement,
-        Name::new("CastleWallWest"),
-    ));
-    // East Wall (X = +38.0)
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(wall_thick, wall_height, wall_half * 2.0))),
-        MeshMaterial3d(wall_mat.clone()),
-        Transform::from_xyz(wall_half, wall_y, 0.0),
-        InnerWorldElement,
-        Name::new("CastleWallEast"),
+        Name::new("RotundaDrum_Masonry64Bay"),
     ));
 
-    // Corner and wall buttress pillars
-    let pillar_mesh = meshes.add(Cuboid::new(2.4, wall_height, 2.4));
-    let pillar_positions = [
-        Vec3::new(-wall_half + 1.0, wall_y, -wall_half + 1.0),
-        Vec3::new(wall_half - 1.0, wall_y, -wall_half + 1.0),
-        Vec3::new(-wall_half + 1.0, wall_y, wall_half - 1.0),
-        Vec3::new(wall_half - 1.0, wall_y, wall_half - 1.0),
-        Vec3::new(0.0, wall_y, -wall_half + 0.8),
-        Vec3::new(0.0, wall_y, wall_half - 0.8),
-        Vec3::new(-wall_half + 0.8, wall_y, 0.0),
-        Vec3::new(wall_half - 0.8, wall_y, 0.0),
-    ];
-    for (i, pos) in pillar_positions.iter().enumerate() {
+    // Engaged radial buttresses provide an unmistakable wall rhythm. The four
+    // cardinal bays use wider paired threshold pillars and a lintel, making clear
+    // interior entry/processional axes without cutting holes through the safety
+    // envelope.
+    let pillar_mesh = meshes.add(Cuboid::new(1.35, wall_height - 1.0, 1.7));
+    for i in 0..16 {
+        let theta = i as f32 * std::f32::consts::TAU / 16.0;
+        let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
+        let pos = radial * (drum_radius - 0.65) + Vec3::Y * wall_y;
         commands.spawn((
             Mesh3d(pillar_mesh.clone()),
             MeshMaterial3d(pillar_mat.clone()),
-            Transform::from_translation(*pos),
+            Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(-theta)),
             InnerWorldElement,
-            Name::new(format!("CastlePillar_{i}")),
+            Name::new(format!("RotundaButtress_{i:02}")),
         ));
     }
 
-    // Intermediate wall pilasters — break each flat wall into a rhythm of engaged
-    // bays instead of one unbroken slab. Purely visual relief; the collision
-    // envelope stays the existing +/-36 clamp, so this cannot strand the player.
-    let pilaster_mesh = meshes.add(Cuboid::new(1.4, wall_height - 1.0, 1.4));
-    let bay_offsets = [-28.5_f32, -19.0, -9.5, 9.5, 19.0, 28.5];
-    for (i, offset) in bay_offsets.iter().enumerate() {
-        let bays = [
-            (Vec3::new(*offset, wall_y, -wall_half + 0.7), "North"),
-            (Vec3::new(*offset, wall_y, wall_half - 0.7), "South"),
-            (Vec3::new(-wall_half + 0.7, wall_y, *offset), "West"),
-            (Vec3::new(wall_half - 0.7, wall_y, *offset), "East"),
-        ];
-        for (pos, side) in bays {
-            commands.spawn((
-                Mesh3d(pilaster_mesh.clone()),
-                MeshMaterial3d(pillar_mat.clone()),
-                Transform::from_translation(pos),
-                InnerWorldElement,
-                Name::new(format!("CastlePilaster_{side}_{i}")),
-            ));
-        }
-    }
-
-    // Cornice band — a continuous stone ledge below the ceiling that reads the wall
-    // top as an authored architectural edge rather than a plain box seam.
+    // Continuous annular cornice: a genuine circular top edge, not four unrelated
+    // ledges meeting at square corners.
     let cornice_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.30, 0.31, 0.35),
         perceptual_roughness: 0.55,
@@ -741,35 +704,43 @@ fn setup_inner_world(
         ..default()
     });
     let cornice_y = wall_height - 1.1;
-    let cornice_spans = [
-        (
-            Vec3::new(0.0, cornice_y, -wall_half),
-            Vec3::new(wall_half * 2.0 + 0.6, 0.5, wall_thick + 0.6),
-            "North",
-        ),
-        (
-            Vec3::new(0.0, cornice_y, wall_half),
-            Vec3::new(wall_half * 2.0 + 0.6, 0.5, wall_thick + 0.6),
-            "South",
-        ),
-        (
-            Vec3::new(-wall_half, cornice_y, 0.0),
-            Vec3::new(wall_thick + 0.6, 0.5, wall_half * 2.0 + 0.6),
-            "West",
-        ),
-        (
-            Vec3::new(wall_half, cornice_y, 0.0),
-            Vec3::new(wall_thick + 0.6, 0.5, wall_half * 2.0 + 0.6),
-            "East",
-        ),
-    ];
-    for (pos, size, side) in cornice_spans {
+    commands.spawn((
+        Mesh3d(meshes.add(Torus::new(drum_radius - 0.5, drum_radius + 0.5))),
+        MeshMaterial3d(cornice_mat.clone()),
+        Transform::from_xyz(0.0, cornice_y, 0.0),
+        InnerWorldElement,
+        Name::new("RotundaCornice_Annular"),
+    ));
+
+    let portal_pillar_mesh = meshes.add(Cuboid::new(1.35, 8.0, 1.65));
+    for (name, theta) in [
+        ("East", 0.0_f32),
+        ("North", -std::f32::consts::FRAC_PI_2),
+        ("West", std::f32::consts::PI),
+        ("South", std::f32::consts::FRAC_PI_2),
+    ] {
+        let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
+        let tangent = Vec3::new(-theta.sin(), 0.0, theta.cos());
+        for side in [-1.0_f32, 1.0] {
+            let pos = radial * (drum_radius - 1.35) + tangent * (side * 3.0) + Vec3::Y * 4.0;
+            commands.spawn((
+                Mesh3d(portal_pillar_mesh.clone()),
+                MeshMaterial3d(cornice_mat.clone()),
+                Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(-theta)),
+                InnerWorldElement,
+                Name::new(format!(
+                    "RotundaPortal{name}_Pillar{}",
+                    if side < 0.0 { "A" } else { "B" }
+                )),
+            ));
+        }
         commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(size.x, size.y, size.z))),
+            Mesh3d(meshes.add(Cuboid::new(7.4, 0.8, 1.9))),
             MeshMaterial3d(cornice_mat.clone()),
-            Transform::from_translation(pos),
+            Transform::from_translation(radial * (drum_radius - 1.35) + Vec3::Y * 8.0)
+                .with_rotation(Quat::from_rotation_y(-theta)),
             InnerWorldElement,
-            Name::new(format!("CastleCornice{side}")),
+            Name::new(format!("RotundaPortal{name}_Lintel")),
         ));
     }
 
@@ -779,13 +750,13 @@ fn setup_inner_world(
         perceptual_roughness: 0.85,
         ..default()
     });
-    // Ceiling slab enclosing the roof at y = 22.0m
+    // Circular ceiling cap supports the same proven 22m vertical envelope.
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(wall_half * 2.0, 1.0, wall_half * 2.0))),
+        Mesh3d(meshes.add(Cylinder::new(drum_radius + wall_thick, 1.0))),
         MeshMaterial3d(ceiling_mat),
         Transform::from_xyz(0.0, wall_height + 0.5, 0.0),
         InnerWorldElement,
-        Name::new("CastleCeilingSlab"),
+        Name::new("RotundaCeilingCap"),
     ));
 
     // Dark iron/timber structural cross-beams
@@ -796,34 +767,18 @@ fn setup_inner_world(
         ..default()
     });
     let beam_y = wall_height - 0.6; // 21.4m
-    // Primary cross beams through center
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(wall_half * 2.0, 1.2, 1.2))),
-        MeshMaterial3d(beam_mat.clone()),
-        Transform::from_xyz(0.0, beam_y, 0.0),
-        InnerWorldElement,
-        Name::new("CeilingCrossBeamX"),
-    ));
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.2, 1.2, wall_half * 2.0))),
-        MeshMaterial3d(beam_mat.clone()),
-        Transform::from_xyz(0.0, beam_y, 0.0),
-        InnerWorldElement,
-        Name::new("CeilingCrossBeamZ"),
-    ));
-    // Secondary rafters
-    for offset in [-19.0, 19.0] {
+                                    // Radial ribs converge on the council table rather than reproducing the old
+                                    // warehouse grid; four principal ribs are heavier than the eight secondaries.
+    for i in 0..12 {
+        let theta = i as f32 * std::f32::consts::TAU / 12.0;
+        let principal = i % 3 == 0;
+        let thickness = if principal { 1.2 } else { 0.65 };
         commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(wall_half * 2.0, 0.8, 0.8))),
+            Mesh3d(meshes.add(Cuboid::new(drum_radius * 2.0, thickness, thickness))),
             MeshMaterial3d(beam_mat.clone()),
-            Transform::from_xyz(0.0, beam_y, offset),
+            Transform::from_xyz(0.0, beam_y, 0.0).with_rotation(Quat::from_rotation_y(-theta)),
             InnerWorldElement,
-        ));
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(0.8, 0.8, wall_half * 2.0))),
-            MeshMaterial3d(beam_mat.clone()),
-            Transform::from_xyz(offset, beam_y, 0.0),
-            InnerWorldElement,
+            Name::new(format!("RotundaRib_{i:02}")),
         ));
     }
 
@@ -969,7 +924,6 @@ fn setup_inner_world(
         });
 
     next_state.set(InnerChambersState::Navigating);
-
 }
 
 /// Produce a dark basalt tile albedo and its matching tangent-space normal map.
@@ -1062,7 +1016,14 @@ fn build_radial_flagstone_mesh(
     let mut normals: Vec<[f32; 3]> = Vec::new();
     let mut uvs: Vec<[f32; 2]> = Vec::new();
 
-    let push_quad = |p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, n: Vec3, pos: &mut Vec<[f32; 3]>, norm: &mut Vec<[f32; 3]>, uv: &mut Vec<[f32; 2]>| {
+    let push_quad = |p0: Vec3,
+                     p1: Vec3,
+                     p2: Vec3,
+                     p3: Vec3,
+                     n: Vec3,
+                     pos: &mut Vec<[f32; 3]>,
+                     norm: &mut Vec<[f32; 3]>,
+                     uv: &mut Vec<[f32; 2]>| {
         // Triangle 1: p0, p1, p2
         pos.push([p0.x, p0.y, p0.z]);
         pos.push([p1.x, p1.y, p1.z]);
@@ -1111,24 +1072,69 @@ fn build_radial_flagstone_mesh(
         let b3 = Vec3::new(inner_r * cos1, 0.0, inner_r * sin1);
 
         // Top stone surface
-        push_quad(p0, p1, p2, p3, Vec3::Y, &mut positions, &mut normals, &mut uvs);
+        push_quad(
+            p0,
+            p1,
+            p2,
+            p3,
+            Vec3::Y,
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+        );
 
         // Outer rim face (radial outward)
         let mid_t = (t0 + t1) * 0.5;
         let outer_norm = Vec3::new(mid_t.cos(), 0.0, mid_t.sin());
-        push_quad(p1, b1, b2, p2, outer_norm, &mut positions, &mut normals, &mut uvs);
+        push_quad(
+            p1,
+            b1,
+            b2,
+            p2,
+            outer_norm,
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+        );
 
         // Inner rim face (radial inward)
         let inner_norm = -outer_norm;
-        push_quad(p3, b3, b0, p0, inner_norm, &mut positions, &mut normals, &mut uvs);
+        push_quad(
+            p3,
+            b3,
+            b0,
+            p0,
+            inner_norm,
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+        );
 
         // Start joint face (facing -theta)
         let start_norm = Vec3::new(sin0, 0.0, -cos0);
-        push_quad(p1, b1, b0, p0, start_norm, &mut positions, &mut normals, &mut uvs);
+        push_quad(
+            p1,
+            b1,
+            b0,
+            p0,
+            start_norm,
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+        );
 
         // End joint face (facing +theta)
         let end_norm = Vec3::new(-sin1, 0.0, cos1);
-        push_quad(p3, b3, b2, p2, end_norm, &mut positions, &mut normals, &mut uvs);
+        push_quad(
+            p3,
+            b3,
+            b2,
+            p2,
+            end_norm,
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+        );
     }
 
     Mesh::new(
@@ -1158,7 +1164,14 @@ fn build_wall_ring_mesh(
     let mut normals: Vec<[f32; 3]> = Vec::new();
     let mut uvs: Vec<[f32; 2]> = Vec::new();
 
-    let push_quad = |p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, n: Vec3, pos: &mut Vec<[f32; 3]>, norm: &mut Vec<[f32; 3]>, uv: &mut Vec<[f32; 2]>| {
+    let push_quad = |p0: Vec3,
+                     p1: Vec3,
+                     p2: Vec3,
+                     p3: Vec3,
+                     n: Vec3,
+                     pos: &mut Vec<[f32; 3]>,
+                     norm: &mut Vec<[f32; 3]>,
+                     uv: &mut Vec<[f32; 2]>| {
         pos.push([p0.x, p0.y, p0.z]);
         pos.push([p1.x, p1.y, p1.z]);
         pos.push([p2.x, p2.y, p2.z]);
@@ -1209,23 +1222,61 @@ fn build_wall_ring_mesh(
 
         let inner0 = Vec3::new(radius * cos0, 0.0, radius * sin0);
         let inner1 = Vec3::new(radius * cos1, 0.0, radius * sin1);
-        let outer0 = Vec3::new((radius + thickness) * cos0, 0.0, (radius + thickness) * sin0);
-        let outer1 = Vec3::new((radius + thickness) * cos1, 0.0, (radius + thickness) * sin1);
+        let outer0 = Vec3::new(
+            (radius + thickness) * cos0,
+            0.0,
+            (radius + thickness) * sin0,
+        );
+        let outer1 = Vec3::new(
+            (radius + thickness) * cos1,
+            0.0,
+            (radius + thickness) * sin1,
+        );
         let top = Vec3::Y * height;
         let mid_dir = Vec3::new(mid.cos(), 0.0, mid.sin());
 
         // Inner face — faces the standing figure / rotunda interior.
-        push_quad(inner0 + top, inner1 + top, inner1, inner0, -mid_dir, &mut positions, &mut normals, &mut uvs);
+        push_quad(
+            inner0 + top,
+            inner1 + top,
+            inner1,
+            inner0,
+            -mid_dir,
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+        );
         // Outer face — faces away, toward the main hall.
-        push_quad(outer0, outer1, outer1 + top, outer0 + top, mid_dir, &mut positions, &mut normals, &mut uvs);
+        push_quad(
+            outer0,
+            outer1,
+            outer1 + top,
+            outer0 + top,
+            mid_dir,
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+        );
         // Top cap.
-        push_quad(inner0 + top, outer0 + top, outer1 + top, inner1 + top, Vec3::Y, &mut positions, &mut normals, &mut uvs);
+        push_quad(
+            inner0 + top,
+            outer0 + top,
+            outer1 + top,
+            inner1 + top,
+            Vec3::Y,
+            &mut positions,
+            &mut normals,
+            &mut uvs,
+        );
     }
 
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
 fn teardown_inner_world(
@@ -1251,9 +1302,18 @@ mod tests {
     #[test]
     fn chamber_floor_has_a_linear_normal_map_for_lit_relief() {
         let (albedo, normal) = chamber_floor_textures();
-        assert_eq!(albedo.texture_descriptor.size.width, FLOOR_TEXTURE_SIZE as u32);
-        assert_eq!(normal.texture_descriptor.size.height, FLOOR_TEXTURE_SIZE as u32);
-        assert_eq!(albedo.texture_descriptor.format, TextureFormat::Rgba8UnormSrgb);
+        assert_eq!(
+            albedo.texture_descriptor.size.width,
+            FLOOR_TEXTURE_SIZE as u32
+        );
+        assert_eq!(
+            normal.texture_descriptor.size.height,
+            FLOOR_TEXTURE_SIZE as u32
+        );
+        assert_eq!(
+            albedo.texture_descriptor.format,
+            TextureFormat::Rgba8UnormSrgb
+        );
         // Normal maps are data, never gamma-corrected color images.
         assert_eq!(normal.texture_descriptor.format, TextureFormat::Rgba8Unorm);
     }
@@ -1261,7 +1321,9 @@ mod tests {
     #[test]
     fn chamber_floor_radial_flagstones_have_physical_3d_relief() {
         let mesh = build_radial_flagstone_mesh(6.0, 8.4, 0.024, 24, 0.010);
-        let pos_attr = mesh.attribute(Mesh::ATTRIBUTE_POSITION).expect("positions present");
+        let pos_attr = mesh
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+            .expect("positions present");
         let positions = pos_attr.as_float3().expect("float3 positions");
         assert!(!positions.is_empty(), "mesh must have vertices");
         // 24 segments * 5 quads * 6 vertices per quad = 720 vertices
@@ -1294,7 +1356,33 @@ mod tests {
             gapped_verts < full_verts,
             "a doorway gap must omit geometry compared to a fully closed ring"
         );
-        assert!(gapped_verts > 0, "the ring must still enclose everywhere but the doorway");
+        assert!(
+            gapped_verts > 0,
+            "the ring must still enclose everywhere but the doorway"
+        );
+    }
+
+    #[test]
+    fn rotunda_drum_mesh_is_closed_and_round_at_the_collision_boundary() {
+        // The visible drum is intentionally just outside the +/-36m player clamp.
+        // A square-wall regression would either have vertices beyond this radial
+        // envelope or omit the continuous 64-bay inner shell altogether.
+        let radius = 37.5;
+        let mesh = build_wall_ring_mesh(radius, 22.0, 1.5, 64, 0.0, 0.0);
+        let positions = mesh
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+            .expect("positions present")
+            .as_float3()
+            .expect("float3 positions");
+        assert_eq!(
+            positions.len(),
+            64 * 3 * 6,
+            "every drum bay has three closed faces"
+        );
+        assert!(positions.iter().all(|p| {
+            let horizontal_radius = Vec2::new(p[0], p[2]).length();
+            horizontal_radius >= radius - 0.01 && horizontal_radius <= radius + 1.51
+        }));
     }
 
     #[test]
