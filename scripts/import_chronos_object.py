@@ -6,6 +6,8 @@ import bpy
 from mathutils import Vector
 
 MAX_GAME_TRIANGLES = 75_000
+CHRONOS_FORWARD_AXIS = "NEGATIVE_Y"
+CHRONOS_UP_AXIS = "Z"
 
 def main():
     args = argparse.ArgumentParser()
@@ -13,7 +15,16 @@ def main():
     args.add_argument("--output", required=True)
     ns = args.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else None)
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.wm.obj_import(filepath=ns.input)
+    # Chronos/TripoSR declares Z-up in triposr_artifact.json. Blender's OBJ
+    # importer defaults to Y-up; accepting that default rotates every generated
+    # subject onto its side before the later glTF Y-up conversion. Import in the
+    # producer's declared basis so the GLB exporter performs the one intended
+    # Z-up -> Y-up conversion.
+    bpy.ops.wm.obj_import(
+        filepath=ns.input,
+        forward_axis=CHRONOS_FORWARD_AXIS,
+        up_axis=CHRONOS_UP_AXIS,
+    )
     meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
     if len(meshes) != 1:
         raise RuntimeError(f"expected exactly one Chronos source mesh, found {len(meshes)}")

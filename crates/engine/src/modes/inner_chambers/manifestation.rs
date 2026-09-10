@@ -16,13 +16,13 @@ use super::InnerChambersState;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use bevy::winit::{UpdateMode, WinitSettings};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -59,10 +59,7 @@ impl Plugin for ManifestationPlugin {
             )
                 .run_if(in_state(InnerChambersState::Navigating)),
         )
-        .add_systems(
-            OnEnter(InnerChambersState::Exiting),
-            teardown_manifestation,
-        );
+        .add_systems(OnEnter(InnerChambersState::Exiting), teardown_manifestation);
     }
 }
 
@@ -142,7 +139,9 @@ pub struct ManifestationFlash {
 }
 
 #[derive(Component)]
-pub struct ManifestationRevealSmoke { pub timer: f32 }
+pub struct ManifestationRevealSmoke {
+    pub timer: f32,
+}
 
 #[derive(Component)]
 pub struct ManifestationPromptUi;
@@ -257,25 +256,46 @@ fn setup_manifestation_pedestal(
         Name::new("ManifestationPedestal_Cushion"),
     ));
 
-    // 6. Altar Dual Lighting
+    // 6. Altar exhibition lighting: a real warm key spotlight, a neutral fill,
+    // and restrained cyan underglow. The former "spotlight" was an
+    // omnidirectional point light directly overhead, while the strong blue
+    // underlight washed generated vertex colours cyan.
     commands.spawn((
-        PointLight {
-            intensity: 75_000.0,
-            range: 12.0,
+        SpotLight {
+            intensity: 115_000.0,
             color: Color::srgb(1.0, 0.96, 0.88),
-            shadows_enabled: false,
+            range: 14.0,
+            radius: 0.24,
+            inner_angle: 0.28,
+            outer_angle: 0.72,
+            shadows_enabled: true,
             ..default()
         },
-        Transform::from_xyz(p.x, p.y + 4.5, p.z),
+        Transform::from_xyz(p.x - 2.1, p.y + 5.2, p.z + 2.0)
+            .looking_at(Vec3::new(p.x, p.y + 1.9, p.z), Vec3::Y),
         ManifestationElement,
-        Name::new("ManifestationPedestal_Spotlight"),
+        Name::new("ManifestationPedestal_KeySpotlight"),
     ));
 
     commands.spawn((
         PointLight {
-            intensity: 28_000.0,
-            range: 5.0,
-            color: Color::srgb(0.30, 0.85, 1.0),
+            intensity: 22_000.0,
+            range: 7.0,
+            radius: 0.35,
+            color: Color::srgb(0.78, 0.86, 1.0),
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(p.x + 2.0, p.y + 3.0, p.z + 1.2),
+        ManifestationElement,
+        Name::new("ManifestationPedestal_FillLight"),
+    ));
+
+    commands.spawn((
+        PointLight {
+            intensity: 10_000.0,
+            range: 4.0,
+            color: Color::srgb(0.24, 0.62, 0.86),
             shadows_enabled: false,
             ..default()
         },
@@ -289,60 +309,64 @@ fn setup_manifestation_pedestal(
     spawn_idle_symbol(&mut commands, &mut meshes, &mut materials, &mut state);
 
     // 8. Proximity prompt HUD (hidden by default)
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            left: Val::Percent(36.0),
-            bottom: Val::Px(110.0),
-            padding: UiRect::axes(Val::Px(24.0), Val::Px(10.0)),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.04, 0.06, 0.10, 0.92)),
-        GlobalZIndex(940),
-        ManifestationElement,
-        ManifestationProximityPrompt,
-        Visibility::Hidden,
-    )).with_children(|parent| {
-        parent.spawn((
-            Text::new("✦  PRESS [E] TO MANIFEST ARTIFACT  ✦"),
-            TextFont {
-                font_size: 18.0,
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(36.0),
+                bottom: Val::Px(110.0),
+                padding: UiRect::axes(Val::Px(24.0), Val::Px(10.0)),
                 ..default()
             },
-            TextColor(Color::srgb(1.0, 0.88, 0.40)),
-        ));
-    });
+            BackgroundColor(Color::srgba(0.04, 0.06, 0.10, 0.92)),
+            GlobalZIndex(940),
+            ManifestationElement,
+            ManifestationProximityPrompt,
+            Visibility::Hidden,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("✦  PRESS [E] TO MANIFEST ARTIFACT  ✦"),
+                TextFont {
+                    font_size: 18.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(1.0, 0.88, 0.40)),
+            ));
+        });
 
     // 9. Real-Time Status Banner (Top Center)
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            left: Val::Percent(25.0),
-            top: Val::Px(20.0),
-            width: Val::Percent(50.0),
-            padding: UiRect::axes(Val::Px(20.0), Val::Px(8.0)),
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            border: UiRect::all(Val::Px(1.0)),
-            ..default()
-        },
-        BorderColor::all(Color::srgb(0.4, 0.6, 0.8)),
-        BackgroundColor(Color::srgba(0.03, 0.04, 0.08, 0.90)),
-        GlobalZIndex(950),
-        ManifestationElement,
-        ManifestationStatusBanner,
-        Visibility::Hidden,
-    )).with_children(|parent| {
-        parent.spawn((
-            Text::new(""),
-            TextFont {
-                font_size: 16.0,
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(25.0),
+                top: Val::Px(20.0),
+                width: Val::Percent(50.0),
+                padding: UiRect::axes(Val::Px(20.0), Val::Px(8.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(1.0)),
                 ..default()
             },
-            TextColor(Color::srgb(1.0, 1.0, 1.0)),
-            ManifestationStatusText,
-        ));
-    });
+            BorderColor::all(Color::srgb(0.4, 0.6, 0.8)),
+            BackgroundColor(Color::srgba(0.03, 0.04, 0.08, 0.90)),
+            GlobalZIndex(950),
+            ManifestationElement,
+            ManifestationStatusBanner,
+            Visibility::Hidden,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new(""),
+                TextFont {
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(1.0, 1.0, 1.0)),
+                ManifestationStatusText,
+            ));
+        });
 
     // 10. Text Input Prompt Modal (hidden by default)
     commands.spawn((
@@ -516,15 +540,22 @@ fn spawn_phasing_hourglass(
         .with_children(|parent| {
             // Upper cone (pointing downward to waist)
             parent.spawn((
-                Mesh3d(meshes.add(Cone { radius: 0.22, height: 0.30 })),
+                Mesh3d(meshes.add(Cone {
+                    radius: 0.22,
+                    height: 0.30,
+                })),
                 MeshMaterial3d(glass_mat.clone()),
-                Transform::from_xyz(0.0, 0.15, 0.0).with_rotation(Quat::from_rotation_x(std::f32::consts::PI)),
+                Transform::from_xyz(0.0, 0.15, 0.0)
+                    .with_rotation(Quat::from_rotation_x(std::f32::consts::PI)),
                 Name::new("Hourglass_UpperGlass"),
             ));
 
             // Lower cone (pointing upward to waist)
             parent.spawn((
-                Mesh3d(meshes.add(Cone { radius: 0.22, height: 0.30 })),
+                Mesh3d(meshes.add(Cone {
+                    radius: 0.22,
+                    height: 0.30,
+                })),
                 MeshMaterial3d(glass_mat.clone()),
                 Transform::from_xyz(0.0, -0.15, 0.0),
                 Name::new("Hourglass_LowerGlass"),
@@ -648,7 +679,14 @@ fn animate_pedestal_symbols(
     state: Res<ManifestationState>,
     mut hourglass_query: Query<(&mut Transform, &Children, &PhasingHourglass)>,
     mut red_x_query: Query<&mut Transform, (With<FloatingRedX>, Without<PhasingHourglass>)>,
-    mut idle_query: Query<&mut Transform, (With<FloatingIdleSymbol>, Without<PhasingHourglass>, Without<FloatingRedX>)>,
+    mut idle_query: Query<
+        &mut Transform,
+        (
+            With<FloatingIdleSymbol>,
+            Without<PhasingHourglass>,
+            Without<FloatingRedX>,
+        ),
+    >,
     mut light_query: Query<&mut PointLight, Without<PedestalUnderglowLight>>,
     mut underglow_query: Query<&mut PointLight, With<PedestalUnderglowLight>>,
 ) {
@@ -676,7 +714,7 @@ fn animate_pedestal_symbols(
 
     // 2. Animate Pedestal Underglow: plasma charge buildup during manifestation
     for mut light in &mut underglow_query {
-        let base_intensity = 28_000.0;
+        let base_intensity = 10_000.0;
         if state.phase == ManifestationPhase::Manifesting {
             let pulse = (elapsed * (3.0 + state.pedestal_charge * 8.0)).sin() * 0.25 + 0.75;
             let charge_boost = state.pedestal_charge * 65_000.0;
@@ -686,7 +724,7 @@ fn animate_pedestal_symbols(
             light.color = Color::srgb(r, g, 1.0);
         } else {
             light.intensity = base_intensity;
-            light.color = Color::srgb(0.30, 0.85, 1.0);
+            light.color = Color::srgb(0.24, 0.62, 0.86);
         }
     }
 
@@ -710,8 +748,20 @@ fn handle_manifestation_input(
     mut state: ResMut<ManifestationState>,
     channels: Res<ManifestationChannels>,
     camera_query: Query<&Transform, With<crate::modes::inner_chambers::camera::PlayerCamera>>,
-    mut proximity_query: Query<&mut Visibility, (With<ManifestationProximityPrompt>, Without<ManifestationPromptUi>)>,
-    mut modal_query: Query<&mut Visibility, (With<ManifestationPromptUi>, Without<ManifestationProximityPrompt>)>,
+    mut proximity_query: Query<
+        &mut Visibility,
+        (
+            With<ManifestationProximityPrompt>,
+            Without<ManifestationPromptUi>,
+        ),
+    >,
+    mut modal_query: Query<
+        &mut Visibility,
+        (
+            With<ManifestationPromptUi>,
+            Without<ManifestationProximityPrompt>,
+        ),
+    >,
     mut text_query: Query<&mut Text, With<ManifestationPromptText>>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -721,14 +771,20 @@ fn handle_manifestation_input(
         return;
     };
 
-    let player_pos_2d = Vec2::new(player_transform.translation.x, player_transform.translation.z);
+    let player_pos_2d = Vec2::new(
+        player_transform.translation.x,
+        player_transform.translation.z,
+    );
     let pedestal_pos_2d = Vec2::new(MANIFESTATION_PEDESTAL_POS.x, MANIFESTATION_PEDESTAL_POS.z);
     let dist = (player_pos_2d - pedestal_pos_2d).length();
 
     let is_near = dist <= 3.2;
 
     if let Ok(mut vis) = proximity_query.single_mut() {
-        *vis = if is_near && state.phase != ManifestationPhase::Prompting && state.phase != ManifestationPhase::Manifesting {
+        *vis = if is_near
+            && state.phase != ManifestationPhase::Prompting
+            && state.phase != ManifestationPhase::Manifesting
+        {
             Visibility::Visible
         } else {
             Visibility::Hidden
@@ -771,19 +827,44 @@ fn handle_manifestation_input(
             }
 
             for (key, ch) in [
-                (KeyCode::KeyA, 'a'), (KeyCode::KeyB, 'b'), (KeyCode::KeyC, 'c'),
-                (KeyCode::KeyD, 'd'), (KeyCode::KeyE, 'e'), (KeyCode::KeyF, 'f'),
-                (KeyCode::KeyG, 'g'), (KeyCode::KeyH, 'h'), (KeyCode::KeyI, 'i'),
-                (KeyCode::KeyJ, 'j'), (KeyCode::KeyK, 'k'), (KeyCode::KeyL, 'l'),
-                (KeyCode::KeyM, 'm'), (KeyCode::KeyN, 'n'), (KeyCode::KeyO, 'o'),
-                (KeyCode::KeyP, 'p'), (KeyCode::KeyQ, 'q'), (KeyCode::KeyR, 'r'),
-                (KeyCode::KeyS, 's'), (KeyCode::KeyT, 't'), (KeyCode::KeyU, 'u'),
-                (KeyCode::KeyV, 'v'), (KeyCode::KeyW, 'w'), (KeyCode::KeyX, 'x'),
-                (KeyCode::KeyY, 'y'), (KeyCode::KeyZ, 'z'), (KeyCode::Space, ' '),
-                (KeyCode::Digit0, '0'), (KeyCode::Digit1, '1'), (KeyCode::Digit2, '2'),
-                (KeyCode::Digit3, '3'), (KeyCode::Digit4, '4'), (KeyCode::Digit5, '5'),
-                (KeyCode::Digit6, '6'), (KeyCode::Digit7, '7'), (KeyCode::Digit8, '8'),
-                (KeyCode::Digit9, '9'), (KeyCode::Minus, '-'),
+                (KeyCode::KeyA, 'a'),
+                (KeyCode::KeyB, 'b'),
+                (KeyCode::KeyC, 'c'),
+                (KeyCode::KeyD, 'd'),
+                (KeyCode::KeyE, 'e'),
+                (KeyCode::KeyF, 'f'),
+                (KeyCode::KeyG, 'g'),
+                (KeyCode::KeyH, 'h'),
+                (KeyCode::KeyI, 'i'),
+                (KeyCode::KeyJ, 'j'),
+                (KeyCode::KeyK, 'k'),
+                (KeyCode::KeyL, 'l'),
+                (KeyCode::KeyM, 'm'),
+                (KeyCode::KeyN, 'n'),
+                (KeyCode::KeyO, 'o'),
+                (KeyCode::KeyP, 'p'),
+                (KeyCode::KeyQ, 'q'),
+                (KeyCode::KeyR, 'r'),
+                (KeyCode::KeyS, 's'),
+                (KeyCode::KeyT, 't'),
+                (KeyCode::KeyU, 'u'),
+                (KeyCode::KeyV, 'v'),
+                (KeyCode::KeyW, 'w'),
+                (KeyCode::KeyX, 'x'),
+                (KeyCode::KeyY, 'y'),
+                (KeyCode::KeyZ, 'z'),
+                (KeyCode::Space, ' '),
+                (KeyCode::Digit0, '0'),
+                (KeyCode::Digit1, '1'),
+                (KeyCode::Digit2, '2'),
+                (KeyCode::Digit3, '3'),
+                (KeyCode::Digit4, '4'),
+                (KeyCode::Digit5, '5'),
+                (KeyCode::Digit6, '6'),
+                (KeyCode::Digit7, '7'),
+                (KeyCode::Digit8, '8'),
+                (KeyCode::Digit9, '9'),
+                (KeyCode::Minus, '-'),
             ] {
                 if keyboard.just_pressed(key) && state.prompt_buffer.len() < 64 {
                     state.prompt_buffer.push(ch);
@@ -791,7 +872,11 @@ fn handle_manifestation_input(
             }
 
             if let Ok(mut text) = text_query.single_mut() {
-                let cursor = if (time.elapsed_secs() * 2.0).fract() < 0.5 { "_" } else { " " };
+                let cursor = if (time.elapsed_secs() * 2.0).fract() < 0.5 {
+                    "_"
+                } else {
+                    " "
+                };
                 text.0 = format!("> {}{}", state.prompt_buffer, cursor);
             }
 
@@ -829,7 +914,11 @@ fn handle_manifestation_input(
                 spawn_phasing_hourglass(&mut commands, &mut meshes, &mut materials, &mut state);
 
                 // Dispatch background render worker
-                dispatch_manifestation_worker(prompt, channels.sender.clone(), channels.active_pid.clone());
+                dispatch_manifestation_worker(
+                    prompt,
+                    channels.sender.clone(),
+                    channels.active_pid.clone(),
+                );
             }
         }
         ManifestationPhase::Manifesting => {
@@ -907,10 +996,16 @@ fn target_glb_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            paths.push(dir.join("assets").join("scenes").join("manifested_artifact.glb"));
+            paths.push(
+                dir.join("assets")
+                    .join("scenes")
+                    .join("manifested_artifact.glb"),
+            );
         }
     }
-    paths.push(PathBuf::from(r"C:\archetypes\assets\scenes\manifested_artifact.glb"));
+    paths.push(PathBuf::from(
+        r"C:\archetypes\assets\scenes\manifested_artifact.glb",
+    ));
     paths
 }
 
@@ -970,14 +1065,23 @@ fn dispatch_manifestation_worker(
         });
 
         let mut command = Command::new(&chronos);
-        command.args(["first-light", "--prompt"]).arg(&prompt)
-            .args(["--out-dir"]).arg(&bundle)
+        command
+            .args(["first-light", "--prompt"])
+            .arg(&prompt)
+            .args(["--out-dir"])
+            .arg(&bundle)
             .args(["--geometry-forge", "--void"]);
 
-        // Use fast, compact checkpoint (Dreamshaper 8, 2.1GB) by default to eliminate
-        // the 29GB Flux Schnell VRAM hang on 12GB GPUs when sharing with engine.exe
+        // The installed 6.6 GB Juggernaut SDXL checkpoint stays inside the
+        // Forge's 12 GB VRAM while producing materially better literal-subject
+        // references than SD 1.5. A live Einstein probe completed the complete
+        // governed path in the same sub-minute latency class. ComfyUI is
+        // unloaded before TripoSR, so these engines do not residency-stack.
         if std::env::var("CHRONOS_FORGE_REFERENCE_CKPT").is_err() {
-            command.env("CHRONOS_FORGE_REFERENCE_CKPT", "dreamshaper_8.safetensors");
+            command.env(
+                "CHRONOS_FORGE_REFERENCE_CKPT",
+                MANIFESTATION_REFERENCE_CHECKPOINT,
+            );
         }
         command.env("CHRONOS_FLUX_PROFILE", "lowvram");
         command.stdout(std::process::Stdio::piped());
@@ -1060,7 +1164,10 @@ fn dispatch_manifestation_worker(
 
         if !exit_status.success() {
             let err_summary = if !err_lines.is_empty() {
-                err_lines.last().cloned().unwrap_or_else(|| format!("Chronos exited with code {exit_status}"))
+                err_lines
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| format!("Chronos exited with code {exit_status}"))
             } else if !last_stage_msg.is_empty() {
                 last_stage_msg
             } else {
@@ -1095,7 +1202,8 @@ fn dispatch_manifestation_worker(
             let _ = sender.send(ManifestationEvent::Failure {
                 prompt,
                 stage_id: Some("geometry_forge".into()),
-                detail: "TripoSR artifact receipt missing from Chronos bundle; failing closed.".into(),
+                detail: "TripoSR artifact receipt missing from Chronos bundle; failing closed."
+                    .into(),
             });
             return;
         }
@@ -1110,10 +1218,16 @@ fn dispatch_manifestation_worker(
 
         let blender_exe = r"C:\Program Files\Blender Foundation\Blender 4.5\blender.exe";
         let mut blender_cmd = Command::new(blender_exe);
-        blender_cmd.arg("-b").arg("--factory-startup").arg("-P").arg(&script_path)
+        blender_cmd
+            .arg("-b")
+            .arg("--factory-startup")
+            .arg("-P")
+            .arg(&script_path)
             .arg("--")
-            .arg("--input").arg(&mesh)
-            .arg("--output").arg(&primary_output);
+            .arg("--input")
+            .arg(&mesh)
+            .arg("--output")
+            .arg(&primary_output);
         #[cfg(windows)]
         {
             blender_cmd.creation_flags(CREATE_NO_WINDOW);
@@ -1141,7 +1255,14 @@ fn dispatch_manifestation_worker(
         }
 
         match blender_out {
-            Ok(out) if out.status.success() && primary_output.is_file() && primary_output.metadata().map(|m| m.len() > 1024).unwrap_or(false) => {
+            Ok(out)
+                if out.status.success()
+                    && primary_output.is_file()
+                    && primary_output
+                        .metadata()
+                        .map(|m| m.len() > 1024)
+                        .unwrap_or(false) =>
+            {
                 for other in &target_paths[1..] {
                     if let Some(p) = other.parent() {
                         let _ = std::fs::create_dir_all(p);
@@ -1165,9 +1286,17 @@ fn dispatch_manifestation_worker(
                 let err_text = String::from_utf8_lossy(&out.stderr);
                 let out_text = String::from_utf8_lossy(&out.stdout);
                 let detail = if !err_text.trim().is_empty() {
-                    err_text.lines().last().unwrap_or("Blender conversion error").to_string()
+                    err_text
+                        .lines()
+                        .last()
+                        .unwrap_or("Blender conversion error")
+                        .to_string()
                 } else if !out_text.trim().is_empty() {
-                    out_text.lines().last().unwrap_or("Blender conversion failed").to_string()
+                    out_text
+                        .lines()
+                        .last()
+                        .unwrap_or("Blender conversion failed")
+                        .to_string()
                 } else {
                     format!("Blender exit code {}", out.status)
                 };
@@ -1189,7 +1318,11 @@ fn dispatch_manifestation_worker(
 }
 
 fn cancel_manifestation(channels: &ManifestationChannels) {
-    let pid = channels.active_pid.lock().ok().and_then(|mut slot| slot.take());
+    let pid = channels
+        .active_pid
+        .lock()
+        .ok()
+        .and_then(|mut slot| slot.take());
     if let Some(pid) = pid {
         #[cfg(windows)]
         {
@@ -1215,7 +1348,12 @@ fn poll_manifestation_results(
 
     while let Ok(event) = receiver.try_recv() {
         match event {
-            ManifestationEvent::Stage { stage_id, pct, state: stage_state, message } => {
+            ManifestationEvent::Stage {
+                stage_id,
+                pct,
+                state: stage_state,
+                message,
+            } => {
                 state.current_stage_id = stage_id;
                 state.current_stage_pct = pct;
                 state.current_stage_state = stage_state;
@@ -1287,7 +1425,11 @@ fn poll_manifestation_results(
                     commands.spawn((
                         Mesh3d(meshes.add(Sphere::new(0.28 + (i % 4) as f32 * 0.10))),
                         MeshMaterial3d(smoke.clone()),
-                        Transform::from_xyz(p.x + a.cos() * 0.48, cushion_y + 0.30 + (i % 5) as f32 * 0.10, p.z + a.sin() * 0.48),
+                        Transform::from_xyz(
+                            p.x + a.cos() * 0.48,
+                            cushion_y + 0.30 + (i % 5) as f32 * 0.10,
+                            p.z + a.sin() * 0.48,
+                        ),
                         ManifestationRevealSmoke { timer: 0.0 },
                         ManifestationElement,
                         Name::new("ManifestationRevealSmoke"),
@@ -1299,7 +1441,9 @@ fn poll_manifestation_results(
                     .spawn((
                         SceneRoot(asset_server.load("scenes/manifested_artifact.glb#Scene0")),
                         Transform::from_xyz(p.x, cushion_y, p.z).with_scale(Vec3::splat(1.15)),
-                        ChronosExhibitTurntable { speed: 0.38 },
+                        // One revolution in about eleven seconds: slow enough
+                        // to inspect, fast enough that motion is unmistakable.
+                        ChronosExhibitTurntable { speed: 0.56 },
                         ManifestationElement,
                         Name::new("ManifestedChronosArtifact"),
                     ))
@@ -1308,7 +1452,11 @@ fn poll_manifestation_results(
                 state.active_artifact = Some(artifact_entity);
                 println!("[ManifestationSystem] Succeeded: Manifested '{prompt}' atop the altar!");
             }
-            ManifestationEvent::Failure { prompt: _, stage_id, detail } => {
+            ManifestationEvent::Failure {
+                prompt: _,
+                stage_id,
+                detail,
+            } => {
                 state.phase = ManifestationPhase::Failed;
                 state.current_stage_id = stage_id.unwrap_or_else(|| "failure".into());
                 state.error_message = detail.clone();
@@ -1404,6 +1552,8 @@ fn update_manifestation_hud(
 
 const ACTIVE_FRAME_INTERVAL: Duration = Duration::from_nanos(16_666_667);
 const MANIFESTING_FRAME_INTERVAL: Duration = Duration::from_nanos(66_666_667);
+const MANIFESTATION_REFERENCE_CHECKPOINT: &str =
+    "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors";
 
 fn manifestation_frame_interval(phase: &ManifestationPhase) -> Duration {
     if *phase == ManifestationPhase::Manifesting {
@@ -1454,7 +1604,10 @@ mod tests {
         assert_eq!(id, "sentinel");
         assert_eq!(pct, 6);
         assert_eq!(state, "done");
-        assert_eq!(msg, "Sentinel is reviewing your request - cleared - no prohibited use found");
+        assert_eq!(
+            msg,
+            "Sentinel is reviewing your request - cleared - no prohibited use found"
+        );
     }
 
     #[test]
@@ -1473,8 +1626,14 @@ mod tests {
     fn test_no_recipe_or_keyword_in_manifestation_dispatch() {
         // Assert that the manifestation module does NOT reference retired recipe scripts or keyword tables.
         let script = find_import_script().expect("import_chronos_object.py must be discoverable");
-        assert!(script.ends_with("import_chronos_object.py"), "must use generic import script");
-        assert!(!script.to_string_lossy().contains("manifest_artifact.py"), "manifest_artifact.py is retired and must never be referenced");
+        assert!(
+            script.ends_with("import_chronos_object.py"),
+            "must use generic import script"
+        );
+        assert!(
+            !script.to_string_lossy().contains("manifest_artifact.py"),
+            "manifest_artifact.py is retired and must never be referenced"
+        );
         let source = std::fs::read_to_string(script).expect("generic importer must be readable");
         assert!(
             source.contains("MAX_GAME_TRIANGLES"),
@@ -1483,6 +1642,11 @@ mod tests {
         assert!(
             source.contains("DECIMATE"),
             "generic importer must optimize generated meshes"
+        );
+        assert!(
+            source.contains("CHRONOS_UP_AXIS = \"Z\"")
+                && source.contains("up_axis=CHRONOS_UP_AXIS"),
+            "generic importer must honor Chronos's declared Z-up mesh basis"
         );
         for forbidden_recipe in ["strawberry", "panther", "whale", "diamond ring"] {
             assert!(
@@ -1515,6 +1679,14 @@ mod tests {
         assert_eq!(
             manifestation_frame_interval(&ManifestationPhase::Completed),
             ACTIVE_FRAME_INTERVAL
+        );
+    }
+
+    #[test]
+    fn manifestation_uses_the_measured_sdxl_reference_engine_for_every_prompt() {
+        assert_eq!(
+            MANIFESTATION_REFERENCE_CHECKPOINT,
+            "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
         );
     }
 }

@@ -160,6 +160,16 @@ Exhibition pedestals are spawned in `crates/engine/src/modes/inner_chambers/worl
 
 The artifact model is spawned directly on the cushion surface at **$y = 1.54\text{m}$**.
 
+### Live manifestation import basis
+
+Chronos Object mode records TripoSR output as **Z-up** in
+`engine_mesh/triposr_artifact.json`. The generic Blender handoff must therefore
+import OBJ with `up_axis='Z'` and `forward_axis='NEGATIVE_Y'` before exporting a
+Y-up GLB. Allowing Blender's Y-up OBJ default and then requesting Y-up GLB
+export performs the wrong conversion and visibly lays standing subjects on
+their sides. This rule is universal geometry handling; it is not a per-subject
+orientation recipe.
+
 ---
 
 ## 5. The Dual-Lighting Doctrine
@@ -181,21 +191,26 @@ A single omnidirectional light renders 3D models flat. Every exhibition pedestal
                     └───────────────┘
 ```
 
-1. **Overhead Spotlight:**
-   - Position: $(x, 5.2, z)$ directly above the model.
-   - Color: Crisp clean ivory (`Color::srgb(1.0, 0.98, 0.94)`).
-   - Intensity: `65_000.0`, Range: `12.0m`.
-   - Role: Defines edges, top specular highlights, and structural form.
+1. **Key Spotlight:**
+   - Type: a real directed `SpotLight`, not a point light with a spotlight name.
+   - Position: high and offset toward the camera-facing side of the model.
+   - Color: Crisp warm ivory (`Color::srgb(1.0, 0.96, 0.88)`).
+   - Role: Defines edges, top specular highlights, and structural form without flattening the front.
 
-2. **Showcase Underglow Light:**
+2. **Neutral Fill:**
+   - Type: broad, low-shadow `PointLight` from the opposite side of the key.
+   - Color: restrained neutral-cool white (`Color::srgb(0.78, 0.86, 1.0)`).
+   - Role: keeps the shadow side readable while preserving vertex colours.
+
+3. **Showcase Underglow Light:**
    - Position: $(x, 1.75, z)$ right at the base of the model.
    - Color: Tailored to the artifact's narrative essence:
      - Porcelain / Ceramic: Warm Amber (`Color::srgb(1.0, 0.88, 0.65)`)
      - Ceremonial / Altar: Soft Rose Ivory (`Color::srgb(1.0, 0.75, 0.85)`)
      - Mystic / Relic: Deep Burnished Gold (`Color::srgb(1.0, 0.82, 0.35)`)
      - Nature / Sylvan: Emerald Verdant Glow (`Color::srgb(0.55, 0.95, 0.65)`)
-   - Intensity: `22_000.0`, Range: `4.5m`.
-   - Role: Uplights under-surfaces, fills crevices, and bathes the cushion in ambient glow.
+   - The live manifestation pedestal uses a restrained cyan base of `10_000.0`; charge animation may raise it temporarily while Chronos works.
+   - Role: Uplights under-surfaces and communicates machine charge. It must not overpower neutral object colour after completion.
 
 ---
 
@@ -219,7 +234,15 @@ fn rotate_chronos_exhibits(
     }
 }
 ```
-Standard recommended turntable speed is **$0.25$ to $0.35\text{ rad/s}$** ($\approx 14^\circ–20^\circ/\text{second}$).
+Static exhibits may use **$0.25$ to $0.35\text{ rad/s}$**. The live manifestation
+pedestal uses **$0.56\text{ rad/s}$** (one revolution in about 11.2 seconds) so
+motion is unmistakable and the buyer can inspect the reconstructed rear side.
+
+The current TripoSR geometry engine consumes exactly one reference image. A
+second generated camera is not a reconstruction input unless it is persisted
+and consumed by either a multiview geometry engine or an explicit geometric
+constraint calculation. Until then, additional views may be described only as
+validation/retry evidence—not as multiview reconstruction.
 
 ---
 
