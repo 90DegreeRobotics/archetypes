@@ -96,5 +96,3 @@ Recover the broken 1.0.4 Windows release and complete the manifestation pipeline
 - Files touched:
   - `installer/version-history.json`
   - `installer/output/release.json`
-
-
