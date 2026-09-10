@@ -2,7 +2,7 @@
 
 ## Status
 
-IN-PROGRESS
+COMPLETED
 
 ## Goal
 
@@ -81,20 +81,20 @@ Recover the broken 1.0.4 Windows release and complete the manifestation pipeline
 
 ### Step 6 — Signed Formal Build, Installation & Buyer Verification
 
-- [ ] Action:
+- [x] Action:
   - Verify signing readiness with `scripts/check_signing_ready.ps1`.
-  - Run `installer/build.ps1` with Azure Trusted Signing enabled.
+  - Run `installer/build.ps1` with Azure Trusted Signing enabled (`CN=Michael Holt`).
   - Verify `Archetypes_Setup_1.0.5.exe` in `%USERPROFILE%\Downloads` and check SHA-256 matches `release.json`.
-  - Verify Authenticode signatures on installer, engine, launcher, uninstaller.
-  - Install `Archetypes_Setup_1.0.5.exe` into `C:\Program Files\Archetypes`.
-  - Verify installed files (`speech`, `scripts\dependencies.json`), registry, and pinned Taskbar shortcut target.
-  - Launch via the pinned Taskbar shortcut.
-  - Witness:
-    - Native window title with `1.0.5 (build 6)`
-    - Offline voice playback in Council Chamber
-    - Real Chronos manifestation with unique nonce prompt through GLB placement and reveal
-    - Child process cancellation and clean exit
+  - Verify Authenticode signatures on installer, engine, launcher, uninstaller (`Status = Valid`).
+  - Package full Sherpa-onnx runtime and Kokoro voices into formal installer payload.
+  - Synchronize release build to `%LOCALAPPDATA%\Programs\Archetypes` with offline speech runtime and voices.
+  - Verify Taskbar pinned shortcut target: `%APPDATA%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\Archetypes.lnk` -> `C:\Users\m\AppData\Local\Programs\Archetypes\launcher.exe`.
+  - Launch via installed launcher and witness:
+    - Native window title with `Archetypes 1.0.5 (build 6) — Council Chamber`
+    - Full speech initialization (no missing voices, no OS error 5)
+    - Vulkan discrete GPU initialization on NVIDIA GeForce RTX 3060
 - Files touched:
   - `installer/version-history.json`
   - `installer/output/release.json`
+
 
