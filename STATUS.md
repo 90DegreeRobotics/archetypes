@@ -1,10 +1,28 @@
 # Archetypes Status
 
-**Last Updated: 2026-09-09 (Inner Chambers Enclosed Castle Rotunda & Animated Council Table)**
+**Last Updated: 2026-09-10 (Inner Chambers Archetype Niche Chambers)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Inner Chambers archetype niche chambers (2026-09-10):** The five standing archetype
+  figures (Sentinel, Aura, Empath, Oracle, Nebula Jester) previously stood in open floor space
+  with only per-figure point lights. Each now has a real niche bay: a curved wall ring
+  (`build_wall_ring_mesh`) with a doorway gap that always faces the rotunda center, a tinted
+  floor medallion and low canopy giving a ceiling silhouette distinct from the 22m main vault,
+  and two flanking threshold pillars — stone tint derived per-archetype, not decorative. The
+  outer castle walls also gained repeated pilasters and a cornice band breaking up the flat
+  slabs (purely visual; collision unchanged). Caught and fixed a real geometry bug in the
+  process: the first 2.9m niche ring radius overlapped adjacent niches by ~0.13m (the five
+  bays sit only ~5.67m apart center-to-center); shrunk to 2.1m and added a regression test
+  asserting >=1.0m clearance between every pair. Added a new `ARCHETYPES_INNER_CAPTURE`
+  self-driving screenshot harness (mirrors the existing Mecha capture pattern) since there was
+  previously no reproducible way to get a rendered-frame proof of Inner Chambers without a
+  human at the keyboard; it caught two more framing bugs (a too-early boot-veil trigger, and a
+  camera stand-off formula that put the Empath shot inside its own wall) before they shipped.
+  Still open: the outer wall is still 4 flat slabs, not a true circular drum, and the Step 5
+  multiview-reconstruction evaluation from the same plan was not touched this session. Plan:
+  `docs/ledger/2026/09/plan_2026-09-09_2220_inner_chamber_architecture_and_multiview.md`.
 - **Inner Chambers Castle Rotunda & Animated Council Table (2026-09-09):** Inner Chambers was overhauled from an empty open void into a massive enclosed castle great hall ($76\text{m} \times 76\text{m}$, $22\text{m}$ high). Features a dark polished stone floor at $y = 0.0$, a two-tiered raised stone dais ($R = 6.0\text{m}$ step, $R = 4.8\text{m}$ platform at $y = 0.30\text{m}$), 4 solid enclosing perimeter walls with stone buttress pillars, an enclosed vaulted ceiling with dark iron/timber cross-beams, 8 perimeter wall sconce braziers, and dual overhead spotlights. Centered on the dais is the animated Flower-of-Life Council Table (`assets/scenes/table.glb`, scale 2.6, origin $y = 2.34\text{m}$) with its rotating, pulsing `Stargate_Portal` cyan vortex. The player spectator camera spawns elevated looking directly at the table with smooth 6DOF flight (WASD fly, Space rise, Shift/C descend, Mouse 360° look). All legacy placeholder primitives (cubes, lines, spheres) were purged from the room. Fixed table visibility gating in `crates/engine/src/chamber/camera.rs` so exclusive modes never hide non-ritual scene elements. Verified with 100/100 workspace tests and staged to Desktop via `pwsh -File scripts\install_shortcut.ps1`.
 - **NeuroCognica Start Menu identity + family icon (2026-08-25):** Archetypes now installs one flat
   `Programs\NeuroCognica\Archetypes.lnk` beside ChronoSophia2, NC Company Database, EOAI-MGS and Chirox, per
@@ -94,6 +112,17 @@ This document tracks time-sensitive status, current blockers, and recent test ru
 - **Table geometry:** the physical table shell still reads as thin against near-black lighting. Blocked on the operator's reference image.
 
 ## Verification
+- **Inner Chambers archetype niche chambers (2026-09-10):** `cargo test --workspace` passed
+  116/116 (92 engine incl. 4 new focused tests on the new mesh builder and niche geometry, 19
+  launcher, 5 windows_identity). `pwsh -File scripts\install_shortcut.ps1` rebuilt the release
+  workspace and restaged Desktop/Start Menu/Taskbar; installed `engine.exe`/`launcher.exe`
+  SHA-256 verified against the fresh build. New `ARCHETYPES_INNER_CAPTURE=1` self-driving
+  capture produced 7 real rendered screenshots from the actual rebuilt binary under
+  `artifacts/visual-proof/inner-chambers-capture-2026-09-10/`: a top-down layout shot showing
+  the table portal, manifestation altar, exhibit pedestals, and all five niche edges in one
+  frame; the table/dais establishing shot; and one portrait per archetype niche showing the
+  figure framed by its own tinted wall and flanking threshold pillars. This is a rendered-frame
+  proof, not a self-approval of the visual direction — the operator has not reviewed it.
 - **Inner Chambers Castle Rotunda & Animated Council Table (2026-09-09):** `cargo test --workspace` passed 100/100 tests (79 engine, 16 launcher, 5 windows_identity). Desktop restaged via `scripts\install_shortcut.ps1` with fresh `dist\engine.exe` release binary and staged `assets\scenes\table.glb`. Table visibility unblocked in `chamber/camera.rs`, legacy primitive shapes purged from `world.rs`, 6DOF flight verified.
 - **Honest RC (2026-08-16):** `cargo test --workspace` passed (79 engine + 16 launcher). Sentinel `certify --strict` **PASS**; readiness **candidate**. ARP install/uninstall proven (HKCU, per-user Programs\Archetypes, AppData kept). Desktop restage; capture `00_title_arch.png` / `01_title_subtitle.png` / `02_lore_main_menu.png`. PE FileVersion 0.3.0.0.
 - **Product depth (2026-08-16):** `cargo test --workspace` passed (78 engine + 15 launcher). Sentinel `adoption_readiness` PASS (candidate). Hexagram camera, seven Inner Chambers, council interior crossing, world-memory lineage, and launcher sidecar start are covered by unit tests. Desktop restage via `scripts\install_shortcut.ps1`.

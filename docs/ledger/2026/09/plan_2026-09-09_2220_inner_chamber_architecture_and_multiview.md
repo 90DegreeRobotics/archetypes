@@ -1,7 +1,7 @@
 # Plan: Inner Chamber architecture and real multiview evaluation — 2026-09-09 22:20
 
 ## Status
-PENDING
+IN PROGRESS — Steps 2-4 landed and verified in a follow-up session (2026-09-10); Step 5 (multiview evaluation) not started.
 
 ## Goal
 Replace the current open warehouse-like Council Chamber blockout with a legible central rotunda, a physical light-reactive floor, and one explorable chamber for each of the five standing archetype meshes (Sentinel, Aura, Empath, Oracle, and Nebula Jester). Use those rooms as the first live test bed for distinct archetype design languages. In parallel, evaluate an additional reconstruction view honestly: validation-only while TripoSR remains single-view, and geometry-constraining only after a 12 GB-safe multiview engine proves it consumes distinct persisted views.
@@ -62,3 +62,68 @@ Replace the current open warehouse-like Council Chamber blockout with a legible 
 - [ ] Update architecture/user documentation, mark each acceptance item with evidence, explicitly stage owned files, commit to `main`, push `origin main`, and prove clean local/remote parity.
 - Files touched: this plan and relevant truth docs.
 - Expected outcome: No unfinished source-only chamber work and no release claim without its installed witness.
+
+## Session update — 2026-09-10
+
+This unit was picked back up in a fresh session that read the codebase directly rather than
+capturing a pre-move screenshot set first (Step 1's own prescribed order was not followed —
+noted honestly rather than checking that box). What actually landed, source-verified against
+`crates/engine/src/modes/inner_chambers/world.rs`, `camera.rs`, and `capture.rs`:
+
+- **Step 2 (rotunda architecture) — partially done.** The outer walls are still 4 flat
+  `Cuboid` slabs, not a true circular drum — that part of Step 2 is still open. What was
+  added: repeated wall pilasters (`CastlePilaster_*`, 6 bays per wall) breaking up the flat
+  planes, and a continuous cornice band (`CastleCornice{North,South,East,West}`) at the wall
+  top. Collision is untouched (still the existing +/-36 clamp), so this is purely visual.
+- **Step 3 (floor legibility) — already substantially satisfied** by earlier work
+  (`build_radial_flagstone_mesh` courses + generated normal map + key/fill/rim light rig);
+  confirmed still correct, no changes made this session.
+- **Step 4 (five archetype chambers) — done.** The five standing figures previously stood in
+  open floor space with only per-figure point lights; they now each have a real niche bay:
+  a curved wall ring (`build_wall_ring_mesh`, a new reusable mesh builder) with a doorway gap
+  that always faces the rotunda center, a tinted floor medallion and low canopy (distinct
+  ceiling silhouette from the 22m main vault), and two flanking threshold pillars. Stone tint
+  is derived per-archetype (`niche_stone` field), not decorative.
+  - **Real bug caught and fixed during this work, not just claimed:** the first geometry pass
+    used a 2.9m ring radius, but the five niches sit only ~5.67m apart center-to-center
+    (measured from the authored figure positions) — adjacent rings physically overlapped by
+    ~0.13m. Shrunk to 2.1m radius (>=1.47m clearance) and added a regression test
+    (`adjacent_niche_rings_never_overlap`) asserting >=1.0m clearance between every pair.
+  - Collision (`camera.rs`) gates each niche's doorway arc explicitly, matching the visual
+    doorway exactly — outside the door arc, the niche wall blocks entry; the interior obstacle
+    list already covering pedestals/table/characters/altar is unchanged.
+- **Step 5 (multiview evaluation) — not started.** No Chronos2 engine research or benchmarking
+  was done this session. Still fully open.
+- **Step 6 (verification) — done, with real evidence, not a claim.**
+  - `cargo test --workspace`: 116 passed, 0 failed (92 engine incl. 4 new focused tests on the
+    new mesh builder / niche geometry, 19 launcher, 5 windows_identity).
+  - A new self-driving capture harness (`ARCHETYPES_INNER_CAPTURE=1`, mirrors the existing
+    `ARCHETYPES_MECHA_CAPTURE` pattern) was added specifically because there was no existing
+    way to get a reproducible rendered-frame proof of Inner Chambers without a human at the
+    keyboard. It boot-skips the ~11s title veil and main menu the same way the real
+    "Inner Chambers" button does (forces `ChamberState::MainMenu`, despawns `MainMenuUi`,
+    inserts `TriggerInnerChambers`), switches the player camera to free flight so obstacle/
+    niche collision never fights a teleport, and screenshots seven authored vantage points.
+  - This caught three real framing bugs before they were reported as done: (1) the first
+    capture attempt showed nothing but the boot veil — the trigger fired before the ~11s boot
+    timer, fixed by force-skipping `ChamberState` instead of waiting; (2) the Empath niche shot
+    put the camera *inside* the wall ring because the original stand-off formula was a fraction
+    of distance-from-hall-center, which breaks for a niche close to the hall center — fixed to
+    a fixed stand-off from the niche's own center; (3) a ground-level "overview" shot looked
+    like a wall of flat cylinders — not a bug, the 23m-wide/5.6m-tall niche row genuinely fills
+    that framing at that distance (checked by hand against the camera's ~45 degree default
+    vertical FOV) — resolved by using a near-top-down layout angle instead, which is more
+    useful for verification anyway.
+  - Screenshots: `artifacts/visual-proof/inner-chambers-capture-2026-09-10/` —
+    `00_rotunda_overview.png` (top-down: table portal, manifestation altar, pedestals, niche
+    edges all visible in one frame), `01_table_and_dais.png`, and one portrait each for
+    `02_niche_sentinel.png` .. `06_niche_nebula_jester.png`, each showing the figure framed by
+    its own tinted wall and flanking threshold pillars.
+  - `pwsh -File scripts\install_shortcut.ps1` rebuilt the **release** workspace and restaged
+    Desktop/Start Menu/Taskbar shortcuts; installed `engine.exe`/`launcher.exe` SHA-256 verified
+    against the fresh build.
+- **Step 7 — pending this commit.** This plan and `STATUS.md` are being updated in the same
+  change that commits and pushes the work.
+
+**What remains open for a future session:** the outer wall is still a flat-sided box (true
+circular drum not built), and Step 5's multiview evaluation hasn't been touched at all.

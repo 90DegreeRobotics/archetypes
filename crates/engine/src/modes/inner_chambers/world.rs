@@ -10,6 +10,32 @@ use bevy::render::render_resource::{Extent3d, PrimitiveTopology, TextureDimensio
 /// still travels through Bevy's normal-map lighting path.
 const FLOOR_TEXTURE_SIZE: usize = 256;
 
+/// Archetype niche bay geometry — shared by every figure's chamber so the five bays
+/// read as one coherent architectural language, distinguished only by stone tint,
+/// light color, and the standing figure itself.
+// 2.9m was the first pass, but the five niches sit only ~5.67m apart center-to-center
+// (measured from the authored figure positions below), so a 2.9m ring on each left
+// only ~-0.13m of clearance between adjacent bays — the walls physically overlapped.
+// 2.1m leaves a real ~1.47m gap between neighboring bay walls.
+pub(super) const NICHE_RING_RADIUS: f32 = 2.1;
+const NICHE_WALL_HEIGHT: f32 = 5.4;
+const NICHE_CANOPY_Y: f32 = 5.6;
+const NICHE_PILLAR_HEIGHT: f32 = 3.2;
+pub(super) const NICHE_DOOR_WIDTH: f32 = 1.05; // ~60 degrees, wide enough to walk through freely
+
+/// The five archetype figure positions, duplicated here (rather than shared with the
+/// spawn-time literals in `setup_inner_world`) so collision code has a plain data
+/// table to iterate without depending on Bevy ECS state. Kept in lockstep by the
+/// `every_archetype_niche_door_faces_the_rotunda_center` test below, which uses the
+/// same coordinates.
+pub(super) const NICHE_CENTERS: [Vec3; 5] = [
+    Vec3::new(-9.6, 0.0, 13.5),
+    Vec3::new(-5.0, 0.0, 10.2),
+    Vec3::new(0.0, 0.0, 7.5),
+    Vec3::new(5.0, 0.0, 10.2),
+    Vec3::new(9.6, 0.0, 13.5),
+];
+
 pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
@@ -366,6 +392,9 @@ fn setup_inner_world(
         core_pos: Vec3,
         core_color: Color,
         core_intensity: f32,
+        /// Desaturated stone tint for this archetype's niche walls and floor medallion —
+        /// derived from its canonical palette, not a decorative accent color.
+        niche_stone: Color,
     }
 
     let figures = [
@@ -385,6 +414,7 @@ fn setup_inner_world(
             core_pos: Vec3::new(-9.4, 2.3, 13.8),
             core_color: Color::srgb(0.30, 0.90, 0.80),
             core_intensity: 16_000.0,
+            niche_stone: Color::srgb(0.09, 0.15, 0.17),
         },
         // 2. Aura — Radiant celestial gold & solar amber (mid left)
         ArchetypeFigure {
@@ -402,6 +432,7 @@ fn setup_inner_world(
             core_pos: Vec3::new(-4.9, 2.2, 10.5),
             core_color: Color::srgb(1.0, 0.75, 0.35),
             core_intensity: 18_000.0,
+            niche_stone: Color::srgb(0.19, 0.14, 0.07),
         },
         // 3. Empath — Iridescent synth & psychic resonance (center)
         ArchetypeFigure {
@@ -419,6 +450,7 @@ fn setup_inner_world(
             core_pos: Vec3::new(0.0, 2.2, 7.8),
             core_color: Color::srgb(0.50, 0.85, 1.0),
             core_intensity: 18_000.0,
+            niche_stone: Color::srgb(0.15, 0.09, 0.16),
         },
         // 4. Oracle — Astral twilight & cosmic sapphire (mid right)
         ArchetypeFigure {
@@ -436,6 +468,7 @@ fn setup_inner_world(
             core_pos: Vec3::new(4.9, 2.3, 10.5),
             core_color: Color::srgb(0.55, 0.65, 1.0),
             core_intensity: 18_000.0,
+            niche_stone: Color::srgb(0.09, 0.08, 0.16),
         },
         // 5. Nebula Jester — Cosmic velvet & electric neon magenta (right flank)
         ArchetypeFigure {
@@ -453,6 +486,7 @@ fn setup_inner_world(
             core_pos: Vec3::new(9.4, 2.2, 13.8),
             core_color: Color::srgb(0.90, 0.40, 1.0),
             core_intensity: 18_000.0,
+            niche_stone: Color::srgb(0.17, 0.07, 0.15),
         },
     ];
 
@@ -508,6 +542,99 @@ fn setup_inner_world(
             InnerWorldElement,
             Name::new(format!("{}_CoreGlow", fig.name)),
         ));
+
+        // --- ARCHETYPE NICHE CHAMBER ---
+        // Each figure stands inside its own small apsidal bay rather than the open
+        // hall floor: a curved backdrop wall (open toward the rotunda center), a
+        // tinted floor medallion, flanking threshold pillars, and a low canopy that
+        // gives the bay a distinct ceiling silhouette from the 22m main vault.
+        // The doorway always faces the rotunda center so the bay reads as connected
+        // architecture, not a sealed room.
+        let door_bearing = (-fig.pos.z).atan2(-fig.pos.x);
+        let niche_wall_mat = materials.add(StandardMaterial {
+            base_color: fig.niche_stone,
+            perceptual_roughness: 0.78,
+            metallic: 0.08,
+            double_sided: true,
+            cull_mode: None,
+            ..default()
+        });
+        commands.spawn((
+            Mesh3d(meshes.add(build_wall_ring_mesh(
+                NICHE_RING_RADIUS,
+                NICHE_WALL_HEIGHT,
+                0.35,
+                28,
+                door_bearing,
+                NICHE_DOOR_WIDTH,
+            ))),
+            MeshMaterial3d(niche_wall_mat),
+            Transform::from_xyz(fig.pos.x, 0.0, fig.pos.z),
+            InnerWorldElement,
+            Name::new(format!("{}_NicheWall", fig.name)),
+        ));
+
+        // Tinted floor medallion marking the bay's footprint
+        let medallion_mat = materials.add(StandardMaterial {
+            base_color: fig.niche_stone,
+            perceptual_roughness: 0.5,
+            metallic: 0.18,
+            reflectance: 0.35,
+            ..default()
+        });
+        commands.spawn((
+            Mesh3d(meshes.add(Cylinder::new(NICHE_RING_RADIUS - 0.3, 0.05))),
+            MeshMaterial3d(medallion_mat),
+            Transform::from_xyz(fig.pos.x, 0.025, fig.pos.z),
+            InnerWorldElement,
+            Name::new(format!("{}_NicheFloorMedallion", fig.name)),
+        ));
+
+        // Low canopy cap — a distinct ceiling silhouette well below the 22m main vault
+        let canopy_mat = materials.add(StandardMaterial {
+            base_color: fig.niche_stone,
+            perceptual_roughness: 0.6,
+            metallic: 0.2,
+            double_sided: true,
+            cull_mode: None,
+            ..default()
+        });
+        commands.spawn((
+            Mesh3d(meshes.add(Cylinder::new(NICHE_RING_RADIUS + 0.15, 0.18))),
+            MeshMaterial3d(canopy_mat),
+            Transform::from_xyz(fig.pos.x, NICHE_CANOPY_Y, fig.pos.z),
+            InnerWorldElement,
+            Name::new(format!("{}_NicheCanopy", fig.name)),
+        ));
+
+        // Threshold pillars flanking the doorway gap
+        let threshold_mat = materials.add(StandardMaterial {
+            base_color: Color::srgb(0.30, 0.28, 0.24),
+            perceptual_roughness: 0.35,
+            metallic: 0.55,
+            reflectance: 0.5,
+            ..default()
+        });
+        let threshold_mesh = meshes.add(Cylinder::new(0.32, NICHE_PILLAR_HEIGHT));
+        for side in [-1.0_f32, 1.0] {
+            let t = door_bearing + side * (NICHE_DOOR_WIDTH * 0.5 + 0.10);
+            let pillar_pos = Vec3::new(
+                fig.pos.x + NICHE_RING_RADIUS * t.cos(),
+                NICHE_PILLAR_HEIGHT * 0.5,
+                fig.pos.z + NICHE_RING_RADIUS * t.sin(),
+            );
+            commands.spawn((
+                Mesh3d(threshold_mesh.clone()),
+                MeshMaterial3d(threshold_mat.clone()),
+                Transform::from_translation(pillar_pos),
+                InnerWorldElement,
+                Name::new(format!(
+                    "{}_ThresholdPillar_{}",
+                    fig.name,
+                    if side < 0.0 { "A" } else { "B" }
+                )),
+            ));
+        }
     }
 
     // --- 3. ENCLOSING CASTLE WALLS & BUTTRESS PILLARS ---
@@ -579,6 +706,70 @@ fn setup_inner_world(
             Transform::from_translation(*pos),
             InnerWorldElement,
             Name::new(format!("CastlePillar_{i}")),
+        ));
+    }
+
+    // Intermediate wall pilasters — break each flat wall into a rhythm of engaged
+    // bays instead of one unbroken slab. Purely visual relief; the collision
+    // envelope stays the existing +/-36 clamp, so this cannot strand the player.
+    let pilaster_mesh = meshes.add(Cuboid::new(1.4, wall_height - 1.0, 1.4));
+    let bay_offsets = [-28.5_f32, -19.0, -9.5, 9.5, 19.0, 28.5];
+    for (i, offset) in bay_offsets.iter().enumerate() {
+        let bays = [
+            (Vec3::new(*offset, wall_y, -wall_half + 0.7), "North"),
+            (Vec3::new(*offset, wall_y, wall_half - 0.7), "South"),
+            (Vec3::new(-wall_half + 0.7, wall_y, *offset), "West"),
+            (Vec3::new(wall_half - 0.7, wall_y, *offset), "East"),
+        ];
+        for (pos, side) in bays {
+            commands.spawn((
+                Mesh3d(pilaster_mesh.clone()),
+                MeshMaterial3d(pillar_mat.clone()),
+                Transform::from_translation(pos),
+                InnerWorldElement,
+                Name::new(format!("CastlePilaster_{side}_{i}")),
+            ));
+        }
+    }
+
+    // Cornice band — a continuous stone ledge below the ceiling that reads the wall
+    // top as an authored architectural edge rather than a plain box seam.
+    let cornice_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.30, 0.31, 0.35),
+        perceptual_roughness: 0.55,
+        metallic: 0.15,
+        ..default()
+    });
+    let cornice_y = wall_height - 1.1;
+    let cornice_spans = [
+        (
+            Vec3::new(0.0, cornice_y, -wall_half),
+            Vec3::new(wall_half * 2.0 + 0.6, 0.5, wall_thick + 0.6),
+            "North",
+        ),
+        (
+            Vec3::new(0.0, cornice_y, wall_half),
+            Vec3::new(wall_half * 2.0 + 0.6, 0.5, wall_thick + 0.6),
+            "South",
+        ),
+        (
+            Vec3::new(-wall_half, cornice_y, 0.0),
+            Vec3::new(wall_thick + 0.6, 0.5, wall_half * 2.0 + 0.6),
+            "West",
+        ),
+        (
+            Vec3::new(wall_half, cornice_y, 0.0),
+            Vec3::new(wall_thick + 0.6, 0.5, wall_half * 2.0 + 0.6),
+            "East",
+        ),
+    ];
+    for (pos, size, side) in cornice_spans {
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(size.x, size.y, size.z))),
+            MeshMaterial3d(cornice_mat.clone()),
+            Transform::from_translation(pos),
+            InnerWorldElement,
+            Name::new(format!("CastleCornice{side}")),
         ));
     }
 
@@ -949,6 +1140,94 @@ fn build_radial_flagstone_mesh(
     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
+/// Builds a segmented cylindrical wall shell with a single angular doorway gap,
+/// used for each archetype niche's curved backdrop.
+///
+/// The gap keeps the bay open toward the rotunda center: `door_center_rad` and
+/// `door_width_rad` use the same x = r*cos(t), z = r*sin(t) parameterization as
+/// [`build_radial_flagstone_mesh`], so collision code can gate the same arc.
+fn build_wall_ring_mesh(
+    radius: f32,
+    height: f32,
+    thickness: f32,
+    segments: usize,
+    door_center_rad: f32,
+    door_width_rad: f32,
+) -> Mesh {
+    let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut normals: Vec<[f32; 3]> = Vec::new();
+    let mut uvs: Vec<[f32; 2]> = Vec::new();
+
+    let push_quad = |p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, n: Vec3, pos: &mut Vec<[f32; 3]>, norm: &mut Vec<[f32; 3]>, uv: &mut Vec<[f32; 2]>| {
+        pos.push([p0.x, p0.y, p0.z]);
+        pos.push([p1.x, p1.y, p1.z]);
+        pos.push([p2.x, p2.y, p2.z]);
+        norm.push([n.x, n.y, n.z]);
+        norm.push([n.x, n.y, n.z]);
+        norm.push([n.x, n.y, n.z]);
+        uv.push([0.0, 0.0]);
+        uv.push([1.0, 0.0]);
+        uv.push([1.0, 1.0]);
+
+        pos.push([p0.x, p0.y, p0.z]);
+        pos.push([p2.x, p2.y, p2.z]);
+        pos.push([p3.x, p3.y, p3.z]);
+        norm.push([n.x, n.y, n.z]);
+        norm.push([n.x, n.y, n.z]);
+        norm.push([n.x, n.y, n.z]);
+        uv.push([0.0, 0.0]);
+        uv.push([1.0, 1.0]);
+        uv.push([0.0, 1.0]);
+    };
+
+    let two_pi = std::f32::consts::PI * 2.0;
+    let step = two_pi / segments as f32;
+    let half_door = door_width_rad * 0.5;
+
+    let angle_diff = |a: f32, b: f32| -> f32 {
+        let mut d = (a - b) % two_pi;
+        if d > std::f32::consts::PI {
+            d -= two_pi;
+        } else if d < -std::f32::consts::PI {
+            d += two_pi;
+        }
+        d
+    };
+
+    for i in 0..segments {
+        let t0 = i as f32 * step;
+        let t1 = (i + 1) as f32 * step;
+        let mid = t0 + step * 0.5;
+
+        // Skip whichever segment(s) span the doorway gap.
+        if angle_diff(mid, door_center_rad).abs() < half_door {
+            continue;
+        }
+
+        let (cos0, sin0) = (t0.cos(), t0.sin());
+        let (cos1, sin1) = (t1.cos(), t1.sin());
+
+        let inner0 = Vec3::new(radius * cos0, 0.0, radius * sin0);
+        let inner1 = Vec3::new(radius * cos1, 0.0, radius * sin1);
+        let outer0 = Vec3::new((radius + thickness) * cos0, 0.0, (radius + thickness) * sin0);
+        let outer1 = Vec3::new((radius + thickness) * cos1, 0.0, (radius + thickness) * sin1);
+        let top = Vec3::Y * height;
+        let mid_dir = Vec3::new(mid.cos(), 0.0, mid.sin());
+
+        // Inner face — faces the standing figure / rotunda interior.
+        push_quad(inner0 + top, inner1 + top, inner1, inner0, -mid_dir, &mut positions, &mut normals, &mut uvs);
+        // Outer face — faces away, toward the main hall.
+        push_quad(outer0, outer1, outer1 + top, outer0 + top, mid_dir, &mut positions, &mut normals, &mut uvs);
+        // Top cap.
+        push_quad(inner0 + top, outer0 + top, outer1 + top, inner1 + top, Vec3::Y, &mut positions, &mut normals, &mut uvs);
+    }
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+}
+
 fn teardown_inner_world(
     mut commands: Commands,
     query: Query<Entity, With<InnerWorldElement>>,
@@ -993,5 +1272,62 @@ mod tests {
         let has_base = positions.iter().any(|p| p[1].abs() < 1e-4);
         assert!(has_raised, "flagstone mesh must have raised top vertices");
         assert!(has_base, "flagstone mesh must have base groove vertices");
+    }
+
+    #[test]
+    fn wall_ring_mesh_has_a_doorway_gap_and_encloses_elsewhere() {
+        let full = build_wall_ring_mesh(2.9, 5.4, 0.35, 28, 0.0, 0.0);
+        let gapped = build_wall_ring_mesh(2.9, 5.4, 0.35, 28, 0.0, 1.05);
+        let full_verts = full
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+            .expect("positions present")
+            .as_float3()
+            .expect("float3 positions")
+            .len();
+        let gapped_verts = gapped
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+            .expect("positions present")
+            .as_float3()
+            .expect("float3 positions")
+            .len();
+        assert!(
+            gapped_verts < full_verts,
+            "a doorway gap must omit geometry compared to a fully closed ring"
+        );
+        assert!(gapped_verts > 0, "the ring must still enclose everywhere but the doorway");
+    }
+
+    #[test]
+    fn adjacent_niche_rings_never_overlap() {
+        // Regression guard: an earlier 2.9m ring radius overlapped its neighbors by
+        // ~0.13m because the five niches sit only ~5.67m apart center-to-center.
+        // Rings must leave real clearance, not just avoid exact interpenetration.
+        const MIN_CLEARANCE: f32 = 1.0;
+        for i in 0..NICHE_CENTERS.len() {
+            for j in (i + 1)..NICHE_CENTERS.len() {
+                let dist = NICHE_CENTERS[i].distance(NICHE_CENTERS[j]);
+                let clearance = dist - 2.0 * NICHE_RING_RADIUS;
+                assert!(
+                    clearance >= MIN_CLEARANCE,
+                    "niches {i} and {j} only have {clearance}m clearance (need >= {MIN_CLEARANCE}m)"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_archetype_niche_door_faces_the_rotunda_center() {
+        // Mirrors the door_bearing formula used when spawning each niche: the
+        // doorway direction from a figure's position must point back toward the
+        // origin (within floating point tolerance), never off at a random angle.
+        for pos in NICHE_CENTERS {
+            let door_bearing = (-pos.z).atan2(-pos.x);
+            let door_dir = Vec3::new(door_bearing.cos(), 0.0, door_bearing.sin());
+            let to_origin = (-pos).normalize();
+            assert!(
+                door_dir.dot(to_origin) > 0.999,
+                "niche doorway must open toward the rotunda center for {pos:?}"
+            );
+        }
     }
 }

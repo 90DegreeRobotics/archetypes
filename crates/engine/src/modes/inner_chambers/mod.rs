@@ -6,6 +6,7 @@
 use bevy::prelude::*;
 
 pub mod camera;
+pub mod capture;
 pub mod catalog;
 pub mod extraction;
 pub mod manifestation;
@@ -41,6 +42,11 @@ impl Plugin for InnerChambersPlugin {
                 extraction::ExtractionPlugin,
                 manifestation::ManifestationPlugin,
             ));
+
+        if let Some(run) = capture::InnerCaptureRun::from_env() {
+            app.insert_resource(run)
+                .add_systems(Update, capture::drive_inner_capture);
+        }
     }
 }
 

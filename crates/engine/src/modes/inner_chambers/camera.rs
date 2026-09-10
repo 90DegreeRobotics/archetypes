@@ -336,6 +336,31 @@ fn player_locomotion(
                 }
             }
 
+            // Archetype niche wall collision: each figure's curved backdrop wall
+            // blocks entry everywhere except through its own doorway gap, which
+            // always opens toward the rotunda center. Mirrors the geometry built in
+            // `world::build_wall_ring_mesh` / `world::NICHE_CENTERS` exactly so what
+            // the player sees is what blocks them.
+            for niche_center in super::world::NICHE_CENTERS {
+                let center2 = Vec2::new(niche_center.x, niche_center.z);
+                let to_player = Vec2::new(transform.translation.x, transform.translation.z) - center2;
+                let dist = to_player.length();
+                if dist >= super::world::NICHE_RING_RADIUS || dist < 0.01 {
+                    continue;
+                }
+                let door_bearing = (-niche_center.z).atan2(-niche_center.x);
+                let bearing = to_player.y.atan2(to_player.x); // Vec2(x,z) local axes match world's (cos,sin) parameterization
+                let mut diff = bearing - door_bearing;
+                diff = ((diff + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)) - std::f32::consts::PI;
+                if diff.abs() < super::world::NICHE_DOOR_WIDTH * 0.5 {
+                    continue; // Inside the doorway arc: free passage.
+                }
+                let push = to_player / dist;
+                let corrected = center2 + push * super::world::NICHE_RING_RADIUS;
+                transform.translation.x = corrected.x;
+                transform.translation.z = corrected.y;
+            }
+
             // Ground height resolution
             let r = (transform.translation.x * transform.translation.x
                 + transform.translation.z * transform.translation.z)
