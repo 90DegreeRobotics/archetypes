@@ -959,10 +959,24 @@ fn dispatch_manifestation_worker(
             message: "Initiating Chronos2 Object mode...".into(),
         });
 
+        // Best-effort non-blocking flush of ComfyUI VRAM cache before launching generation
+        let _ = std::thread::spawn(|| {
+            let _ = ureq::post("http://127.0.0.1:8000/free")
+                .timeout(std::time::Duration::from_millis(600))
+                .send_json(serde_json::json!({ "unload_models": true, "free_memory": true }));
+        });
+
         let mut command = Command::new(&chronos);
         command.args(["first-light", "--prompt"]).arg(&prompt)
             .args(["--out-dir"]).arg(&bundle)
             .args(["--geometry-forge", "--void"]);
+
+        // Use fast, compact checkpoint (Dreamshaper 8, 2.1GB) by default to eliminate
+        // the 29GB Flux Schnell VRAM hang on 12GB GPUs when sharing with engine.exe
+        if std::env::var("CHRONOS_FORGE_REFERENCE_CKPT").is_err() {
+            command.env("CHRONOS_FORGE_REFERENCE_CKPT", "dreamshaper_8.safetensors");
+        }
+        command.env("CHRONOS_FLUX_PROFILE", "lowvram");
         command.stdout(std::process::Stdio::piped());
         command.stderr(std::process::Stdio::piped());
 
@@ -1093,7 +1107,7 @@ fn dispatch_manifestation_worker(
 
         let blender_exe = r"C:\Program Files\Blender Foundation\Blender 4.5\blender.exe";
         let mut blender_cmd = Command::new(blender_exe);
-        blender_cmd.arg("-b").arg("-P").arg(&script_path)
+        blender_cmd.arg("-b").arg("--factory-startup").arg("-P").arg(&script_path)
             .arg("--")
             .arg("--input").arg(&mesh)
             .arg("--output").arg(&primary_output);
