@@ -15,10 +15,12 @@ use super::world::ChronosExhibitTurntable;
 use super::InnerChambersState;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+use bevy::winit::{UpdateMode, WinitSettings};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
@@ -53,6 +55,7 @@ impl Plugin for ManifestationPlugin {
                 update_manifestation_flash,
                 update_manifestation_reveal_smoke,
                 update_manifestation_hud,
+                yield_gpu_during_manifestation,
             )
                 .run_if(in_state(InnerChambersState::Navigating)),
         )
@@ -1399,11 +1402,33 @@ fn update_manifestation_hud(
     }
 }
 
+const ACTIVE_FRAME_INTERVAL: Duration = Duration::from_nanos(16_666_667);
+const MANIFESTING_FRAME_INTERVAL: Duration = Duration::from_nanos(66_666_667);
+
+fn manifestation_frame_interval(phase: &ManifestationPhase) -> Duration {
+    if *phase == ManifestationPhase::Manifesting {
+        MANIFESTING_FRAME_INTERVAL
+    } else {
+        ACTIVE_FRAME_INTERVAL
+    }
+}
+
+fn yield_gpu_during_manifestation(
+    state: Res<ManifestationState>,
+    mut winit_settings: ResMut<WinitSettings>,
+) {
+    let target = UpdateMode::reactive_low_power(manifestation_frame_interval(&state.phase));
+    if winit_settings.focused_mode != target {
+        winit_settings.focused_mode = target;
+    }
+}
+
 fn teardown_manifestation(
     mut commands: Commands,
     query: Query<Entity, With<ManifestationElement>>,
     mut state: ResMut<ManifestationState>,
     channels: Res<ManifestationChannels>,
+    mut winit_settings: ResMut<WinitSettings>,
 ) {
     cancel_manifestation(&channels);
     for entity in &query {
@@ -1413,6 +1438,7 @@ fn teardown_manifestation(
     state.floating_symbol_entity = None;
     state.phase = ManifestationPhase::Idle;
     state.prompt_buffer.clear();
+    winit_settings.focused_mode = UpdateMode::reactive_low_power(ACTIVE_FRAME_INTERVAL);
 }
 
 #[cfg(test)]
@@ -1449,6 +1475,21 @@ mod tests {
         let script = find_import_script().expect("import_chronos_object.py must be discoverable");
         assert!(script.ends_with("import_chronos_object.py"), "must use generic import script");
         assert!(!script.to_string_lossy().contains("manifest_artifact.py"), "manifest_artifact.py is retired and must never be referenced");
+        let source = std::fs::read_to_string(script).expect("generic importer must be readable");
+        assert!(
+            source.contains("MAX_GAME_TRIANGLES"),
+            "generic importer must enforce a game mesh budget"
+        );
+        assert!(
+            source.contains("DECIMATE"),
+            "generic importer must optimize generated meshes"
+        );
+        for forbidden_recipe in ["strawberry", "panther", "whale", "diamond ring"] {
+            assert!(
+                !source.to_ascii_lowercase().contains(forbidden_recipe),
+                "importer contains a forbidden prompt recipe: {forbidden_recipe}"
+            );
+        }
     }
 
     #[test]
@@ -1463,5 +1504,17 @@ mod tests {
         let is_valid = receipt.is_file() && mesh.is_file();
         assert!(!is_valid, "system must fail closed when receipt is missing");
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn manifestation_yields_gpu_capacity_while_chronos_runs() {
+        assert_eq!(
+            manifestation_frame_interval(&ManifestationPhase::Manifesting),
+            MANIFESTING_FRAME_INTERVAL
+        );
+        assert_eq!(
+            manifestation_frame_interval(&ManifestationPhase::Completed),
+            ACTIVE_FRAME_INTERVAL
+        );
     }
 }

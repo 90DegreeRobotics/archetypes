@@ -5,6 +5,8 @@
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
+use bevy::winit::{UpdateMode, WinitSettings};
+use std::time::Duration;
 
 pub mod chamber;
 pub mod modes;
@@ -19,6 +21,9 @@ const BUILD_SERIAL: &str = env!("ARCHETYPES_BUILD_SERIAL");
 
 fn main() {
     App::new()
+        .insert_resource(foreground_frame_settings(Duration::from_secs_f64(
+            1.0 / 60.0,
+        )))
         .add_plugins(
             DefaultPlugins
                 .set(AssetPlugin {
@@ -37,6 +42,15 @@ fn main() {
         .add_systems(Startup, maximize_primary_window)
         .add_plugins((ModesPlugin, CouncilChamberPlugin))
         .run();
+}
+
+fn foreground_frame_settings(interval: Duration) -> WinitSettings {
+    WinitSettings {
+        focused_mode: UpdateMode::reactive_low_power(interval),
+        unfocused_mode: UpdateMode::reactive_low_power(Duration::from_secs_f64(
+            1.0 / 15.0,
+        )),
+    }
 }
 
 fn window_title() -> String {
@@ -71,6 +85,15 @@ mod tests {
         assert_eq!(
             window_title(),
             format!("Archetypes {PRODUCT_VERSION} (build {BUILD_SERIAL}) — Council Chamber")
+        );
+    }
+
+    #[test]
+    fn chamber_has_a_bounded_foreground_frame_rate() {
+        let interval = Duration::from_secs_f64(1.0 / 60.0);
+        assert_eq!(
+            foreground_frame_settings(interval).focused_mode,
+            UpdateMode::reactive_low_power(interval)
         );
     }
 }

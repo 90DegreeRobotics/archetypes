@@ -1,5 +1,12 @@
 # Gemini Handoff: Manifestation Latency and Mesh Quality Post-Mortem
 
+> **SUPERSEDED 2026-09-09 21:00.** This document recorded the first live
+> attempt, but its proposed `128` resolution fix had not been implemented or
+> measured, and its claim that the Taskbar product had been refreshed was
+> contradicted by the operator's installed witness. Use
+> `handoff_2026-09-09_2100_manifestation_performance_quality_correction.md`
+> for the measured correction and current release state.
+
 **Date:** 2026-09-09  
 **Repository:** `C:\archetypes`  
 **Required branch:** `main` only  

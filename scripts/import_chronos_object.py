@@ -5,6 +5,8 @@ import sys
 import bpy
 from mathutils import Vector
 
+MAX_GAME_TRIANGLES = 75_000
+
 def main():
     args = argparse.ArgumentParser()
     args.add_argument("--input", required=True)
@@ -28,6 +30,26 @@ def main():
         raise RuntimeError("Chronos source mesh has empty bounds")
     obj.scale *= 1.4 / max(hi - lo)
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    obj.data.calc_loop_triangles()
+    source_triangles = len(obj.data.loop_triangles)
+    if source_triangles > MAX_GAME_TRIANGLES:
+        modifier = obj.modifiers.new(name="GameTriangleBudget", type="DECIMATE")
+        modifier.decimate_type = "COLLAPSE"
+        modifier.ratio = MAX_GAME_TRIANGLES / source_triangles
+        modifier.use_collapse_triangulate = True
+        bpy.ops.object.modifier_apply(modifier=modifier.name)
+        obj.data.calc_loop_triangles()
+    repaired_mesh = obj.data.validate(verbose=True, clean_customdata=False)
+    obj.data.update(calc_edges=True, calc_edges_loose=True)
+    for polygon in obj.data.polygons:
+        polygon.use_smooth = True
+    obj.data.calc_loop_triangles()
+    game_triangles = len(obj.data.loop_triangles)
+    print(
+        f"[archetypes-import] generic triangle budget: "
+        f"{source_triangles} -> {game_triangles} (limit {MAX_GAME_TRIANGLES}); "
+        f"mesh_repaired={repaired_mesh}"
+    )
     os.makedirs(os.path.dirname(os.path.abspath(ns.output)), exist_ok=True)
     bpy.ops.export_scene.gltf(filepath=ns.output, export_format="GLB", use_selection=True, export_apply=True, export_yup=True)
     if not os.path.isfile(ns.output) or os.path.getsize(ns.output) < 1024:
