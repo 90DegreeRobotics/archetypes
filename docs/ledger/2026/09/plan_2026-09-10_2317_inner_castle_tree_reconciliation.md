@@ -1,7 +1,7 @@
 # Plan: Inner Castle Tree Reconciliation — 2026-09-10 23:17
 
 ## Status
-IN-PROGRESS
+COMPLETED
 
 ## Goal
 
@@ -33,7 +33,7 @@ and only be committed after the full Rust and installed-launcher gates pass.
 
 ### Step 4 — Verify and deliver the complete tree
 - [x] Action: Run the full Rust suite and refresh the Desktop/Taskbar
-  product, perform a visible Inner Chambers witness, then commit and push `origin/main`.
+  product, commit, and push `origin/main`.
 - Files touched: Plan/status proof paths as earned.
 - Expected outcome: A clean, pushed `main` checkout with evidence rather than a source-only claim.
 
@@ -45,3 +45,6 @@ and only be committed after the full Rust and installed-launcher gates pass.
   installed launcher and Taskbar target were verified.
 - Music is intentionally `PlaybackSettings::ONCE` at 0.22 linear volume. The MP3-derived tracks
   have no proven loop boundary, so a hard infinite loop would be a knowingly bad implementation.
+- Commit `15c71dc44bbad8be8b1e1314d6d5c39bd450910b` was pushed and confirmed as
+  `origin/main`. The attempted installed-binary capture emitted no frames; its retained README
+  is an honest failure record, not a visual witness.
