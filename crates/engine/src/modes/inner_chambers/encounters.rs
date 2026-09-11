@@ -41,7 +41,11 @@ impl EncounterState {
 }
 
 #[derive(Resource, Default)]
-struct EncounterBridge { receiver: Mutex<Option<mpsc::Receiver<Result<String, String>>>>, waiting: bool }
+struct EncounterBridge { receiver: Mutex<Option<mpsc::Receiver<Result<EncounterReply, String>>>>, waiting: bool }
+
+struct EncounterReply { text: String, wav: Vec<u8> }
+
+#[derive(Component)] struct EncounterVoice;
 
 #[derive(Component)] struct EncounterPanel;
 #[derive(Component)] struct EncounterText;
@@ -105,14 +109,19 @@ fn type_or_close_encounter(
     if let Err(error) = append_to_ledger(GameMode::InnerChambers, "archetype_encounter_user", json!({"archetype": active.archetype.theme().name, "chamber": active.chamber_title, "chars": message.chars().count()})) { state.status = format!("Conversation blocked: ledger could not be sealed ({error})."); return; }
     let history = state.transcript.clone(); let location = active.chamber_title.to_owned(); let archetype = active.archetype;
     let (sender, receiver) = mpsc::channel(); *bridge.receiver.lock().expect("encounter receiver lock") = Some(receiver); bridge.waiting = true;
-    thread::spawn(move || { let _ = sender.send(request_reply(archetype, &history, &message, &location)); });
+    thread::spawn(move || {
+        let result = request_reply(archetype, &history, &message, &location).and_then(|text| {
+            crate::chamber::speech::synthesize_archetype_reply(archetype, text.clone()).map(|wav| EncounterReply { text, wav })
+        });
+        let _ = sender.send(result);
+    });
 }
 
-fn poll_reply(mut state: ResMut<EncounterState>, mut bridge: ResMut<EncounterBridge>) {
+fn poll_reply(mut commands: Commands, mut state: ResMut<EncounterState>, mut bridge: ResMut<EncounterBridge>, mut audio_assets: ResMut<Assets<AudioSource>>, playing: Query<Entity, With<EncounterVoice>>) {
     if !bridge.waiting { return; }
     let reply = bridge.receiver.lock().expect("encounter receiver lock").as_ref().and_then(|receiver| receiver.try_recv().ok());
     let Some(reply) = reply else { return; }; bridge.waiting = false;
-    match reply { Ok(content) => { let role = state.active.map(|a| a.archetype.theme().name.to_owned()).unwrap_or_else(|| "Archetype".into()); if let Some(active) = state.active { if let Err(error) = append_encounter_record(active, &role, &content) { state.status = format!("Reply received but could not persist local transcript ({error})."); return; } } state.transcript.push(ArchetypeChatRecord { role, content }); state.status = "Local reply received. Enter sends; Esc returns to the chamber.".into(); }
+    match reply { Ok(reply) => { let role = state.active.map(|a| a.archetype.theme().name.to_owned()).unwrap_or_else(|| "Archetype".into()); if let Some(active) = state.active { if let Err(error) = append_encounter_record(active, &role, &reply.text) { state.status = format!("Reply received but could not persist local transcript ({error})."); return; } } for entity in &playing { commands.entity(entity).despawn(); } let bytes: std::sync::Arc<[u8]> = reply.wav.into(); let handle = audio_assets.add(AudioSource { bytes }); commands.spawn((AudioPlayer::new(handle), PlaybackSettings::DESPAWN, EncounterVoice, Name::new("InnerCastleArchetypeVoice"))); state.transcript.push(ArchetypeChatRecord { role, content: reply.text }); state.status = "Local reply received and speaking. Enter sends; Esc returns to the chamber.".into(); }
         Err(error) => state.status = format!("Local reply failed: {error} Your message remains in this encounter record."), }
 }
 

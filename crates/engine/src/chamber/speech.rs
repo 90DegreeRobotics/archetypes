@@ -288,6 +288,14 @@ impl VoiceRequest {
     }
 }
 
+/// Synthesize a local archetype reply for a non-Council UI without coupling that
+/// UI to Council state or its one-at-a-time choreography.
+pub(crate) fn synthesize_archetype_reply(archetype: Archetype, text: String) -> Result<Vec<u8>, String> {
+    let mut request = VoiceRequest::for_archetype(archetype);
+    request.text = text;
+    super::tts_runtime::synthesize_cached(&request)
+}
+
 pub(super) struct SpeechPaths {
     pub(super) executable: PathBuf,
     pub(super) model_dir: PathBuf,

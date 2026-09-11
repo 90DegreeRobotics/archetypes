@@ -9,7 +9,7 @@ pub mod portal;
 pub mod ritual;
 pub mod sky;
 pub mod speech;
-mod tts_runtime;
+pub(crate) mod tts_runtime;
 pub mod spheres;
 pub mod star;
 
