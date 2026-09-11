@@ -1,10 +1,32 @@
 # Archetypes Status
 
-**Last Updated: 2026-09-10 (Inner Chambers Archetype Niche Chambers)**
+**Last Updated: 2026-09-11 (Gamepad + Settings, Encounter Memory, Smash Room Plan Retired)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Smash Room redesign retired (2026-09-11):** `Game Plan_ Archetypes — The Inner Chambers
+  Smash Room.md` (the 2026-09-08 physics/prop-destruction redesign) is marked SUPERSEDED by
+  operator decision. It was never built (no physics crate, no `WorldProp`/`SmashSim`/cards
+  modules), and it directly contradicted every load-bearing choice actually shipped since:
+  flight locomotion was kept, archetypes remained embodied conversational partners (now with
+  a Remember/Forget memory system), and the manifestation altar generates 2D concept art, not
+  smashable 3D props. Do not resume work from that document without a fresh operator decision.
+- **Gamepad input + persisted settings (2026-09-11):** Real Xbox/gilrs input (confirmed
+  against a physically connected controller) now drives Inner Castle movement, look,
+  jump/fly, and interact/cancel alongside keyboard/mouse (`services/gamepad_input.rs`,
+  wired into `modes/inner_chambers/camera.rs`, `encounters.rs`, `manifestation.rs`). A new
+  `GameSettings` resource (`services/settings.rs`) persists sensitivity/deadzone/volume to
+  `%LOCALAPPDATA%\NeuroCognica\Archetypes\config\settings.json`. Still open: an in-game
+  settings menu screen and wiring volume to actual audio buses; voice/STT steps of
+  `docs/ledger/2026/09/plan_2026-09-10_2350_gamepad_voice_runtime.md` untouched.
+- **Inner Castle consentful encounter memory (2026-09-11):** Encounters no longer log
+  unconditionally as recallable memory. Every turn opens `Transient`
+  (`services/encounter_memory.rs`, an append-only ledger-sealed journal); the player presses
+  F5 Remember / F6 Forget / F7 View record, and only remembered turns are recall-eligible,
+  recomputed fresh from disk every time. A Forget is an auditable withdrawal, not a delete.
+  Steps 2-9 of `docs/ledger/2026/09/plan_2026-09-11_0015_inner_castle_grounded_capabilities.md`
+  (Oracle archive, Mentor reading room, Architect workshop, local STT) remain PENDING.
 - **Inner Chambers archetype niche chambers (2026-09-10):** The five standing archetype
   figures (Sentinel, Aura, Empath, Oracle, Nebula Jester) previously stood in open floor space
   with only per-figure point lights. Each now has a real niche bay: a curved wall ring

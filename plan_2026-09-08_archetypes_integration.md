@@ -1,7 +1,12 @@
 # Game Plan: **Archetypes — The Inner Chambers Smash Room**
 
 **Date:** 2026-09-08
-**Status:** **PENDING — game redesign and vertical-slice plan**
+**Status:** **SUPERSEDED (2026-09-11) — see the canonical copy's note**
+
+> This is a stale early duplicate of `Game Plan_ Archetypes — The Inner Chambers Smash Room.md`
+> (that file received later canon updates this one never got). As of 2026-09-11 the Smash Room
+> redesign is abandoned in favor of the direction actually shipped — see that file's status
+> note for the full reasoning. Kept here only as historical record.
 **Product statement:** **Archetypes is a game about making meaning physical, then seeing what happens when it hits something.** The Inner Chambers are **the Jester’s Smash Room**: a beautiful, traversable pilgrimage through seven archetypal play spaces, hosted by the Jester, who turns the council’s certainties into props, tests, and punchlines. The player decides whether each creation is a tool, a toy, a target, or all three.
 
 > **The core joke is also the core mechanic:** an archetype gives the player an incomplete sentence, the player completes it with a simple noun phrase, and that phrase becomes a physical object. A dinner turkey can become a club. A circus clown can become a club. Or the player can mount the turkey on a smash stand and use the circus clown to destroy it. The language is the setup; physics is the punchline.

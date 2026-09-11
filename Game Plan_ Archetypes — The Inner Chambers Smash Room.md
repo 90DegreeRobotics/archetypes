@@ -1,7 +1,20 @@
 # Game Plan: **Archetypes — The Inner Chambers Smash Room**
 
 **Date:** 2026-09-08
-**Status:** **PENDING — game redesign and vertical-slice plan**
+**Status:** **SUPERSEDED (2026-09-11) — abandoned in favor of the direction actually shipped**
+
+> **2026-09-11 decision:** This redesign is not being pursued. Zero of it was ever built (no
+> physics crate, no `WorldProp`/`SmashSim`/cards/hands modules — confirmed by search, and
+> "smash" appears nowhere in `STATUS.md`). In the meantime, actual shipped work went the
+> opposite direction on every load-bearing premise this plan requires: flight locomotion was
+> kept and just got gamepad triggers
+> (`docs/ledger/2026/09/plan_2026-09-10_2350_gamepad_voice_runtime.md`), archetypes are
+> embodied conversational partners with a Remember/Forget memory system rather than
+> non-playable hosts (`docs/ledger/2026/09/plan_2026-09-11_0015_inner_castle_grounded_capabilities.md`),
+> and the manifestation altar generates 2D concept art, not smashable 3D mesh props. Operator
+> call: stop here rather than force a reconciliation. This document is kept as a historical
+> record and a lesson, not as an active target — do not resume work from it without a fresh
+> operator decision to do so.
 **Product statement:** **Archetypes is a game about making meaning physical, then seeing what happens when it hits something.** The Inner Chambers are not a viewer for generated assets. They are a beautiful, traversable **Smash Room pilgrimage**: seven archetypal play spaces where the council turns absurd language into props, and the player decides whether each prop is a tool, a toy, a target, or all three.
 
 > **The core joke is also the core mechanic:** an archetype gives the player an incomplete sentence, the player completes it with a simple noun phrase, and that phrase becomes a physical object. A dinner turkey can become a club. A circus clown can become a club. Or the player can mount the turkey on a smash stand and use the circus clown to destroy it. The language is the setup; physics is the punchline.
