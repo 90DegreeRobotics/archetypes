@@ -2,6 +2,7 @@ use super::catalog::{all_nodes, council_chambers, NODE_RADIUS};
 use super::seed::persist_extracted_truth;
 use super::world::InnerChambersHint;
 use super::InnerChambersState;
+use super::encounters::EncounterState;
 use crate::modes::game_mode::GameMode;
 use crate::services::ledger::append_to_ledger;
 use bevy::prelude::*;
@@ -23,7 +24,11 @@ fn check_extraction(
     query: Query<(&Transform, &super::camera::CameraController), With<super::camera::PlayerCamera>>,
     mut hint: Query<&mut Text, With<InnerChambersHint>>,
     mut next_state: ResMut<NextState<InnerChambersState>>,
+    encounter_state: Res<EncounterState>,
 ) {
+    if encounter_state.is_open() {
+        return;
+    }
     let Ok((transform, controller)) = query.single() else {
         return;
     };

@@ -6,6 +6,12 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 pub struct CameraPlugin;
 
+// The visual world is a Seed-of-Life: one Council circle and six elevated rooms.
+const SEED_ROOM_CENTERS: [Vec2; 6] = [
+    Vec2::new(0.0, -62.0), Vec2::new(53.694, -31.0), Vec2::new(53.694, 31.0),
+    Vec2::new(0.0, 62.0), Vec2::new(-53.694, 31.0), Vec2::new(-53.694, -31.0),
+];
+
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(InnerChambersState::Navigating), setup_camera)
@@ -53,10 +59,10 @@ impl CameraController {
     pub fn locomotion_hud_text(&self) -> String {
         match self.mode {
             LocomotionMode::Walking => {
-                "COUNCIL ROTUNDA  •  [STATUS: GROUND WALKING]\nWASD: Move & Strafe  •  Space: Jump (Double-Tap: Fly)  •  Mouse: Look  •  Esc: Menu".to_string()
+                "INNER CASTLE  •  [STATUS: GROUND WALKING]\nWASD: Move & Strafe  •  Space: Jump (Double-Tap: Fly)  •  Mouse: Look  •  Esc: Menu".to_string()
             }
             LocomotionMode::Flying => {
-                "COUNCIL ROTUNDA  •  [STATUS: FREE FLIGHT]\nWASD: Fly  •  Space: Ascend  •  Shift: Descend  •  3x Space: Land  •  Esc: Menu".to_string()
+                "INNER CASTLE  •  [STATUS: FREE FLIGHT]\nWASD: Fly  •  Space: Ascend  •  Shift: Descend  •  3x Space: Land  •  Esc: Menu".to_string()
             }
         }
     }
@@ -106,8 +112,8 @@ fn setup_camera(
         cam.is_active = false;
     }
 
-    // Spawn player standing on the floor (eye height 2.85m) at the entrance of the exhibition court
-    let spawn_pos = Vec3::new(0.0, 2.85, 17.5);
+    // Start on the Council circle facing the flush portal inlay.
+    let spawn_pos = Vec3::new(0.0, 3.25, 12.0);
     let initial_pitch = -0.14; // Looking slightly downward (~8.0 degrees)
     let initial_yaw = 0.0;
 
@@ -154,6 +160,48 @@ fn teardown_camera(
     }
 }
 
+/// Returns the actual top surface beneath a Seed-of-Life player position. Stepping
+/// off a circle or bridge is a real fall into the under-castle floor, not an invisible
+/// flat arena floor disguised as an abyss.
+fn seed_castle_ground_y(position: Vec2, current_feet_y: f32) -> f32 {
+    if position.length() <= 16.0 {
+        return 0.4;
+    }
+    for center in SEED_ROOM_CENTERS {
+        if (position - center).length() <= 18.0 {
+            return 0.4;
+        }
+        let radial = center.normalize();
+        let bridge_center = radial * 30.0;
+        let relative = position - bridge_center;
+        let along = relative.dot(radial);
+        let across = relative.dot(Vec2::new(-radial.y, radial.x));
+        if along.abs() <= 14.0 && across.abs() <= 2.7 {
+            return 0.31;
+        }
+    }
+
+    let radius = position.length();
+    // The ground promenade connects every room exterior to the base of the long
+    // outer-wall ascent. The rise itself is encoded by its outward spiral radius.
+    if (76.0..=82.1).contains(&radius) {
+        return 0.56;
+    }
+    if (82.0..=86.5).contains(&radius) {
+        let spiral_y = 0.48 + (radius - 82.0) / 4.5 * 21.08;
+        // A Heaven gallery only becomes a supporting surface after the player has
+        // climbed near its height; this prevents a floor-level radial step from
+        // snapping the player straight to an upper ring.
+        let nearest_level = ((current_feet_y - 3.4) / 3.0).round().clamp(0.0, 6.0);
+        let gallery_y = 3.56 + nearest_level * 3.0;
+        if (current_feet_y - gallery_y).abs() < 0.75 {
+            return gallery_y;
+        }
+        return spiral_y;
+    }
+    -19.8
+}
+
 fn player_locomotion(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -161,6 +209,7 @@ fn player_locomotion(
     mut mouse_motion: MessageReader<MouseMotion>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     manifestation_state: Option<Res<super::manifestation::ManifestationState>>,
+    encounter_state: Option<Res<super::encounters::EncounterState>>,
     mut query: Query<(&mut Transform, &mut CameraController), With<PlayerCamera>>,
 ) {
     let Ok((mut transform, mut controller)) = query.single_mut() else {
@@ -172,6 +221,10 @@ fn player_locomotion(
         .as_ref()
         .map(|s| s.phase == super::manifestation::ManifestationPhase::Prompting)
         .unwrap_or(false)
+        || encounter_state
+            .as_ref()
+            .map(|state| state.is_open())
+            .unwrap_or(false)
     {
         return;
     }
@@ -280,16 +333,13 @@ fn player_locomotion(
             }
 
             // Room boundary collision
-            transform.translation.x = transform.translation.x.clamp(-36.0, 36.0);
-            transform.translation.z = transform.translation.z.clamp(-36.0, 36.0);
+            transform.translation.x = transform.translation.x.clamp(-100.0, 100.0);
+            transform.translation.z = transform.translation.z.clamp(-100.0, 100.0);
 
-            // Pedestal obstacle collision (radius ~1.45m)
-            let pedestal_positions = [
-                Vec2::new(7.42, 7.42),
-                Vec2::new(-7.42, 7.42),
-                Vec2::new(-7.42, -7.42),
-                Vec2::new(7.42, -7.42),
-            ];
+            // Passive exhibition pedestals are absent from the Seed-of-Life scene.
+            // Retain the legacy collision loop in inert form without an old gallery
+            // obstacle blocking an otherwise empty bridge or room.
+            let pedestal_positions: [Vec2; 0] = [];
             for ped in pedestal_positions {
                 let to_ped = Vec2::new(transform.translation.x, transform.translation.z) - ped;
                 let dist = to_ped.length();
@@ -301,11 +351,11 @@ fn player_locomotion(
                 }
             }
 
-            // Central Table collision (radius 1.41m)
+            // The former table is now a flush floor inlay, so it does not block walking.
             let center_dist = (transform.translation.x * transform.translation.x
                 + transform.translation.z * transform.translation.z)
                 .sqrt();
-            if center_dist < 1.41 {
+            if center_dist < 0.0 {
                 let push = if center_dist > 0.01 {
                     Vec2::new(transform.translation.x, transform.translation.z) / center_dist
                 } else {
@@ -316,14 +366,14 @@ fn player_locomotion(
                 transform.translation.z = corrected.y;
             }
 
-            // Archetype council character and manifestation altar obstacle collisions
+            // Center/room embodiment and active manifestation obstacles.
             let character_obstacles = [
-                (Vec2::new(-9.6, 13.5), 0.85), // Sentinel
-                (Vec2::new(-5.0, 10.2), 0.85), // Aura
-                (Vec2::new(0.0, 7.5), 0.85),   // Empath
-                (Vec2::new(5.0, 10.2), 0.85),  // Oracle
-                (Vec2::new(9.6, 13.5), 0.95),  // Nebula Jester (wide shoulders)
-                (Vec2::new(0.0, 3.4), 1.25),   // Manifestation Altar Pedestal
+                (Vec2::new(0.0, -8.5), 1.5), // AURA central embodiment
+                (Vec2::new(10.2, 6.2), 1.5), // Jester Council host
+                (Vec2::new(0.0, -57.0), 1.5), (Vec2::new(58.02, -33.5), 1.5),
+                (Vec2::new(58.02, 33.5), 1.5), (Vec2::new(0.0, 57.0), 1.5),
+                (Vec2::new(-58.02, 33.5), 1.5), (Vec2::new(-58.02, -33.5), 1.5),
+                (Vec2::new(0.0, 3.4), 1.25), // Active manifestation pedestal
             ];
             for (char_pos, radius) in character_obstacles {
                 let to_char = Vec2::new(transform.translation.x, transform.translation.z) - char_pos;
@@ -336,42 +386,29 @@ fn player_locomotion(
                 }
             }
 
-            // Archetype niche wall collision: each figure's curved backdrop wall
-            // blocks entry everywhere except through its own doorway gap, which
-            // always opens toward the rotunda center. Mirrors the geometry built in
-            // `world::build_wall_ring_mesh` / `world::NICHE_CENTERS` exactly so what
-            // the player sees is what blocks them.
-            for niche_center in super::world::NICHE_CENTERS {
-                let center2 = Vec2::new(niche_center.x, niche_center.z);
+            // Each outer room is blocked by its cobblestone ring except across the
+            // doorway that faces the Council bridge.
+            for center2 in SEED_ROOM_CENTERS {
                 let to_player = Vec2::new(transform.translation.x, transform.translation.z) - center2;
                 let dist = to_player.length();
-                if dist >= super::world::NICHE_RING_RADIUS || dist < 0.01 {
+                if dist >= 17.1 || dist < 0.01 {
                     continue;
                 }
-                let door_bearing = (-niche_center.z).atan2(-niche_center.x);
+                let door_bearing = (-center2.y).atan2(-center2.x);
                 let bearing = to_player.y.atan2(to_player.x); // Vec2(x,z) local axes match world's (cos,sin) parameterization
                 let mut diff = bearing - door_bearing;
                 diff = ((diff + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)) - std::f32::consts::PI;
-                if diff.abs() < super::world::NICHE_DOOR_WIDTH * 0.5 {
+                if diff.abs() < 0.24 {
                     continue; // Inside the doorway arc: free passage.
                 }
                 let push = to_player / dist;
-                let corrected = center2 + push * super::world::NICHE_RING_RADIUS;
+                let corrected = center2 + push * 17.1;
                 transform.translation.x = corrected.x;
                 transform.translation.z = corrected.y;
             }
 
-            // Ground height resolution
-            let r = (transform.translation.x * transform.translation.x
-                + transform.translation.z * transform.translation.z)
-                .sqrt();
-            let ground_y = if r <= 4.8 {
-                0.30 // Dais upper platform
-            } else if r <= 6.0 {
-                0.15 // Dais lower step
-            } else {
-                0.0 // Base floor
-            };
+            let current_feet_y = transform.translation.y - controller.eye_height;
+            let ground_y = seed_castle_ground_y(Vec2::new(transform.translation.x, transform.translation.z), current_feet_y);
 
             // Gravity & Vertical Position
             if !controller.is_grounded {
@@ -417,17 +454,8 @@ fn player_locomotion(
                 || keyboard.pressed(KeyCode::ShiftRight)
                 || keyboard.pressed(KeyCode::KeyC);
 
-            // Ground height resolution beneath current position
-            let r = (transform.translation.x * transform.translation.x
-                + transform.translation.z * transform.translation.z)
-                .sqrt();
-            let ground_y = if r <= 4.8 {
-                0.30
-            } else if r <= 6.0 {
-                0.15
-            } else {
-                0.0
-            };
+            let current_feet_y = transform.translation.y - controller.eye_height;
+            let ground_y = seed_castle_ground_y(Vec2::new(transform.translation.x, transform.translation.z), current_feet_y);
             let floor_level = ground_y + controller.eye_height;
 
             if shift_pressed {
@@ -438,10 +466,9 @@ fn player_locomotion(
             }
 
             // Clamp flight boundaries (prevent falling through floor or clipping through roof)
-            transform.translation.x = transform.translation.x.clamp(-36.0, 36.0);
-            transform.translation.z = transform.translation.z.clamp(-36.0, 36.0);
+            transform.translation.x = transform.translation.x.clamp(-100.0, 100.0);
+            transform.translation.z = transform.translation.z.clamp(-100.0, 100.0);
             transform.translation.y = transform.translation.y.clamp(floor_level, 21.0);
         }
     }
 }
-

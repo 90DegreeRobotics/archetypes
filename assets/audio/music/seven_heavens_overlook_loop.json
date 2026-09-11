@@ -1,0 +1,17 @@
+{
+  "source": "Operator-supplied C:/Users/m/Downloads/The_Suspended_Sanctuary.mp3",
+  "creator": "Operator-supplied; provenance beyond supplied filename is not yet recorded",
+  "license": "Pending operator confirmation",
+  "created_at": "2026-09-10",
+  "runtime_asset": "seven_heavens_overlook_loop.wav",
+  "source_format": "MP3, 44.1 kHz stereo, 192 kbps",
+  "conversion": "ffmpeg PCM transcode and 48 kHz resample; this is a runtime derivative, not a restored 24-bit master",
+  "sample_rate": 48000,
+  "bit_depth": 16,
+  "channels": 2,
+  "duration_seconds": 158.589396,
+  "sha256": "3A23A6AEC1A47D83E491FA74D5A3FA9205689CAE16E3D79A736F3F222373FA19",
+  "loop_start_samples": null,
+  "loop_end_samples": null,
+  "intended_runtime": "Seven Heavens overlook music candidate. Loop points and loudness remain unverified."
+}

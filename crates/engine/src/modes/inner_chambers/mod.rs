@@ -9,8 +9,11 @@ pub mod camera;
 pub mod capture;
 pub mod catalog;
 pub mod extraction;
+pub mod encounters;
+pub mod interaction;
 pub mod manifest_capture;
 pub mod manifestation;
+pub mod music;
 pub mod seed;
 pub mod world;
 
@@ -41,7 +44,10 @@ impl Plugin for InnerChambersPlugin {
                 world::WorldPlugin,
                 camera::CameraPlugin,
                 extraction::ExtractionPlugin,
+                encounters::EncounterPlugin,
+                interaction::InteractionPlugin,
                 manifestation::ManifestationPlugin,
+                music::InnerCastleMusicPlugin,
             ));
 
         if let Some(run) = capture::InnerCaptureRun::from_env() {

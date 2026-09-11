@@ -12,6 +12,8 @@
 //! 4. Succeeded: Grand golden radiance flash, despawning the hourglass, and revealing the newly summoned 3D object rotating atop the cushion.
 
 use super::world::ChronosExhibitTurntable;
+use super::encounters::EncounterState;
+use super::interaction::{InnerInteractionSet, InteractionFocus, InteractionTarget};
 use super::InnerChambersState;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
@@ -49,7 +51,7 @@ impl Plugin for ManifestationPlugin {
         .add_systems(
             Update,
             (
-                handle_manifestation_input,
+                handle_manifestation_input.after(InnerInteractionSet::Resolve),
                 animate_pedestal_symbols,
                 poll_manifestation_results,
                 update_manifestation_flash,
@@ -768,6 +770,8 @@ fn handle_manifestation_input(
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    encounter_state: Res<EncounterState>,
+    interaction_focus: Res<InteractionFocus>,
 ) {
     let Ok(player_transform) = camera_query.single() else {
         return;
@@ -795,7 +799,7 @@ fn handle_manifestation_input(
 
     match state.phase {
         ManifestationPhase::Idle | ManifestationPhase::Completed | ManifestationPhase::Failed => {
-            if is_near && keyboard.just_pressed(KeyCode::KeyE) {
+            if is_near && !encounter_state.is_open() && interaction_focus.0 == Some(InteractionTarget::ManifestationAltar) && keyboard.just_pressed(KeyCode::KeyE) {
                 state.phase = ManifestationPhase::Prompting;
                 state.prompt_buffer.clear();
                 if let Ok(mut cursor) = cursor_options.single_mut() {

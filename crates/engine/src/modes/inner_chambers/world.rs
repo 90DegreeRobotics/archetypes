@@ -3,6 +3,8 @@ use crate::chamber::boot::spawn_main_menu;
 use crate::modes::ModeRegistry;
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
+use crate::theme::Archetype;
+use super::encounters::ArchetypeEmbodiment;
 use bevy::render::render_resource::{Extent3d, PrimitiveTopology, TextureDimension, TextureFormat};
 
 /// The generated images are deliberately non-color/normal PBR inputs, not light-emitting
@@ -23,11 +25,21 @@ const NICHE_CANOPY_Y: f32 = 5.6;
 const NICHE_PILLAR_HEIGHT: f32 = 3.2;
 pub(super) const NICHE_DOOR_WIDTH: f32 = 1.05; // ~60 degrees, wide enough to walk through freely
 
+/// Shared physical scale for the live Seed-of-Life Inner Castle. These values are
+/// intentionally much larger than the rejected gallery draft: a room is a place to
+/// inhabit and a bridge is a walk, rather than a decorative gap.
+pub(super) const COUNCIL_RADIUS: f32 = 16.0;
+pub(super) const OUTER_ROOM_RADIUS: f32 = 18.0;
+pub(super) const OUTER_ROOM_DISTANCE: f32 = 62.0;
+pub(super) const BRIDGE_LENGTH: f32 = 28.0;
+pub(super) const CASTLE_RADIUS: f32 = 92.0;
+
 /// The five archetype figure positions, duplicated here (rather than shared with the
 /// spawn-time literals in `setup_inner_world`) so collision code has a plain data
 /// table to iterate without depending on Bevy ECS state. Kept in lockstep by the
 /// `every_archetype_niche_door_faces_the_rotunda_center` test below, which uses the
 /// same coordinates.
+#[allow(dead_code)]
 pub(super) const NICHE_CENTERS: [Vec3; 5] = [
     Vec3::new(-9.6, 0.0, 13.5),
     Vec3::new(-5.0, 0.0, 10.2),
@@ -70,7 +82,351 @@ fn rotate_chronos_exhibits(
     }
 }
 
+/// Live Inner Chambers world: the operator-approved Seed-of-Life castle.
+///
+/// The center is the sovereign Council/Witness circle. Six equal outer circles are
+/// independent archetype rooms joined by short bridges over a real lower void. This
+/// deliberately replaces the prior gallery of small cylinders on one flat floor.
 fn setup_inner_world(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+    mut clear: ResMut<ClearColor>,
+    mut next_state: ResMut<NextState<InnerChambersState>>,
+    asset_server: Res<AssetServer>,
+) {
+    clear.0 = Color::srgb(0.012, 0.014, 0.020);
+    // The void remains dark; the castle itself needs enough diffuse bounce to show
+    // hand-laid stone at human scale instead of collapsing into flat black.
+    commands.insert_resource(GlobalAmbientLight {
+        color: Color::srgb(0.78, 0.70, 0.60),
+        brightness: 1_150.0,
+        ..default()
+    });
+    let (floor_albedo, floor_normal) = chamber_floor_textures();
+    let floor_normal = images.add(floor_normal);
+    let stone = materials.add(StandardMaterial {
+        base_color_texture: Some(images.add(floor_albedo)),
+        normal_map_texture: Some(floor_normal),
+        base_color: Color::srgb(0.34, 0.32, 0.29),
+        perceptual_roughness: 0.86,
+        metallic: 0.02,
+        ..default()
+    });
+    let masonry = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.13, 0.12, 0.12),
+        perceptual_roughness: 0.94,
+        ..default()
+    });
+    let trim = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.30, 0.25, 0.18),
+        metallic: 0.25,
+        perceptual_roughness: 0.52,
+        ..default()
+    });
+    let abyss = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.008, 0.011, 0.019),
+        perceptual_roughness: 1.0,
+        ..default()
+    });
+
+    // The deep void is geometry, not a black clear-color trick: the rooms visibly
+    // hang above a lower circular floor and broken concentric foundation rings.
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(CASTLE_RADIUS + 8.0, 0.8))),
+        MeshMaterial3d(abyss),
+        Transform::from_xyz(0.0, -20.2, 0.0),
+        InnerWorldElement,
+        Name::new("UnderCastle_AbyssFloor"),
+    ));
+    for (i, radius) in [28.0_f32, 54.0, 82.0].iter().enumerate() {
+        commands.spawn((
+            Mesh3d(meshes.add(Torus::new(*radius - 0.28, *radius + 0.28))),
+            MeshMaterial3d(masonry.clone()),
+            Transform::from_xyz(0.0, -18.8 - i as f32 * 0.75, 0.0),
+            InnerWorldElement,
+            Name::new(format!("UnderCastle_FoundationRing_{i}")),
+        ));
+    }
+    commands.spawn((
+        PointLight {
+            intensity: 42_000.0,
+            range: 112.0,
+            color: Color::srgb(0.10, 0.18, 0.30),
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, -17.0, 0.0),
+        InnerWorldElement,
+        Name::new("UnderCastle_AbyssGlow"),
+    ));
+
+    // Center Council circle: surface-level spinning portal inlay replaces the table.
+    spawn_castle_platform(&mut commands, &mut meshes, stone.clone(), trim.clone(), Vec3::ZERO, COUNCIL_RADIUS, "Council");
+    let portal_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.05, 0.22, 0.38),
+        emissive: LinearRgba::new(0.04, 0.36, 0.85, 1.0),
+        metallic: 0.55,
+        perceptual_roughness: 0.25,
+        ..default()
+    });
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(3.15, 0.08))),
+        MeshMaterial3d(portal_mat),
+        Transform::from_xyz(0.0, 0.44, 0.0),
+        ChronosExhibitTurntable { speed: 0.16 },
+        InnerWorldElement,
+        Name::new("CouncilPortalFloorInlay_Spin"),
+    ));
+    for i in 0..3 {
+        let angle = i as f32 * std::f32::consts::TAU / 3.0;
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(0.22, 0.10, 4.9))),
+            MeshMaterial3d(trim.clone()),
+            Transform::from_xyz(0.0, 0.50, 0.0).with_rotation(Quat::from_rotation_y(angle)),
+            ChronosExhibitTurntable { speed: 0.16 },
+            InnerWorldElement,
+            Name::new(format!("CouncilPortalInlaySpoke_{i}")),
+        ));
+    }
+    commands.spawn((
+        PointLight { intensity: 75_000.0, range: 12.0, color: Color::srgb(0.25, 0.70, 1.0), shadows_enabled: false, ..default() },
+        Transform::from_xyz(0.0, 1.0, 0.0),
+        InnerWorldElement,
+        Name::new("CouncilPortalInlayLight"),
+    ));
+    // AURA is the operator-designated temporary central embodiment; Jester stays the
+    // host in the Council circle without being made the sovereign center.
+    commands.spawn((
+        SceneRoot(asset_server.load("scenes/aura.glb#Scene0")),
+        Transform::from_xyz(0.0, 0.42, -8.5).with_rotation(Quat::from_rotation_y(0.0)).with_scale(Vec3::splat(1.85)),
+        InnerWorldElement,
+        Name::new("AURA_CentralEmbodiment"),
+    ));
+    commands.spawn((
+        SceneRoot(asset_server.load("scenes/nebula_jester.glb#Scene0")),
+        Transform::from_xyz(10.2, 0.42, 6.2).with_rotation(Quat::from_rotation_y(-2.35)).with_scale(Vec3::splat(1.82)),
+        InnerWorldElement,
+        Name::new("Jester_CouncilHost"),
+    ));
+
+    let rooms = [
+        SeedRoom { name: "Architect", title: "LuminousBlueprint", angle: -std::f32::consts::FRAC_PI_2, stone: Color::srgb(0.27, 0.34, 0.42), light: Color::srgb(0.30, 0.62, 1.0), asset: Some("scenes/architect.glb#Scene0"), furniture: FurnitureKind::Drafting },
+        SeedRoom { name: "Sentinel", title: "NullAegis", angle: -std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.12, 0.15, 0.19), light: Color::srgb(0.35, 0.55, 1.0), asset: Some("scenes/sentinel.glb#Scene0"), furniture: FurnitureKind::Guard },
+        SeedRoom { name: "Explorer", title: "FrontierFlare", angle: std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.22, 0.15, 0.09), light: Color::srgb(1.0, 0.42, 0.08), asset: Some("scenes/explorer.glb#Scene0"), furniture: FurnitureKind::Map },
+        SeedRoom { name: "Empath", title: "LumaResonance", angle: std::f32::consts::FRAC_PI_2, stone: Color::srgb(0.25, 0.13, 0.15), light: Color::srgb(1.0, 0.50, 0.58), asset: Some("scenes/empath.glb#Scene0"), furniture: FurnitureKind::Hearth },
+        SeedRoom { name: "Mentor", title: "AncientResonance", angle: 5.0 * std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.07, 0.20, 0.17), light: Color::srgb(0.08, 0.72, 0.56), asset: Some("scenes/mentor.glb#Scene0"), furniture: FurnitureKind::Library },
+        SeedRoom { name: "Oracle", title: "NoctisVeil", angle: 7.0 * std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.13, 0.09, 0.22), light: Color::srgb(0.48, 0.34, 0.86), asset: Some("scenes/oracle.glb#Scene0"), furniture: FurnitureKind::Observatory },
+    ];
+    for room in rooms {
+        spawn_seed_room(&mut commands, &mut meshes, &mut materials, &asset_server, stone.clone(), trim.clone(), room);
+    }
+
+    spawn_seven_heavens_ascent(&mut commands, &mut meshes, stone.clone(), trim.clone());
+
+    // One enclosing wall contains the castle without restoring a flat arena floor.
+    commands.spawn((
+        Mesh3d(meshes.add(build_wall_ring_mesh(CASTLE_RADIUS, 24.0, 2.4, 144, 0.0, 0.0))),
+        MeshMaterial3d(masonry), Transform::IDENTITY, InnerWorldElement,
+        Name::new("InnerCastle_EnclosingCobbleDrum"),
+    ));
+
+    commands.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(24.0), bottom: Val::Px(24.0), padding: UiRect::axes(Val::Px(18.0), Val::Px(12.0)), max_width: Val::Px(780.0), ..default() }, BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.88)), GlobalZIndex(920), InnerWorldElement))
+        .with_children(|parent| { parent.spawn((Text::new("INNER CASTLE  •  [STATUS: GROUND WALKING]\\nWASD: Move & Strafe  •  Space: Jump (Double-Tap: Fly)  •  Mouse: Look  •  Esc: Menu"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::srgb(0.92, 0.93, 0.88)), InnerChambersHint)); });
+    next_state.set(InnerChambersState::Navigating);
+}
+
+#[derive(Clone, Copy)]
+enum FurnitureKind { Drafting, Guard, Map, Hearth, Library, Observatory }
+
+#[derive(Clone, Copy)]
+struct SeedRoom { name: &'static str, title: &'static str, angle: f32, stone: Color, light: Color, asset: Option<&'static str>, furniture: FurnitureKind }
+
+fn archetype_for_room(name: &str) -> Archetype {
+    match name {
+        "Architect" => Archetype::Architect,
+        "Sentinel" => Archetype::Sentinel,
+        "Explorer" => Archetype::Explorer,
+        "Empath" => Archetype::Empath,
+        "Mentor" => Archetype::Mentor,
+        "Oracle" => Archetype::Oracle,
+        _ => Archetype::Jester,
+    }
+}
+
+fn spawn_castle_platform(commands: &mut Commands, meshes: &mut Assets<Mesh>, stone: Handle<StandardMaterial>, trim: Handle<StandardMaterial>, center: Vec3, radius: f32, name: &str) {
+    commands.spawn((Mesh3d(meshes.add(Cylinder::new(radius, 0.8))), MeshMaterial3d(stone.clone()), Transform::from_translation(center), InnerWorldElement, Name::new(format!("{name}_StoneSlabPlatform"))));
+    // Broad, individually separated flagstones make the walking surface read as
+    // masonry, not as a single GPU-smooth disc.
+    commands.spawn((Mesh3d(meshes.add(build_radial_flagstone_mesh(0.58, radius - 0.58, 0.052, 16, 0.055))), MeshMaterial3d(stone.clone()), Transform::from_translation(center + Vec3::Y * 0.41), InnerWorldElement, Name::new(format!("{name}_LargeStoneFloorSlabs"))));
+    // The perimeter is a course of separate brick blocks.  The torus remains as
+    // its shadowed bedding joint, while the blocks give it a visible hand-laid edge.
+    commands.spawn((Mesh3d(meshes.add(Torus::new(radius - 0.34, radius + 0.18))), MeshMaterial3d(trim.clone()), Transform::from_translation(center + Vec3::Y * 0.42), InnerWorldElement, Name::new(format!("{name}_BrickEdgeBedding"))));
+    for brick in 0..28 {
+        let theta = brick as f32 * std::f32::consts::TAU / 28.0;
+        let edge = Vec3::new(theta.cos(), 0.0, theta.sin());
+        commands.spawn((Mesh3d(meshes.add(Cuboid::new(0.50, 0.18, 1.10))), MeshMaterial3d(trim.clone()), Transform::from_translation(center + edge * (radius - 0.06) + Vec3::Y * 0.52).with_rotation(Quat::from_rotation_y(-theta)), InnerWorldElement, Name::new(format!("{name}_BrickEdgeCourse_{brick}"))));
+    }
+}
+
+fn spawn_seed_room(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>, asset_server: &AssetServer, stone: Handle<StandardMaterial>, trim: Handle<StandardMaterial>, room: SeedRoom) {
+    let center = Vec3::new(room.angle.cos() * OUTER_ROOM_DISTANCE, 0.0, room.angle.sin() * OUTER_ROOM_DISTANCE);
+    spawn_castle_platform(commands, meshes, stone, trim.clone(), center, OUTER_ROOM_RADIUS, room.name);
+    let room_mat = materials.add(StandardMaterial { base_color: room.stone, perceptual_roughness: 0.87, metallic: 0.05, double_sided: true, cull_mode: None, ..default() });
+    let toward_center = room.angle + std::f32::consts::PI;
+    commands.spawn((Mesh3d(meshes.add(build_wall_ring_mesh(OUTER_ROOM_RADIUS - 0.9, 12.5, 1.05, 88, toward_center, 0.48))), MeshMaterial3d(room_mat.clone()), Transform::from_translation(center + Vec3::Y * 0.42), InnerWorldElement, Name::new(format!("{}_CobblestoneRoomWall", room.name))));
+    // Projecting irregular courses turn the structural ring into actual visible
+    // cobblestone rather than a flat cylinder with a flattering name.  The doorway
+    // interval stays clear for the trimmed threshold below.
+    for course in 0..9 {
+        for block in 0..28 {
+            let theta = block as f32 * std::f32::consts::TAU / 28.0 + if course % 2 == 0 { 0.0 } else { 0.11 };
+            let angular_delta = (theta - toward_center + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+            if angular_delta.abs() < 0.37 { continue; }
+            let radial_block = Vec3::new(theta.cos(), 0.0, theta.sin());
+            let height = 0.72 + (block % 3) as f32 * 0.05;
+            commands.spawn((Mesh3d(meshes.add(Cuboid::new(0.50, height, 2.05))), MeshMaterial3d(room_mat.clone()), Transform::from_translation(center + radial_block * (OUTER_ROOM_RADIUS - 0.58) + Vec3::Y * (0.82 + course as f32 * 1.18)).with_rotation(Quat::from_rotation_y(-theta)), InnerWorldElement, Name::new(format!("{}_Cobble_{}_{}", room.name, course, block))));
+        }
+    }
+    spawn_trimmed_doorway(commands, meshes, trim.clone(), center, toward_center, room.name);
+    // A 28m bridge makes the passage itself part of the castle: a player must cross
+    // actual space above the abyss to enter an archetype room.
+    let radial = Vec3::new(room.angle.cos(), 0.0, room.angle.sin());
+    let bridge_center = radial * (COUNCIL_RADIUS + BRIDGE_LENGTH * 0.5);
+    commands.spawn((Mesh3d(meshes.add(Cuboid::new(BRIDGE_LENGTH, 0.55, 5.4))), MeshMaterial3d(room_mat.clone()), Transform::from_translation(bridge_center + Vec3::Y * 0.10).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_BridgeOverAbyss", room.name))));
+    for side in [-1.0_f32, 1.0] { commands.spawn((Mesh3d(meshes.add(Cuboid::new(BRIDGE_LENGTH, 1.6, 0.24))), MeshMaterial3d(trim.clone()), Transform::from_translation(bridge_center + Vec3::new(-room.angle.sin(), 0.0, room.angle.cos()) * side * 2.56 + Vec3::Y * 0.95).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_BridgeRail", room.name)))); }
+    spawn_room_furniture(commands, meshes, room_mat.clone(), trim.clone(), center, room);
+    if let Some(path) = room.asset { commands.spawn((SceneRoot(asset_server.load(path)), Transform::from_translation(center + radial * 5.0 + Vec3::Y * 0.42).with_rotation(Quat::from_rotation_y(toward_center)).with_scale(Vec3::splat(2.20)), ArchetypeEmbodiment { archetype: archetype_for_room(room.name), chamber_title: room.title }, InnerWorldElement, Name::new(format!("{}_Embodiment", room.name)))); }
+    commands.spawn((PointLight { intensity: 180_000.0, range: 28.0, color: room.light, shadows_enabled: false, ..default() }, Transform::from_translation(center + Vec3::new(-radial.z * 6.5, 9.5, radial.x * 6.5)), InnerWorldElement, Name::new(format!("{}_ThemeKeyLight", room.name))));
+    commands.spawn((PointLight { intensity: 95_000.0, range: 18.0, color: Color::srgb(1.0, 0.66, 0.30), shadows_enabled: false, ..default() }, Transform::from_translation(center - radial * 12.5 + Vec3::Y * 5.5), InnerWorldElement, Name::new(format!("{}_WarmThresholdLight", room.name))));
+    commands.spawn((Name::new(format!("{}_{}", room.name, room.title)), InnerWorldElement));
+}
+
+fn spawn_trimmed_doorway(commands: &mut Commands, meshes: &mut Assets<Mesh>, trim: Handle<StandardMaterial>, center: Vec3, angle: f32, name: &str) {
+    let radial = Vec3::new(angle.cos(), 0.0, angle.sin()); let tangent = Vec3::new(-angle.sin(), 0.0, angle.cos());
+    let threshold = OUTER_ROOM_RADIUS - 1.55;
+    for side in [-1.0_f32, 1.0] { commands.spawn((Mesh3d(meshes.add(Cuboid::new(0.85, 8.2, 1.25))), MeshMaterial3d(trim.clone()), Transform::from_translation(center + radial * threshold + tangent * side * 3.2 + Vec3::Y * 4.5).with_rotation(Quat::from_rotation_y(-angle)), InnerWorldElement, Name::new(format!("{name}_TrimmedDoorJamb")))); }
+    commands.spawn((Mesh3d(meshes.add(Cuboid::new(7.4, 0.92, 1.5))), MeshMaterial3d(trim), Transform::from_translation(center + radial * threshold + Vec3::Y * 8.5).with_rotation(Quat::from_rotation_y(-angle)), InnerWorldElement, Name::new(format!("{name}_TrimmedDoorLintel"))));
+}
+
+fn spawn_room_furniture(commands: &mut Commands, meshes: &mut Assets<Mesh>, stone: Handle<StandardMaterial>, trim: Handle<StandardMaterial>, center: Vec3, room: SeedRoom) {
+    let tangent = Vec3::new(-room.angle.sin(), 0.0, room.angle.cos());
+    let radial = Vec3::new(room.angle.cos(), 0.0, room.angle.sin());
+    for side in [-1.0_f32, 1.0] { commands.spawn((Mesh3d(meshes.add(Cuboid::new(1.35, 3.8, 6.4))), MeshMaterial3d(stone.clone()), Transform::from_translation(center + tangent * side * 11.5 + radial * 3.0 + Vec3::Y * 2.3).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_StoneShelf_{side}", room.name)))); }
+    let (width, depth) = match room.furniture { FurnitureKind::Drafting => (7.2, 2.4), FurnitureKind::Guard => (5.8, 2.0), FurnitureKind::Map => (8.0, 2.2), FurnitureKind::Hearth => (6.4, 3.2), FurnitureKind::Library => (5.2, 2.0), FurnitureKind::Observatory => (4.4, 4.4) };
+    commands.spawn((Mesh3d(meshes.add(Cuboid::new(width, 1.5, depth))), MeshMaterial3d(trim), Transform::from_translation(center + radial * 8.6 + Vec3::Y * 1.15).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_FunctionalCounter", room.name))));
+}
+
+/// Seven circular galleries occupy the inner face of the far enclosing wall. The
+/// stair begins at that perimeter floor, circles the wall three times, and reaches
+/// the seventh gallery beneath the vault. These are full stone surfaces, not a
+/// skybox/overlay metaphor or arbitrary interior obstruction.
+fn spawn_seven_heavens_ascent(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    stone: Handle<StandardMaterial>,
+    trim: Handle<StandardMaterial>,
+) {
+    const LEVELS: usize = 7;
+    const LEVEL_HEIGHT: f32 = 3.0;
+    const FIRST_LEVEL_Y: f32 = 3.4;
+    const GALLERY_INNER_RADIUS: f32 = 80.5;
+    const GALLERY_OUTER_RADIUS: f32 = 88.5;
+
+    // Ground-level perimeter promenade: it is the physical approach to the first
+    // stair tread and the route that lets the player circle the castle below the
+    // Seven Heavens, beside future art, carpet, banner, and display bays.
+    commands.spawn((
+        Mesh3d(meshes.add(build_radial_flagstone_mesh(76.0, 82.1, 0.16, 112, 0.008))),
+        MeshMaterial3d(stone.clone()),
+        Transform::from_xyz(0.0, 0.40, 0.0),
+        InnerWorldElement,
+        Name::new("PerimeterPromenade_GroundLevel"),
+    ));
+    commands.spawn((
+        Mesh3d(meshes.add(Torus::new(81.75, 82.05))),
+        MeshMaterial3d(trim.clone()),
+        Transform::from_xyz(0.0, 0.62, 0.0),
+        InnerWorldElement,
+        Name::new("PerimeterPromenade_StairThreshold"),
+    ));
+
+    for level in 0..LEVELS {
+        let inner = GALLERY_INNER_RADIUS;
+        let outer = GALLERY_OUTER_RADIUS;
+        let y = FIRST_LEVEL_Y + level as f32 * LEVEL_HEIGHT;
+        commands.spawn((
+            Mesh3d(meshes.add(build_radial_flagstone_mesh(inner, outer, 0.16, 56, 0.010))),
+            MeshMaterial3d(stone.clone()),
+            Transform::from_xyz(0.0, y, 0.0),
+            InnerWorldElement,
+            Name::new(format!("SevenHeavens_Gallery_{:02}", level + 1)),
+        ));
+        commands.spawn((
+            Mesh3d(meshes.add(Torus::new(outer - 0.22, outer + 0.16))),
+            MeshMaterial3d(trim.clone()),
+            Transform::from_xyz(0.0, y + 0.18, 0.0),
+            InnerWorldElement,
+            Name::new(format!("SevenHeavens_GalleryTrim_{:02}", level + 1)),
+        ));
+        commands.spawn((
+            PointLight {
+                intensity: 56_000.0,
+                range: 18.0,
+                color: Color::srgb(0.62 + level as f32 * 0.035, 0.48 + level as f32 * 0.045, 0.30 + level as f32 * 0.07),
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_xyz(0.0, y + 2.0, -inner),
+            InnerWorldElement,
+            Name::new(format!("SevenHeavens_GalleryLight_{:02}", level + 1)),
+        ));
+    }
+
+    // This is a true perimeter ascent: one complete inside-wall circuit per Heaven,
+    // seven circuits from floor to vault. At this castle radius it is a multi-kilometre
+    // journey, intentionally giving the player reason to traverse the whole castle.
+    const CIRCUITS: usize = 7;
+    const STEPS_PER_CIRCUIT: usize = 160;
+    let steps = CIRCUITS * STEPS_PER_CIRCUIT;
+    let start_radius = 82.0;
+    let end_radius = 86.5;
+    let end_y = FIRST_LEVEL_Y + (LEVELS - 1) as f32 * LEVEL_HEIGHT + 0.16;
+    for step in 0..steps {
+        let progress = step as f32 / (steps - 1) as f32;
+        let theta = -std::f32::consts::FRAC_PI_2 + progress * std::f32::consts::TAU * CIRCUITS as f32;
+        let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
+        let tangent = Vec3::new(-theta.sin(), 0.0, theta.cos());
+        let radius = start_radius + (end_radius - start_radius) * progress;
+        let y = 0.48 + (end_y - 0.48) * progress;
+        let position = radial * radius + Vec3::Y * y;
+        commands.spawn((
+            // At radius ~84m, 160 treads make one full circuit continuous rather
+            // than presenting disconnected floating blocks.
+            Mesh3d(meshes.add(Cuboid::new(3.6, 0.30, 3.72))),
+            MeshMaterial3d(stone.clone()),
+            Transform::from_translation(position).with_rotation(Quat::from_rotation_y(-theta)),
+            InnerWorldElement,
+            Name::new(format!("SevenHeavens_SpiralTread_{step:03}")),
+        ));
+        if step % 2 == 0 {
+            commands.spawn((
+                Mesh3d(meshes.add(Cuboid::new(0.16, 1.1, 1.42))),
+                MeshMaterial3d(trim.clone()),
+                Transform::from_translation(position + radial * 1.72 + Vec3::Y * 0.62).with_rotation(Quat::from_rotation_y(-theta)),
+                InnerWorldElement,
+                Name::new(format!("SevenHeavens_SpiralRail_{step:03}")),
+            ));
+        }
+        let _ = tangent; // documents the local stair frame for future handrail extension.
+    }
+}
+
+/// Preserved 2026-09-10 gallery implementation. It is intentionally no longer the
+/// live world setup; retained until the Seed-of-Life castle receives operator review.
+#[allow(dead_code)]
+fn setup_legacy_rotunda_world(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,

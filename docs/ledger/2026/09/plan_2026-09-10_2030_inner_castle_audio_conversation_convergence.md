@@ -1,7 +1,7 @@
 # Plan: Inner Castle Audio, Conversation, and Mode Convergence — 2026-09-10 20:30
 
 ## Status
-PENDING
+IN-PROGRESS
 
 ## Goal
 
@@ -304,9 +304,18 @@ castle-location reason to exist.
 - [ ] Verify no duplicate loops after mode transitions and no audio plays for failed manifestation.
 
 ### Phase 3 — Typed archetype encounter
-- [ ] Extract shared conversation state from Standard Mecha with targeted unit tests.
-- [ ] Add `Interactable`/single-focus resolver and a single Architect encounter in Inner Chambers.
-- [ ] Prove `E` opens only the focused target, player movement pauses, local Ollama failures remain
+- [x] Extract the shared persona/request contract from Standard Mecha into
+  `services/archetype_conversation.rs`; both Standard Mecha and Inner Chambers now use the
+  same canonical local-Ollama persona contract, with no automatic image-generation side effect
+  in the castle path. `cargo test --workspace` passed 119/119 on 2026-09-10.
+- [ ] Replace all competing raw-`E` paths with the planned typed `Interactable` resolver. The
+  first encounter uses a range-gated embodiment focus; manifestation and truth-node input are
+  not yet migrated, so the global resolver is not claimed complete.
+- [x] Add six embodied typed encounters in Inner Chambers. The modal panel pauses locomotion,
+  writes local JSONL transcript records under LocalAppData plus hash-chained ledger metadata,
+  issues a local Ollama request, and exposes a specific failure without fabricating a reply.
+- [ ] Prove from the installed Desktop/Taskbar product that `E` opens only the focused target,
+  player movement pauses, local Ollama failures remain
   visible, close restores play, and a transcript persists with encounter metadata.
 - [ ] Expand to all archetypes only after the first one passes the installed witness.
 
@@ -332,3 +341,13 @@ or visibly fails a local response, closes back to the exact location, hears an o
 looped castle bed at a non-intrusive level, and can observe an actual manifestation/ambient
 emitter behavior without duplicate playback. The relevant automated tests, audio metadata checks,
 installed build, and recorded visual/audio witness must be attached before commit and push.
+
+## Current implementation checkpoint — 2026-09-10 22:20
+
+The typed encounter code is compiled and the complete Rust suite passed (`119 passed; 0 failed`).
+`install_shortcut.ps1` built the release binaries but did **not** complete the installed-product
+copy: a running process held
+`%LOCALAPPDATA%\Programs\Archetypes\assets\mecha\uxbacklayer.png` open. No commit or push is
+authorized by the repository delivery rules until that lock is cleared and the installed build is
+visually exercised. Audio, STT, the global interaction resolver, and mode convergence are also
+still unimplemented; the plan remains IN-PROGRESS.

@@ -8,7 +8,6 @@
 //! repo's own doctrine requires; it is never on during normal play.
 
 use super::camera::{CameraController, LocomotionMode, PlayerCamera};
-use super::world::{NICHE_CENTERS, NICHE_RING_RADIUS};
 use super::{InnerChambersState, TriggerInnerChambers};
 use crate::chamber::boot::MainMenuUi;
 use crate::chamber::ChamberState;
@@ -53,45 +52,31 @@ impl InnerCaptureRun {
         // ordering rules out (or confirms) a first-teleport/asset-warmup artifact.
         // Filenames still reflect the intended gallery order, not capture order.
         let mut shots = vec![CaptureShot {
-            name: "01_table_and_dais".to_string(),
-            eye: Vec3::new(0.0, 4.5, 8.0),
-            look_at: Vec3::new(0.0, 1.5, 0.0),
+            name: "01_council_floor_inlay".to_string(),
+            eye: Vec3::new(0.0, 4.4, 8.5),
+            look_at: Vec3::new(0.0, 1.7, -1.3),
         }];
-        let niche_names = ["sentinel", "aura", "empath", "oracle", "nebula_jester"];
-        for (i, center) in NICHE_CENTERS.iter().enumerate() {
-            // Stand off from the niche center along the hall-center approach line,
-            // just outside its own wall ring. The five niches sit only ~5.67m apart
-            // center-to-center, so this must stay well short of a neighbor's ring
-            // too (checked against NICHE_RING_RADIUS below) — an earlier 6m pull-back
-            // landed inside the *next* niche's wall.
-            let center_xz = Vec2::new(center.x, center.z);
-            let toward_hall = -center_xz.normalize();
-            let stand_off = NICHE_RING_RADIUS + 1.1;
-            let eye_xz = center_xz + toward_hall * stand_off;
+        let rooms = [
+            ("architect", -std::f32::consts::FRAC_PI_2),
+            ("sentinel", -std::f32::consts::FRAC_PI_6),
+            ("explorer", std::f32::consts::FRAC_PI_6),
+            ("empath", std::f32::consts::FRAC_PI_2),
+            ("mentor", 5.0 * std::f32::consts::FRAC_PI_6),
+            ("oracle", 7.0 * std::f32::consts::FRAC_PI_6),
+        ];
+        for (i, (name, angle)) in rooms.iter().enumerate() {
+            let radial = Vec3::new(angle.cos(), 0.0, angle.sin());
+            let center = radial * 62.0;
             shots.push(CaptureShot {
-                name: format!("{:02}_niche_{}", i + 2, niche_names[i]),
-                eye: Vec3::new(eye_xz.x, 3.0, eye_xz.y),
-                look_at: Vec3::new(center.x, 2.1, center.z),
+                name: format!("{:02}_room_{name}", i + 2),
+                eye: center - radial * 14.6 + Vec3::Y * 5.0,
+                look_at: center + radial * 5.0 + Vec3::Y * 2.6,
             });
         }
         shots.push(CaptureShot {
-            name: "00_rotunda_overview".to_string(),
-            // Two ground-level/oblique attempts both put the 23m-wide, 5.6m-tall
-            // niche row directly in frame at a scale matching its real proportion to
-            // the room — correct perspective, not a bug, but it always crowded out
-            // the table/dais beyond. A near-top-down plan view is more useful for
-            // verification anyway: it proves the whole layout — rotunda, dais,
-            // table, and all five niches — actually exists as authored, in one shot.
-            eye: Vec3::new(0.0, 34.0, 7.0),
-            look_at: Vec3::new(0.0, 0.0, 6.9),
-        });
-        shots.push(CaptureShot {
-            name: "07_rotunda_drum_and_portal".to_string(),
-            // A low interior long view proves the new circular shell as actual
-            // rendered architecture: curved 64-bay masonry, radial roof ribs,
-            // continuous cornice, and the north processional portal frame.
-            eye: Vec3::new(0.0, 3.5, 22.0),
-            look_at: Vec3::new(0.0, 8.0, -36.0),
+            name: "00_seed_of_life_layout".to_string(),
+            eye: Vec3::new(0.0, 215.0, 0.1),
+            look_at: Vec3::ZERO,
         });
 
         Some(Self {

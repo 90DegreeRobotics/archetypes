@@ -82,7 +82,9 @@ fn drive_interior_environment(
     let inside_world = matches!(state.get(), ChamberState::CouncilSpeaking);
 
     let (ambient_color, brightness) = if is_inner_chambers {
-        (Color::srgb(0.78, 0.82, 0.95), 480.0)
+        // The Inner Castle contains real alcoves and elevated stone platforms, not
+        // a sunlit arena, but 480 left their hand-built relief visually unreadable.
+        (Color::srgb(0.78, 0.72, 0.62), 1_250.0)
     } else {
         match (inside_world, focus.0) {
             (true, Some(archetype)) => {
