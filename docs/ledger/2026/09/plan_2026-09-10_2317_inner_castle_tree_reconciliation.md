@@ -46,5 +46,5 @@ and only be committed after the full Rust and installed-launcher gates pass.
 - Music is intentionally `PlaybackSettings::ONCE` at 0.22 linear volume. The MP3-derived tracks
   have no proven loop boundary, so a hard infinite loop would be a knowingly bad implementation.
 - Commit `15c71dc44bbad8be8b1e1314d6d5c39bd450910b` was pushed and confirmed as
-  `origin/main`. The attempted installed-binary capture emitted no frames; its retained README
-  is an honest failure record, not a visual witness.
+  `origin/main`. The installed-binary capture wrote eight numbered frames after asynchronous
+  PNG encoding completed; the retained README records that timing rather than a false failure.
