@@ -25,29 +25,10 @@ const NICHE_CANOPY_Y: f32 = 5.6;
 const NICHE_PILLAR_HEIGHT: f32 = 3.2;
 pub(super) const NICHE_DOOR_WIDTH: f32 = 1.05; // ~60 degrees, wide enough to walk through freely
 
-/// Shared physical scale for the live Seed-of-Life Inner Castle. These values are
-/// intentionally much larger than the rejected gallery draft: a room is a place to
-/// inhabit and a bridge is a walk, rather than a decorative gap.
-pub(super) const COUNCIL_RADIUS: f32 = 16.0;
-pub(super) const OUTER_ROOM_RADIUS: f32 = 18.0;
-pub(super) const OUTER_ROOM_DISTANCE: f32 = 62.0;
-pub(super) const BRIDGE_LENGTH: f32 = 28.0;
-pub(super) const CASTLE_RADIUS: f32 = 92.0;
-
-/// The room's cobblestone wall as a physical shell. `camera.rs` collides against exactly these
-/// numbers, so the wall a player can touch is the wall that was drawn: the ring is spawned at
-/// `ROOM_WALL_RADIUS` with `ROOM_WALL_HALF_THICKNESS * 2.0` thickness, and the doorway gap is
-/// `ROOM_DOOR_HALF_ARC * 2.0` wide in both the mesh and the collision.
-pub(super) const ROOM_WALL_RADIUS: f32 = OUTER_ROOM_RADIUS - 0.9;
-pub(super) const ROOM_WALL_HALF_THICKNESS: f32 = 0.525;
-pub(super) const ROOM_DOOR_HALF_ARC: f32 = 0.24;
-
-/// Radial offsets of each room's authored contents, measured from the room centre outward.
-/// `camera.rs` derives its collision capsules from these rather than from hand-typed world
-/// coordinates — two of the six used to be transcribed with a flipped sign, which put an
-/// invisible pillar in the Architect and Empath doorways and left their figures uncollidable.
-pub(super) const EMBODIMENT_RADIAL_OFFSET: f32 = 5.0;
-pub(super) const WORKSHOP_TABLE_RADIAL_OFFSET: f32 = 8.6;
+// Every dimension of the castle shell, its galleries and its stairs lives in `castle.rs`, so
+// the geometry built here and the geometry the player collides against in `camera.rs` cannot
+// drift apart.
+use super::castle::*;
 
 /// The five archetype figure positions, duplicated here (rather than shared with the
 /// spawn-time literals in `setup_inner_world`) so collision code has a plain data
@@ -180,13 +161,27 @@ fn setup_inner_world(
     asset_server: Res<AssetServer>,
 ) {
     clear.0 = Color::srgb(0.012, 0.014, 0.020);
-    // The void remains dark; the castle itself needs enough diffuse bounce to show
-    // hand-laid stone at human scale instead of collapsing into flat black.
+    // A hall 240m across and 126m to the vault cannot be lit the way a single room was: the
+    // old ambient was tuned for a small chamber and left the far wall black. Ambient is raised
+    // enough to read masonry at distance, but deliberately not so far that everything flattens
+    // out — the shape still comes from the directional key below and from the tiered lamps.
     commands.insert_resource(GlobalAmbientLight {
-        color: Color::srgb(0.78, 0.70, 0.60),
-        brightness: 1_150.0,
+        color: Color::srgb(0.80, 0.73, 0.63),
+        brightness: 2_400.0,
         ..default()
     });
+    commands.spawn((
+        DirectionalLight {
+            illuminance: 2_600.0,
+            color: Color::srgb(1.0, 0.93, 0.82),
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 140.0, 0.0)
+            .looking_at(Vec3::new(40.0, 0.0, -70.0), Vec3::Y),
+        InnerWorldElement,
+        Name::new("Castle_VaultKeyLight"),
+    ));
     let (floor_albedo, floor_normal) = chamber_floor_textures();
     let floor_normal = images.add(floor_normal);
     let stone = materials.add(StandardMaterial {
@@ -217,7 +212,7 @@ fn setup_inner_world(
     // The deep void is geometry, not a black clear-color trick: the rooms visibly
     // hang above a lower circular floor and broken concentric foundation rings.
     commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(CASTLE_RADIUS + 8.0, 0.8))),
+        Mesh3d(meshes.add(Cylinder::new(CASTLE_RADIUS + 16.0, 0.8))),
         MeshMaterial3d(abyss),
         Transform::from_xyz(0.0, -20.2, 0.0),
         InnerWorldElement,
@@ -306,11 +301,11 @@ fn setup_inner_world(
         spawn_seed_room(&mut commands, &mut meshes, &mut materials, &asset_server, stone.clone(), trim.clone(), room);
     }
 
-    spawn_seven_heavens_ascent(&mut commands, &mut meshes, stone.clone(), trim.clone());
+    spawn_castle_ascent(&mut commands, &mut meshes, &mut materials, stone.clone(), trim.clone());
 
     // One enclosing wall contains the castle without restoring a flat arena floor.
     commands.spawn((
-        Mesh3d(meshes.add(build_wall_ring_mesh(CASTLE_RADIUS, 24.0, 2.4, 144, 0.0, 0.0))),
+        Mesh3d(meshes.add(build_wall_ring_mesh(CASTLE_RADIUS, CASTLE_WALL_HEIGHT, CASTLE_WALL_THICKNESS, 288, 0.0, 0.0))),
         MeshMaterial3d(masonry), Transform::IDENTITY, InnerWorldElement,
         Name::new("InnerCastle_EnclosingCobbleDrum"),
     ));
@@ -358,7 +353,7 @@ fn spawn_seed_room(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials
     spawn_castle_platform(commands, meshes, stone, trim.clone(), center, OUTER_ROOM_RADIUS, room.name);
     let room_mat = materials.add(StandardMaterial { base_color: room.stone, perceptual_roughness: 0.87, metallic: 0.05, double_sided: true, cull_mode: None, ..default() });
     let toward_center = room.angle + std::f32::consts::PI;
-    commands.spawn((Mesh3d(meshes.add(build_wall_ring_mesh(ROOM_WALL_RADIUS, 12.5, ROOM_WALL_HALF_THICKNESS * 2.0, 88, toward_center, ROOM_DOOR_HALF_ARC * 2.0))), MeshMaterial3d(room_mat.clone()), Transform::from_translation(center + Vec3::Y * 0.42), InnerWorldElement, Name::new(format!("{}_CobblestoneRoomWall", room.name))));
+    commands.spawn((Mesh3d(meshes.add(build_wall_ring_mesh(ROOM_WALL_RADIUS, ROOM_WALL_HEIGHT, ROOM_WALL_HALF_THICKNESS * 2.0, 120, toward_center, ROOM_DOOR_HALF_ARC * 2.0))), MeshMaterial3d(room_mat.clone()), Transform::from_translation(center + Vec3::Y * 0.42), InnerWorldElement, Name::new(format!("{}_CobblestoneRoomWall", room.name))));
     // Projecting irregular courses turn the structural ring into actual visible
     // cobblestone rather than a flat cylinder with a flattering name.  The doorway
     // interval stays clear for the trimmed threshold below.
@@ -528,108 +523,285 @@ fn spawn_architect_workshop(
     ));
 }
 
-/// Seven circular galleries occupy the inner face of the far enclosing wall. The
-/// stair begins at that perimeter floor, circles the wall three times, and reaches
-/// the seventh gallery beneath the vault. These are full stone surfaces, not a
-/// skybox/overlay metaphor or arbitrary interior obstruction.
-fn spawn_seven_heavens_ascent(
+/// The perimeter ascent: seven galleries around the inside of the outer wall, joined by real
+/// stairs.
+///
+/// The dimensions come from `castle.rs`, which documents the arithmetic. The short version:
+/// a 12m storey climbed by 72 risers of 167mm on 300mm treads is a 29° stair and needs 27.6m
+/// of run, which wraps only 14.6° around a 108m radius. So the stairs climb and the galleries
+/// circle — each storey's flight starts 60° further around the building than the one below it.
+fn spawn_castle_ascent(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    stone: Handle<StandardMaterial>,
+    trim: Handle<StandardMaterial>,
+) {
+    let ember = materials.add(StandardMaterial {
+        base_color: Color::srgb(1.0, 0.72, 0.36),
+        emissive: LinearRgba::rgb(9.0, 4.2, 1.3),
+        ..default()
+    });
+
+    // Ground promenade: the full walkable ring the ascent starts from.
+    commands.spawn((
+        Mesh3d(meshes.add(build_radial_flagstone_mesh(
+            PROMENADE_INNER_RADIUS,
+            GALLERY_OUTER_RADIUS,
+            0.16,
+            160,
+            0.008,
+        ))),
+        MeshMaterial3d(stone.clone()),
+        Transform::from_xyz(0.0, PROMENADE_Y - 0.1, 0.0),
+        InnerWorldElement,
+        Name::new("Perimeter_GroundPromenade"),
+    ));
+
+    for level in 0..GALLERY_LEVELS {
+        let floor_y = gallery_y(level);
+
+        // The gallery deck itself — a 12m wide walkway, wide enough to be a street.
+        commands.spawn((
+            Mesh3d(meshes.add(build_radial_flagstone_mesh(
+                GALLERY_INNER_RADIUS,
+                GALLERY_OUTER_RADIUS,
+                0.55,
+                128,
+                0.010,
+            ))),
+            MeshMaterial3d(stone.clone()),
+            Transform::from_xyz(0.0, floor_y, 0.0),
+            InnerWorldElement,
+            Name::new(format!("Gallery_{:02}_Deck", level + 1)),
+        ));
+
+        // Underside cornice, so each storey reads as a built floor from the hall below.
+        commands.spawn((
+            Mesh3d(meshes.add(Torus::new(GALLERY_INNER_RADIUS - 0.9, GALLERY_INNER_RADIUS + 0.5))),
+            MeshMaterial3d(trim.clone()),
+            Transform::from_xyz(0.0, floor_y - 0.85, 0.0),
+            InnerWorldElement,
+            Name::new(format!("Gallery_{:02}_Cornice", level + 1)),
+        ));
+
+        // Balustrade on the inner edge, which is the edge with the drop.
+        commands.spawn((
+            Mesh3d(meshes.add(Torus::new(GALLERY_INNER_RADIUS + 0.02, GALLERY_INNER_RADIUS + 0.30))),
+            MeshMaterial3d(trim.clone()),
+            Transform::from_xyz(0.0, floor_y + 1.25, 0.0),
+            InnerWorldElement,
+            Name::new(format!("Gallery_{:02}_Handrail", level + 1)),
+        ));
+        let baluster_count = 96;
+        for index in 0..baluster_count {
+            let theta = index as f32 * std::f32::consts::TAU / baluster_count as f32;
+            let seat = Vec3::new(theta.cos(), 0.0, theta.sin()) * (GALLERY_INNER_RADIUS + 0.16);
+            commands.spawn((
+                Mesh3d(meshes.add(Cuboid::new(0.26, 1.25, 0.26))),
+                MeshMaterial3d(trim.clone()),
+                Transform::from_translation(seat + Vec3::Y * (floor_y + 0.62))
+                    .with_rotation(Quat::from_rotation_y(-theta)),
+                InnerWorldElement,
+                Name::new(format!("Gallery_{:02}_Baluster_{index:03}", level + 1)),
+            ));
+        }
+
+        // Wall articulation: an arcade of engaged piers per storey. Repetition at a human
+        // module is what lets the eye measure the height of the hall.
+        let pier_count = 48;
+        for index in 0..pier_count {
+            let theta = index as f32 * std::f32::consts::TAU / pier_count as f32;
+            let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
+            commands.spawn((
+                Mesh3d(meshes.add(Cuboid::new(1.5, GALLERY_RISE - 1.6, 2.4))),
+                MeshMaterial3d(stone.clone()),
+                Transform::from_translation(
+                    radial * (GALLERY_OUTER_RADIUS - 1.0) + Vec3::Y * (floor_y + GALLERY_RISE * 0.5 - 0.5),
+                )
+                .with_rotation(Quat::from_rotation_y(-theta)),
+                InnerWorldElement,
+                Name::new(format!("Gallery_{:02}_Pier_{index:02}", level + 1)),
+            ));
+            if index % 4 == 0 {
+                // Emissive sconces rather than point lights: hundreds of real lights would
+                // blow the clustered-forward budget, and the glow is what reads at distance.
+                commands.spawn((
+                    Mesh3d(meshes.add(Sphere::new(0.42))),
+                    MeshMaterial3d(ember.clone()),
+                    Transform::from_translation(
+                        radial * (GALLERY_OUTER_RADIUS - 2.4) + Vec3::Y * (floor_y + 3.6),
+                    ),
+                    InnerWorldElement,
+                    Name::new(format!("Gallery_{:02}_Sconce_{index:02}", level + 1)),
+                ));
+            }
+        }
+
+        // A few real lights per storey, spread around the ring, to actually light the deck.
+        for lamp in 0..6 {
+            let theta = lamp as f32 * std::f32::consts::TAU / 6.0 + level as f32 * 0.26;
+            let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
+            commands.spawn((
+                PointLight {
+                    intensity: 12_000_000.0,
+                    range: 165.0,
+                    color: Color::srgb(1.0, 0.82, 0.58),
+                    shadows_enabled: false,
+                    ..default()
+                },
+                Transform::from_translation(radial * (GALLERY_OUTER_RADIUS - 7.0) + Vec3::Y * (floor_y + 5.5)),
+                InnerWorldElement,
+                Name::new(format!("Gallery_{:02}_Lamp_{lamp}", level + 1)),
+            ));
+        }
+
+        spawn_ascent_flight(commands, meshes, stone.clone(), trim.clone(), level);
+    }
+
+    // Wall head cornice and the vault above it.
+    commands.spawn((
+        Mesh3d(meshes.add(Torus::new(GALLERY_OUTER_RADIUS - 2.0, GALLERY_OUTER_RADIUS + 1.0))),
+        MeshMaterial3d(trim.clone()),
+        Transform::from_xyz(0.0, CASTLE_WALL_HEIGHT - 2.0, 0.0),
+        InnerWorldElement,
+        Name::new("Castle_WallHeadCornice"),
+    ));
+    commands.spawn((
+        Mesh3d(meshes.add(Cone {
+            radius: castle_inner_face(),
+            height: VAULT_RISE,
+        })),
+        MeshMaterial3d(stone.clone()),
+        // Apex up, base seated on the wall head. Rotating this cone flipped it into a funnel
+        // that hung down into the hall.
+        Transform::from_xyz(0.0, CASTLE_WALL_HEIGHT + VAULT_RISE * 0.5, 0.0),
+        InnerWorldElement,
+        Name::new("Castle_Vault"),
+    ));
+    for crown in 0..6 {
+        let theta = crown as f32 * std::f32::consts::TAU / 6.0;
+        let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
+        commands.spawn((
+            PointLight {
+                intensity: 26_000_000.0,
+                range: 230.0,
+                color: Color::srgb(0.96, 0.86, 0.72),
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_translation(radial * 52.0 + Vec3::Y * (CASTLE_WALL_HEIGHT + 6.0)),
+            InnerWorldElement,
+            Name::new(format!("Castle_CrownLight_{crown}")),
+        ));
+    }
+    // Ribs follow the actual line of the vault: from the wall head at (r = inner face, y = wall
+    // height) to the crown at (r = 0, y = wall height + rise).
+    let rib_length = (castle_inner_face().powi(2) + VAULT_RISE.powi(2)).sqrt();
+    let rib_tilt = (VAULT_RISE / castle_inner_face()).atan();
+    for rib in 0..24 {
+        let theta = rib as f32 * std::f32::consts::TAU / 24.0;
+        let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(1.6, 1.6, rib_length))),
+            MeshMaterial3d(trim.clone()),
+            Transform::from_translation(
+                radial * (castle_inner_face() * 0.5) + Vec3::Y * (CASTLE_WALL_HEIGHT + VAULT_RISE * 0.5),
+            )
+            // `from_rotation_y(phi)` sends local +Z to (sin phi, 0, cos phi), so aligning a
+            // rib's length with the radial needs phi = 90° - theta. Using -theta (the
+            // convention the older room furniture uses) leaves the ribs skewed across the
+            // vault instead of radiating from its crown.
+            .with_rotation(
+                Quat::from_rotation_y(std::f32::consts::FRAC_PI_2 - theta)
+                    * Quat::from_rotation_x(rib_tilt),
+            ),
+            InnerWorldElement,
+            Name::new(format!("Castle_VaultRib_{rib:02}")),
+        ));
+    }
+}
+
+/// One storey's stair: two flights of 36 treads with a landing between them, wrapped onto the
+/// inner wall. Each tread is a real box the player stands on.
+fn spawn_ascent_flight(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     stone: Handle<StandardMaterial>,
     trim: Handle<StandardMaterial>,
+    level: usize,
 ) {
-    const LEVELS: usize = 7;
-    const LEVEL_HEIGHT: f32 = 3.0;
-    const FIRST_LEVEL_Y: f32 = 3.4;
-    const GALLERY_INNER_RADIUS: f32 = 80.5;
-    const GALLERY_OUTER_RADIUS: f32 = 88.5;
+    let base_bearing = stair_start_bearing(level);
+    let riser = riser_height(level);
+    let tread_depth = STAIR_TREAD * 1.25; // overlap, so no seam opens at the outer edge
+    let flight_going = STAIR_FLIGHT_RISERS as f32 * STAIR_TREAD;
 
-    // Ground-level perimeter promenade: it is the physical approach to the first
-    // stair tread and the route that lets the player circle the castle below the
-    // Seven Heavens, beside future art, carpet, banner, and display bays.
-    commands.spawn((
-        Mesh3d(meshes.add(build_radial_flagstone_mesh(76.0, 82.1, 0.16, 112, 0.008))),
-        MeshMaterial3d(stone.clone()),
-        Transform::from_xyz(0.0, 0.40, 0.0),
-        InnerWorldElement,
-        Name::new("PerimeterPromenade_GroundLevel"),
-    ));
-    commands.spawn((
-        Mesh3d(meshes.add(Torus::new(81.75, 82.05))),
-        MeshMaterial3d(trim.clone()),
-        Transform::from_xyz(0.0, 0.62, 0.0),
-        InnerWorldElement,
-        Name::new("PerimeterPromenade_StairThreshold"),
-    ));
-
-    for level in 0..LEVELS {
-        let inner = GALLERY_INNER_RADIUS;
-        let outer = GALLERY_OUTER_RADIUS;
-        let y = FIRST_LEVEL_Y + level as f32 * LEVEL_HEIGHT;
-        commands.spawn((
-            Mesh3d(meshes.add(build_radial_flagstone_mesh(inner, outer, 0.16, 56, 0.010))),
-            MeshMaterial3d(stone.clone()),
-            Transform::from_xyz(0.0, y, 0.0),
-            InnerWorldElement,
-            Name::new(format!("SevenHeavens_Gallery_{:02}", level + 1)),
-        ));
-        commands.spawn((
-            Mesh3d(meshes.add(Torus::new(outer - 0.22, outer + 0.16))),
-            MeshMaterial3d(trim.clone()),
-            Transform::from_xyz(0.0, y + 0.18, 0.0),
-            InnerWorldElement,
-            Name::new(format!("SevenHeavens_GalleryTrim_{:02}", level + 1)),
-        ));
-        commands.spawn((
-            PointLight {
-                intensity: 56_000.0,
-                range: 18.0,
-                color: Color::srgb(0.62 + level as f32 * 0.035, 0.48 + level as f32 * 0.045, 0.30 + level as f32 * 0.07),
-                shadows_enabled: false,
-                ..default()
-            },
-            Transform::from_xyz(0.0, y + 2.0, -inner),
-            InnerWorldElement,
-            Name::new(format!("SevenHeavens_GalleryLight_{:02}", level + 1)),
-        ));
-    }
-
-    // This is a true perimeter ascent: one complete inside-wall circuit per Heaven,
-    // seven circuits from floor to vault. At this castle radius it is a multi-kilometre
-    // journey, intentionally giving the player reason to traverse the whole castle.
-    const CIRCUITS: usize = 7;
-    const STEPS_PER_CIRCUIT: usize = 160;
-    let steps = CIRCUITS * STEPS_PER_CIRCUIT;
-    let start_radius = 82.0;
-    let end_radius = 86.5;
-    let end_y = FIRST_LEVEL_Y + (LEVELS - 1) as f32 * LEVEL_HEIGHT + 0.16;
-    for step in 0..steps {
-        let progress = step as f32 / (steps - 1) as f32;
-        let theta = -std::f32::consts::FRAC_PI_2 + progress * std::f32::consts::TAU * CIRCUITS as f32;
+    for step in 0..STAIR_RISERS_PER_LEVEL {
+        // Run distance to the middle of this tread, skipping the mid-flight landing.
+        let run = if step < STAIR_FLIGHT_RISERS {
+            step as f32 * STAIR_TREAD + STAIR_TREAD * 0.5
+        } else {
+            flight_going
+                + STAIR_LANDING_LENGTH
+                + (step - STAIR_FLIGHT_RISERS) as f32 * STAIR_TREAD
+                + STAIR_TREAD * 0.5
+        };
+        let theta = base_bearing + run / STAIR_CENTRE_RADIUS;
         let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
-        let tangent = Vec3::new(-theta.sin(), 0.0, theta.cos());
-        let radius = start_radius + (end_radius - start_radius) * progress;
-        let y = 0.48 + (end_y - 0.48) * progress;
-        let position = radial * radius + Vec3::Y * y;
+        let top = flight_base_y(level) + (step + 1) as f32 * riser;
+
+        // Each tread is a 2m deep block hung below its own top face, so the flight reads as a
+        // solid mass of masonry rather than a ladder of floating slabs.
         commands.spawn((
-            // At radius ~84m, 160 treads make one full circuit continuous rather
-            // than presenting disconnected floating blocks.
-            Mesh3d(meshes.add(Cuboid::new(3.6, 0.30, 3.72))),
+            Mesh3d(meshes.add(Cuboid::new(STAIR_WIDTH, 2.0, tread_depth))),
             MeshMaterial3d(stone.clone()),
-            Transform::from_translation(position).with_rotation(Quat::from_rotation_y(-theta)),
+            Transform::from_translation(radial * STAIR_CENTRE_RADIUS + Vec3::Y * (top - 1.0))
+                .with_rotation(Quat::from_rotation_y(-theta)),
             InnerWorldElement,
-            Name::new(format!("SevenHeavens_SpiralTread_{step:03}")),
+            Name::new(format!("Ascent_L{:02}_Tread_{step:02}", level + 1)),
         ));
-        if step % 2 == 0 {
+
+        if step % 6 == 0 {
+            // Handrail on the open inner side of the flight.
             commands.spawn((
-                Mesh3d(meshes.add(Cuboid::new(0.16, 1.1, 1.42))),
+                Mesh3d(meshes.add(Cuboid::new(0.24, 1.3, 0.24))),
                 MeshMaterial3d(trim.clone()),
-                Transform::from_translation(position + radial * 1.72 + Vec3::Y * 0.62).with_rotation(Quat::from_rotation_y(-theta)),
+                Transform::from_translation(
+                    radial * (STAIR_CENTRE_RADIUS - STAIR_WIDTH * 0.5 + 0.3) + Vec3::Y * (top + 0.65),
+                )
+                .with_rotation(Quat::from_rotation_y(-theta)),
                 InnerWorldElement,
-                Name::new(format!("SevenHeavens_SpiralRail_{step:03}")),
+                Name::new(format!("Ascent_L{:02}_Baluster_{step:02}", level + 1)),
             ));
         }
-        let _ = tangent; // documents the local stair frame for future handrail extension.
+    }
+
+    // The two landings, built as real platforms.
+    for (index, (run_start, run_length, y)) in [
+        (
+            flight_going,
+            STAIR_LANDING_LENGTH,
+            flight_base_y(level) + STAIR_FLIGHT_RISERS as f32 * riser,
+        ),
+        (
+            flight_going + STAIR_LANDING_LENGTH + flight_going,
+            STAIR_LANDING_LENGTH,
+            flight_top_y(level),
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let theta = base_bearing + (run_start + run_length * 0.5) / STAIR_CENTRE_RADIUS;
+        let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(STAIR_WIDTH, 2.0, run_length))),
+            MeshMaterial3d(stone.clone()),
+            Transform::from_translation(radial * STAIR_CENTRE_RADIUS + Vec3::Y * (y - 1.0))
+                .with_rotation(Quat::from_rotation_y(-theta)),
+            InnerWorldElement,
+            Name::new(format!("Ascent_L{:02}_Landing_{index}", level + 1)),
+        ));
     }
 }
 

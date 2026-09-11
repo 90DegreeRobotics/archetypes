@@ -324,3 +324,85 @@ workflow has proven useful in the room.
 Phase 0 → operator review of walking movement → Phase 1 → Phase 2 → Phase 3 → Phase 4 → operator
 verdict → (Phase 5 only on request). Each phase is its own commit/push after `cargo test --workspace`,
 `scripts\install_shortcut.ps1` restage, and a capability-appropriate real witness.
+
+---
+
+## Addendum — castle scale and a real perimeter ascent (2026-09-11)
+
+Operator direction: the building must feel huge, the stairs were not acceptable, and the work
+needed to look professionally built. Both were measured before anything was changed.
+
+### What the old ascent actually was
+
+1,120 treads over seven full circuits of an ~84m radius, gaining 21.08m:
+
+| Quantity | Old value | Verdict |
+|---|---|---|
+| Riser | 21.08m / 1119 = **18.8mm** | a kerb, not a step |
+| Tread | ~3,705m / 1119 = **3.31m** | a plaza, not a going |
+| Pitch | atan(0.0188 / 3.31) = **0.33°** | a runway with slabs on it |
+
+### What is built now
+
+Dimensioned from the rules a real stair obeys, with a 12.0m floor-to-floor storey in 72 risers:
+
+| Quantity | Value | Check |
+|---|---|---|
+| Riser | 12.0 / 72 = **166.7mm** | under the ~180mm public-stair limit |
+| Tread (going) | **300mm** | |
+| Blondel `2R + T` | **633mm** | inside the 600-660mm comfort band |
+| Pitch | **29.1°** | monumental (the Spanish Steps are ~27°) |
+| Run per storey | 72 x 0.30 + 2 x 3.0m landings = **27.6m** | two flights of 36, landing between |
+| Sweep per storey at r=108 | 27.6 / 108 = **14.64°** | |
+
+That last figure is why the old stair could not exist: a flight that climbs a real storey only
+consumes about a fifteenth of the circumference, so **"one full circuit per level" and "real
+stairs" are mutually exclusive at this radius**. The building now resolves it the way real ones
+do — the stairs climb and the galleries circle. Each storey's flight starts 60° further around
+the ring than the one below, so seven storeys make 420°, a little over one full circuit, and the
+climb from the promenade to the top gallery is **792m of travel, about two minutes of running**.
+
+### Shell
+
+| | Before | Now |
+|---|---|---|
+| Interior diameter | 184m | **228m** |
+| Wall height | 24m | **96m** |
+| Interior height to the vault crown | 24m | **126m** |
+| Height : width | 0.13 — a field with a fence | **0.55** |
+| Wall thickness | 2.4m | **12m** |
+| Gallery walkway | 8m ledge | **12m deck**, 7 tiers at 12m centres |
+| Outer wall collision | none — a ±100m square clamp let a walking player leave a 92m building | a real radial shell |
+| Flight ceiling | 21m — below the top gallery, which was unreachable | just under the wall head |
+
+Rooms, the council circle and the bridges were scaled with the shell (rooms 36m to 52m across,
+room walls 12.5m to 26m) so the interior does not read as furniture scattered in a stadium.
+
+### Evidence
+
+`artifacts/visual-proof/castle-scale-2026-09-11/` (walking) and `castle-scale-wide/` (vantages).
+The walking report proves the ascent is climbable on foot rather than merely modelled:
+
+```
+06_foot_of_the_ascent    pos=(-3.24, 3.35, -107.95)   feet = 0.50m
+07_one_storey_climbed    pos=(29.06, 14.85, -103.80)  feet = 12.00m
+```
+
+That is one full storey gained by holding a movement key on real treads, arriving exactly on
+gallery one. The workshop route still passes at the new scale in the same run: 32.5m walked from
+the doorway to the bench, a plan written through the confirm screen, `Esc` back to the room.
+
+`cargo test --workspace` passes 190 (166 engine + 19 launcher + 5 windows_identity). The stair
+rules themselves are unit-tested — riser limits, Blondel, pitch, landing flatness, flight-to-
+gallery continuity, reachability from the promenade, and the ascent's total length — in the new
+`modes/inner_chambers/castle.rs`, which is now the single source of every dimension the world
+builder spawns from and the collision reads.
+
+### Not done
+
+- The room drums read as plain coloured cylinders from above; they work at eye level but the
+  exteriors are not authored.
+- Piers are flat pilasters, not modelled arcades with arches.
+- No shadow casting anywhere in the hall (deliberate: shadow maps at this scale are expensive
+  and were not budgeted here).
+- This is geometry, scale and lighting proof. **The operator has not approved the look.**

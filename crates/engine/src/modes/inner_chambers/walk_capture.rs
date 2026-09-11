@@ -14,6 +14,7 @@
 //! Enabled by `ARCHETYPES_WALK_CAPTURE`; never on during normal play.
 
 use super::camera::{CameraController, LocomotionMode, PlayerCamera};
+use super::castle;
 use super::interaction::{InteractionFocus, InteractionTarget};
 use super::{InnerChambersState, TriggerInnerChambers};
 use crate::chamber::boot::MainMenuUi;
@@ -26,7 +27,7 @@ use std::path::PathBuf;
 /// Walking lane through the Architect room. The lane is offset from the room's centre line
 /// because the archetype figure is now a real obstacle standing on it — walking straight at
 /// the figure is correctly blocked, so the player goes around it exactly as a person would.
-const WALK_START: Vec3 = Vec3::new(1.8, 3.25, -46.0);
+const WALK_START: Vec3 = Vec3::new(2.4, 3.25, -52.0);
 
 #[derive(Clone, Copy, Debug)]
 enum Beat {
@@ -34,6 +35,8 @@ enum Beat {
     /// Press for exactly one frame. `just_pressed` lives for a single frame, so a tap is what
     /// every menu key in the castle actually responds to.
     Tap(KeyCode),
+    /// Reposition and re-aim, to start a second on-foot leg somewhere else in the castle.
+    Place(Vec3, f32),
     Shot(&'static str),
     Finish,
 }
@@ -70,35 +73,44 @@ impl WalkCaptureRun {
         // point: this proves the write path in the installed build, not in a test fixture.
         let beats = vec![
             (4.0, Beat::Shot("00_doorway_standing")),
+            // 32.5m of walking from just inside the doorway to the bench, at 6.5 m/s.
             (4.6, Beat::Hold(&[KeyCode::KeyW])),
-            // Stopping short of the bench keeps the whole bench in frame, and keeps the
-            // sidestep clear of the archetype figure, which is now a real obstacle.
-            (8.05, Beat::Hold(&[KeyCode::KeyA])),
-            (8.19, Beat::Hold(&[])),
-            (9.0, Beat::Shot("01_at_the_bench_prompt")),
-            (9.5, Beat::Tap(KeyCode::KeyE)),
-            (10.3, Beat::Shot("02_bench_open")),
+            // Sidestep clear of the archetype figure, which is a real obstacle on the lane.
+            (9.6, Beat::Hold(&[KeyCode::KeyA])),
+            (9.85, Beat::Hold(&[])),
+            (10.5, Beat::Shot("01_at_the_bench_prompt")),
+            (11.0, Beat::Tap(KeyCode::KeyE)),
+            (11.8, Beat::Shot("02_bench_open")),
             // Taps are spaced 0.25s apart: an unfocused window runs the reactive-low-power
             // schedule at ~15fps, and beats closer than one frame apart bunch into a single
             // frame, which silently desynchronises the typed sequence.
-            (10.8, Beat::Tap(KeyCode::KeyN)),
-            (11.1, Beat::Tap(KeyCode::KeyP)),
-            (11.35, Beat::Tap(KeyCode::KeyR)),
-            (11.6, Beat::Tap(KeyCode::KeyO)),
-            (11.85, Beat::Tap(KeyCode::KeyO)),
-            (12.1, Beat::Tap(KeyCode::KeyF)),
-            (12.45, Beat::Tap(KeyCode::Enter)),
-            (12.8, Beat::Tap(KeyCode::KeyW)),
-            (13.05, Beat::Tap(KeyCode::KeyA)),
-            (13.3, Beat::Tap(KeyCode::KeyL)),
-            (13.55, Beat::Tap(KeyCode::KeyK)),
-            (13.9, Beat::Tap(KeyCode::Enter)),
-            (14.4, Beat::Shot("03_confirm_before_writing")),
-            (14.9, Beat::Tap(KeyCode::Enter)),
-            (15.6, Beat::Shot("04_plan_written")),
-            (16.1, Beat::Tap(KeyCode::Escape)),
-            (16.8, Beat::Shot("05_back_in_the_room")),
-            (17.2, Beat::Finish),
+            (12.3, Beat::Tap(KeyCode::KeyN)),
+            (12.6, Beat::Tap(KeyCode::KeyP)),
+            (12.85, Beat::Tap(KeyCode::KeyR)),
+            (13.1, Beat::Tap(KeyCode::KeyO)),
+            (13.35, Beat::Tap(KeyCode::KeyO)),
+            (13.6, Beat::Tap(KeyCode::KeyF)),
+            (13.95, Beat::Tap(KeyCode::Enter)),
+            (14.3, Beat::Tap(KeyCode::KeyW)),
+            (14.55, Beat::Tap(KeyCode::KeyA)),
+            (14.8, Beat::Tap(KeyCode::KeyL)),
+            (15.05, Beat::Tap(KeyCode::KeyK)),
+            (15.4, Beat::Tap(KeyCode::Enter)),
+            (15.9, Beat::Shot("03_confirm_before_writing")),
+            (16.4, Beat::Tap(KeyCode::Enter)),
+            (17.1, Beat::Shot("04_plan_written")),
+            (17.6, Beat::Tap(KeyCode::Escape)),
+            (18.3, Beat::Shot("05_back_in_the_room")),
+            // Second leg: climb the first flight of the perimeter ascent on foot. The flight
+            // sweeps 14.6°, whose chord deviates only ~0.9m from the arc across an 8m wide
+            // stair, so a straight heading keeps the player on the treads for a whole storey.
+            // Everything here is the real locomotion system on real steps.
+            (18.9, Beat::Place(stair_approach(), stair_chord_yaw())),
+            (19.9, Beat::Shot("06_foot_of_the_ascent")),
+            (20.3, Beat::Hold(&[KeyCode::KeyW])),
+            (25.3, Beat::Hold(&[])),
+            (26.1, Beat::Shot("07_one_storey_climbed")),
+            (26.5, Beat::Finish),
         ];
 
         Some(Self {
@@ -197,6 +209,16 @@ pub(crate) fn drive_walk_capture(
                 keyboard.press(key);
                 run.tapped.push(key);
             }
+            Beat::Place(position, yaw) => {
+                *transform = Transform::from_translation(position);
+                controller.mode = LocomotionMode::Walking;
+                controller.yaw = yaw;
+                controller.pitch = -0.05;
+                controller.is_grounded = true;
+                controller.velocity_y = 0.0;
+                transform.rotation = Quat::from_axis_angle(Vec3::Y, controller.yaw)
+                    * Quat::from_axis_angle(Vec3::X, controller.pitch);
+            }
             Beat::Shot(name) => {
                 let path = run.dir.join(format!("{name}.png"));
                 commands.spawn(Screenshot::primary_window()).observe(save_to_disk(path));
@@ -238,4 +260,22 @@ fn describe_focus(focus: &InteractionFocus) -> String {
         }
         None => "none".to_owned(),
     }
+}
+
+/// Standing spot just short of the first tread, out on the ground promenade.
+fn stair_approach() -> Vec3 {
+    let bearing = castle::stair_start_bearing(0) - 0.03;
+    let ground = Vec3::new(bearing.cos(), 0.0, bearing.sin()) * castle::STAIR_CENTRE_RADIUS;
+    ground + Vec3::Y * (castle::PROMENADE_Y + 2.85)
+}
+
+/// Heading along the chord of the first flight, so a straight walk tracks the curve.
+fn stair_chord_yaw() -> f32 {
+    let start = castle::stair_start_bearing(0);
+    let end = start + castle::stair_sweep();
+    let from = Vec2::new(start.cos(), start.sin()) * castle::STAIR_CENTRE_RADIUS;
+    let to = Vec2::new(end.cos(), end.sin()) * castle::STAIR_CENTRE_RADIUS;
+    let chord = (to - from).normalize();
+    // `player_locomotion` builds forward as (-sin(yaw), 0, -cos(yaw)).
+    (-chord.x).atan2(-chord.y)
 }

@@ -214,12 +214,11 @@ mod tests {
         chamber_title: "LuminousBlueprint",
     };
 
-    // Real castle coordinates: the Architect room centre is (0, 0, -62) with its radial
-    // pointing away from the hub, so its figure stands at z = -67 and the workshop bench's
-    // interaction anchor at z = -69.9, y = 1.55. Standing eye height on the room floor is
-    // y = 3.25.
-    const FIGURE: Vec3 = Vec3::new(0.0, 0.42, -67.0);
-    const BENCH_ANCHOR: Vec3 = Vec3::new(0.0, 1.55, -69.9);
+    // Real castle coordinates. The Architect room centre sits at (0, 0, -74) with its radial
+    // pointing away from the hub, so its figure stands 7m behind the centre at z = -81 and the
+    // bench's interaction anchor at z = -85.3, y = 1.55. Standing eye height is y = 3.25.
+    const FIGURE: Vec3 = Vec3::new(0.0, 0.42, -81.0);
+    const BENCH_ANCHOR: Vec3 = Vec3::new(0.0, 1.55, -85.3);
     const FAR_ALTAR: Vec3 = Vec3::new(0.0, 0.30, 3.4);
 
     #[test]
@@ -230,7 +229,7 @@ mod tests {
 
     #[test]
     fn standing_at_the_bench_targets_the_workshop_even_though_the_architect_is_also_in_range() {
-        let player = Vec3::new(0.0, 3.25, -69.0);
+        let player = Vec3::new(0.0, 3.25, -84.4);
         // Both really are in range; this is the ambiguity the priority rule exists to settle.
         assert!(player.distance(BENCH_ANCHOR) <= WORKSHOP_INTERACTION_RANGE);
         assert!(player.distance(FIGURE) <= ENCOUNTER_RANGE);
@@ -241,23 +240,25 @@ mod tests {
     }
 
     #[test]
-    fn the_bench_still_wins_when_the_architect_is_the_closer_of_the_two() {
-        // Just behind the figure and within reach of the bench. Ranking by distance alone
-        // would flip `E` to a conversation here, one step away from flipping back.
-        let player = Vec3::new(0.0, 3.25, -67.5);
-        assert!(player.distance(FIGURE) < player.distance(BENCH_ANCHOR));
-        assert!(player.distance(BENCH_ANCHOR) <= WORKSHOP_INTERACTION_RANGE);
-        assert!(player.distance(FIGURE) <= ENCOUNTER_RANGE);
+    fn a_device_outranks_a_conversation_that_is_strictly_closer() {
+        // Ranking by distance alone would flip `E` between a device and a conversation from
+        // one step to the next. At the Architect bench the device happens to be nearer as
+        // well, so the rule is pinned here directly rather than relying on that coincidence.
+        let player = Vec3::new(0.0, 3.25, -84.4);
+        let crowding_figure = Vec3::new(0.0, 3.0, -84.6);
+        assert!(player.distance(crowding_figure) < player.distance(BENCH_ANCHOR));
+        assert!(player.distance(crowding_figure) <= ENCOUNTER_RANGE);
         assert_eq!(
-            pick_target(player, FAR_ALTAR, Some(BENCH_ANCHOR), &[(FIGURE, ARCHITECT)]),
+            pick_target(player, FAR_ALTAR, Some(BENCH_ANCHOR), &[(crowding_figure, ARCHITECT)]),
             Some(InteractionTarget::ArchitectWorkshop)
         );
     }
 
     #[test]
-    fn stepping_back_to_the_room_centre_returns_focus_to_the_architect() {
-        let player = Vec3::new(0.0, 3.25, -62.0);
+    fn stepping_back_from_the_bench_returns_focus_to_the_architect() {
+        let player = Vec3::new(0.0, 3.25, -77.0);
         assert!(player.distance(BENCH_ANCHOR) > WORKSHOP_INTERACTION_RANGE);
+        assert!(player.distance(FIGURE) <= ENCOUNTER_RANGE);
         assert_eq!(
             pick_target(player, FAR_ALTAR, Some(BENCH_ANCHOR), &[(FIGURE, ARCHITECT)]),
             Some(InteractionTarget::Archetype(ARCHITECT))
@@ -266,7 +267,7 @@ mod tests {
 
     #[test]
     fn nothing_in_range_yields_no_target() {
-        let player = Vec3::new(0.0, 3.25, -30.0);
+        let player = Vec3::new(0.0, 3.25, -60.0);
         assert_eq!(pick_target(player, FAR_ALTAR, Some(BENCH_ANCHOR), &[(FIGURE, ARCHITECT)]), None);
     }
 

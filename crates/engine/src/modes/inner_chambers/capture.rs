@@ -8,6 +8,7 @@
 //! repo's own doctrine requires; it is never on during normal play.
 
 use super::camera::{CameraController, LocomotionMode, PlayerCamera};
+use super::castle;
 use super::{InnerChambersState, TriggerInnerChambers};
 use crate::chamber::boot::MainMenuUi;
 use crate::chamber::ChamberState;
@@ -66,16 +67,38 @@ impl InnerCaptureRun {
         ];
         for (i, (name, angle)) in rooms.iter().enumerate() {
             let radial = Vec3::new(angle.cos(), 0.0, angle.sin());
-            let center = radial * 62.0;
+            let center = radial * castle::OUTER_ROOM_DISTANCE;
             shots.push(CaptureShot {
                 name: format!("{:02}_room_{name}", i + 2),
-                eye: center - radial * 14.6 + Vec3::Y * 5.0,
-                look_at: center + radial * 5.0 + Vec3::Y * 2.6,
+                eye: center - radial * 21.0 + Vec3::Y * 7.0,
+                look_at: center + radial * castle::EMBODIMENT_RADIAL_OFFSET + Vec3::Y * 3.0,
             });
         }
+
+        // Shots that exist to show the scale of the shell itself.
+        let stair_foot_bearing = castle::stair_start_bearing(0) + 0.08;
+        let stair_foot = Vec3::new(stair_foot_bearing.cos(), 0.0, stair_foot_bearing.sin())
+            * castle::STAIR_CENTRE_RADIUS;
+        shots.push(CaptureShot {
+            name: "08_ascent_from_the_floor".to_string(),
+            eye: stair_foot * 0.62 + Vec3::Y * 6.0,
+            look_at: stair_foot + Vec3::Y * 40.0,
+        });
+        let top_bearing = castle::stair_start_bearing(castle::GALLERY_LEVELS - 1) + 0.30;
+        let top = Vec3::new(top_bearing.cos(), 0.0, top_bearing.sin()) * castle::GALLERY_INNER_RADIUS;
+        shots.push(CaptureShot {
+            name: "09_top_gallery_looking_down".to_string(),
+            eye: top + Vec3::Y * (castle::gallery_y(castle::GALLERY_LEVELS - 1) + 3.0),
+            look_at: Vec3::new(0.0, 2.0, 0.0),
+        });
+        shots.push(CaptureShot {
+            name: "10_hall_from_the_council_floor".to_string(),
+            eye: Vec3::new(0.0, 4.0, 6.0),
+            look_at: Vec3::new(0.0, 96.0, -110.0),
+        });
         shots.push(CaptureShot {
             name: "00_seed_of_life_layout".to_string(),
-            eye: Vec3::new(0.0, 215.0, 0.1),
+            eye: Vec3::new(0.0, 360.0, 0.1),
             look_at: Vec3::ZERO,
         });
 

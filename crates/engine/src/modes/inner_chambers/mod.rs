@@ -6,6 +6,7 @@
 use bevy::prelude::*;
 
 pub mod camera;
+pub mod castle;
 pub mod capture;
 pub mod catalog;
 pub mod extraction;
