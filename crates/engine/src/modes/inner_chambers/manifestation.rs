@@ -101,6 +101,7 @@ pub struct ManifestationState {
     pub current_stage_msg: String,
     pub error_message: String,
     pub active_artifact: Option<Entity>,
+    pub active_reference_panel: Option<Entity>,
     pub floating_symbol_entity: Option<Entity>,
     pub pedestal_charge: f32,
 }
@@ -174,6 +175,7 @@ fn setup_manifestation_pedestal(
     state.current_stage_msg.clear();
     state.error_message.clear();
     state.active_artifact = None;
+    state.active_reference_panel = None;
     state.floating_symbol_entity = None;
     state.pedestal_charge = 0.0;
 
@@ -1009,6 +1011,27 @@ fn target_glb_paths() -> Vec<PathBuf> {
     paths
 }
 
+/// Mirrors `target_glb_paths`: the same 2D reference image Chronos2 generated
+/// and fed to TripoSR, staged where the asset server can load it, so the
+/// pedestal can show the player the painting their prompt became before it
+/// became an object.
+fn target_reference_image_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            paths.push(
+                dir.join("assets")
+                    .join("scenes")
+                    .join("manifested_reference.png"),
+            );
+        }
+    }
+    paths.push(PathBuf::from(
+        r"C:\archetypes\assets\scenes\manifested_reference.png",
+    ));
+    paths
+}
+
 fn dispatch_manifestation_worker(
     prompt: String,
     sender: Sender<ManifestationEvent>,
@@ -1270,6 +1293,21 @@ fn dispatch_manifestation_worker(
                     let _ = std::fs::copy(&primary_output, other);
                 }
 
+                // Stage the exact 2D reference the mesh was reconstructed from,
+                // for the floor panel at the pedestal's foot. Best-effort: the
+                // object itself already succeeded, so a missing reference image
+                // (an operator-supplied-reference run, or an unexpected layout)
+                // must never fail or retry a completed manifestation.
+                let reference_source = bundle.join("reference_input.png");
+                if reference_source.is_file() {
+                    for target in target_reference_image_paths() {
+                        if let Some(p) = target.parent() {
+                            let _ = std::fs::create_dir_all(p);
+                        }
+                        let _ = std::fs::copy(&reference_source, &target);
+                    }
+                }
+
                 let _ = sender.send(ManifestationEvent::Stage {
                     stage_id: "placement".into(),
                     pct: 100,
@@ -1450,6 +1488,37 @@ fn poll_manifestation_results(
                     .id();
 
                 state.active_artifact = Some(artifact_entity);
+
+                // Reference floor panel: the same painting Chronos2 generated
+                // and fed to TripoSR, laid flat on the floor at the pedestal's
+                // foot. Museum-wall-and-object in one place — the player sees
+                // the prompt become a picture, then sees the picture become
+                // the object standing above it. Reuses whatever reference the
+                // worker staged this run (or a prior run's, if this run had
+                // none to copy); absent entirely on the very first launch.
+                if let Some(old_panel) = state.active_reference_panel.take() {
+                    commands.entity(old_panel).despawn();
+                }
+                let panel_pos = Vec3::new(p.x, p.y + 0.02, p.z - 2.8);
+                let panel_material = materials.add(StandardMaterial {
+                    base_color_texture: Some(
+                        asset_server.load("scenes/manifested_reference.png"),
+                    ),
+                    perceptual_roughness: 0.55,
+                    metallic: 0.0,
+                    ..default()
+                });
+                let panel_entity = commands
+                    .spawn((
+                        Mesh3d(meshes.add(Plane3d::default().mesh().size(1.4, 1.4))),
+                        MeshMaterial3d(panel_material),
+                        Transform::from_translation(panel_pos),
+                        ManifestationElement,
+                        Name::new("ManifestationReferencePanel"),
+                    ))
+                    .id();
+                state.active_reference_panel = Some(panel_entity);
+
                 println!("[ManifestationSystem] Succeeded: Manifested '{prompt}' atop the altar!");
             }
             ManifestationEvent::Failure {
@@ -1585,6 +1654,7 @@ fn teardown_manifestation(
         commands.entity(entity).despawn();
     }
     state.active_artifact = None;
+    state.active_reference_panel = None;
     state.floating_symbol_entity = None;
     state.phase = ManifestationPhase::Idle;
     state.prompt_buffer.clear();

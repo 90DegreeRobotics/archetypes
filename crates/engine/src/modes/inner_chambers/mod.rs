@@ -9,6 +9,7 @@ pub mod camera;
 pub mod capture;
 pub mod catalog;
 pub mod extraction;
+pub mod manifest_capture;
 pub mod manifestation;
 pub mod seed;
 pub mod world;
@@ -46,6 +47,11 @@ impl Plugin for InnerChambersPlugin {
         if let Some(run) = capture::InnerCaptureRun::from_env() {
             app.insert_resource(run)
                 .add_systems(Update, capture::drive_inner_capture);
+        }
+
+        if let Some(run) = manifest_capture::ManifestCaptureRun::from_env() {
+            app.insert_resource(run)
+                .add_systems(Update, manifest_capture::drive_manifest_capture);
         }
     }
 }
