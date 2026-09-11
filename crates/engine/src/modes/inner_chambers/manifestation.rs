@@ -15,9 +15,12 @@ use super::world::ChronosExhibitTurntable;
 use super::encounters::EncounterState;
 use super::interaction::{InnerInteractionSet, InteractionFocus, InteractionTarget};
 use super::InnerChambersState;
+use bevy::input::gamepad::{Gamepad, GamepadButton};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use bevy::winit::{UpdateMode, WinitSettings};
+
+use crate::services::gamepad_input;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
@@ -748,6 +751,7 @@ fn animate_pedestal_symbols(
 fn handle_manifestation_input(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
     time: Res<Time>,
     mut state: ResMut<ManifestationState>,
     channels: Res<ManifestationChannels>,
@@ -799,7 +803,7 @@ fn handle_manifestation_input(
 
     match state.phase {
         ManifestationPhase::Idle | ManifestationPhase::Completed | ManifestationPhase::Failed => {
-            if is_near && !encounter_state.is_open() && interaction_focus.0 == Some(InteractionTarget::ManifestationAltar) && keyboard.just_pressed(KeyCode::KeyE) {
+            if is_near && !encounter_state.is_open() && interaction_focus.0 == Some(InteractionTarget::ManifestationAltar) && (keyboard.just_pressed(KeyCode::KeyE) || gamepad_input::any_just_pressed(&gamepads, GamepadButton::West)) {
                 state.phase = ManifestationPhase::Prompting;
                 state.prompt_buffer.clear();
                 if let Ok(mut cursor) = cursor_options.single_mut() {
@@ -816,7 +820,7 @@ fn handle_manifestation_input(
                 *vis = Visibility::Visible;
             }
 
-            if keyboard.just_pressed(KeyCode::Escape) {
+            if keyboard.just_pressed(KeyCode::Escape) || gamepad_input::any_just_pressed(&gamepads, GamepadButton::East) {
                 state.phase = ManifestationPhase::Idle;
                 if let Ok(mut vis) = modal_query.single_mut() {
                     *vis = Visibility::Hidden;
@@ -932,7 +936,7 @@ fn handle_manifestation_input(
                 *vis = Visibility::Hidden;
             }
             state.waiting_elapsed += time.delta_secs();
-            if keyboard.just_pressed(KeyCode::Escape) {
+            if keyboard.just_pressed(KeyCode::Escape) || gamepad_input::any_just_pressed(&gamepads, GamepadButton::East) {
                 cancel_manifestation(&channels);
                 state.phase = ManifestationPhase::Idle;
                 state.current_stage_id.clear();

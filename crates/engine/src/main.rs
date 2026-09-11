@@ -15,6 +15,7 @@ pub mod theme;
 
 use chamber::CouncilChamberPlugin;
 use modes::ModesPlugin;
+use services::settings::SettingsPlugin;
 
 const PRODUCT_VERSION: &str = env!("ARCHETYPES_PRODUCT_VERSION");
 const BUILD_SERIAL: &str = env!("ARCHETYPES_BUILD_SERIAL");
@@ -40,7 +41,7 @@ fn main() {
                 }),
         )
         .add_systems(Startup, maximize_primary_window)
-        .add_plugins((ModesPlugin, CouncilChamberPlugin))
+        .add_plugins((SettingsPlugin, ModesPlugin, CouncilChamberPlugin))
         .run();
 }
 

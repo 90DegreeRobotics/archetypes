@@ -1,8 +1,10 @@
 pub mod archetype_conversation;
 pub mod chronos;
+pub mod gamepad_input;
 pub mod ledger;
 pub mod llm;
 pub mod memory;
 pub mod paths;
 pub mod readiness;
 pub mod sentinel;
+pub mod settings;

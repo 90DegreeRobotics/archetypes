@@ -6,12 +6,14 @@
 use std::{fs, io::Write, sync::{mpsc, Mutex}, time::{SystemTime, UNIX_EPOCH}};
 use std::thread;
 
+use bevy::input::gamepad::{Gamepad, GamepadButton};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use serde_json::json;
 
 use crate::modes::game_mode::GameMode;
 use crate::services::archetype_conversation::{request_reply, ArchetypeChatRecord};
+use crate::services::gamepad_input;
 use crate::services::ledger::append_to_ledger;
 use crate::services::paths::app_data_root;
 use crate::theme::Archetype;
@@ -71,14 +73,14 @@ fn spawn_encounter_ui(mut commands: Commands) {
 }
 
 fn focus_or_open_encounter(
-    keyboard: Res<ButtonInput<KeyCode>>, focus: Res<InteractionFocus>,
+    keyboard: Res<ButtonInput<KeyCode>>, gamepads: Query<&Gamepad>, focus: Res<InteractionFocus>,
     mut state: ResMut<EncounterState>, mut hint: Query<&mut Text, With<InnerChambersHint>>, mut cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     if state.is_open() { return; }
     if let Ok(mut hint) = hint.single_mut() {
-        if let Some(InteractionTarget::Archetype(embodiment)) = focus.0 { hint.0 = format!("[E] Speak with {} — typed local conversation", embodiment.archetype.theme().name); }
+        if let Some(InteractionTarget::Archetype(embodiment)) = focus.0 { hint.0 = format!("[E / Pad-X] Speak with {} — typed local conversation", embodiment.archetype.theme().name); }
     }
-    if keyboard.just_pressed(KeyCode::KeyE) {
+    if keyboard.just_pressed(KeyCode::KeyE) || gamepad_input::any_just_pressed(&gamepads, GamepadButton::West) {
         if let Some(InteractionTarget::Archetype(embodiment)) = focus.0 {
             state.active = Some(embodiment); state.draft.clear();
             state.status = format!("Speak with {}. Enter sends locally; Esc returns to the chamber.", embodiment.archetype.theme().name);
@@ -88,10 +90,10 @@ fn focus_or_open_encounter(
 }
 
 fn type_or_close_encounter(
-    keyboard: Res<ButtonInput<KeyCode>>, mut state: ResMut<EncounterState>, mut bridge: ResMut<EncounterBridge>, mut cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    keyboard: Res<ButtonInput<KeyCode>>, gamepads: Query<&Gamepad>, mut state: ResMut<EncounterState>, mut bridge: ResMut<EncounterBridge>, mut cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     let Some(active) = state.active else { return; };
-    if keyboard.just_pressed(KeyCode::Escape) {
+    if keyboard.just_pressed(KeyCode::Escape) || gamepad_input::any_just_pressed(&gamepads, GamepadButton::East) {
         state.active = None; state.draft.clear(); state.status.clear();
         if let Ok(mut cursor) = cursor.single_mut() { cursor.visible = false; cursor.grab_mode = CursorGrabMode::Locked; }
         return;

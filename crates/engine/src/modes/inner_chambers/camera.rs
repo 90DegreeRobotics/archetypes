@@ -1,5 +1,8 @@
 use super::InnerChambersState;
+use crate::services::gamepad_input;
+use crate::services::settings::GameSettings;
 use bevy::ecs::message::MessageReader;
+use bevy::input::gamepad::{Gamepad, GamepadButton};
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
@@ -59,10 +62,10 @@ impl CameraController {
     pub fn locomotion_hud_text(&self) -> String {
         match self.mode {
             LocomotionMode::Walking => {
-                "INNER CASTLE  •  [STATUS: GROUND WALKING]\nWASD: Move & Strafe  •  Space: Jump (Double-Tap: Fly)  •  Mouse: Look  •  Esc: Menu".to_string()
+                "INNER CASTLE  •  [STATUS: GROUND WALKING]\nWASD/L-Stick: Move & Strafe  •  Space/A: Jump (Double-Tap: Fly)  •  Mouse/R-Stick: Look  •  Esc/B: Menu".to_string()
             }
             LocomotionMode::Flying => {
-                "INNER CASTLE  •  [STATUS: FREE FLIGHT]\nWASD: Fly  •  Space: Ascend  •  Shift: Descend  •  3x Space: Land  •  Esc: Menu".to_string()
+                "INNER CASTLE  •  [STATUS: FREE FLIGHT]\nWASD/L-Stick: Fly  •  Space/RT: Ascend  •  Shift/LT: Descend  •  3x Space/A: Land  •  Esc/B: Menu".to_string()
             }
         }
     }
@@ -207,6 +210,8 @@ fn player_locomotion(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
+    gamepads: Query<&Gamepad>,
+    settings: Res<GameSettings>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     manifestation_state: Option<Res<super::manifestation::ManifestationState>>,
     encounter_state: Option<Res<super::encounters::EncounterState>>,
@@ -262,8 +267,20 @@ fn player_locomotion(
             * Quat::from_axis_angle(Vec3::X, controller.pitch);
     }
 
+    // --- 1b. GAMEPAD LOOK (right stick, rate-based so it works alongside mouse look) ---
+    let look_stick = gamepad_input::combined_right_stick(&gamepads, settings.gamepad_deadzone);
+    if look_stick != Vec2::ZERO {
+        controller.yaw -= look_stick.x * settings.gamepad_look_sensitivity * dt;
+        controller.pitch += look_stick.y * settings.gamepad_look_sensitivity * dt;
+        controller.pitch = controller.pitch.clamp(-1.48, 1.48);
+
+        transform.rotation = Quat::from_axis_angle(Vec3::Y, controller.yaw)
+            * Quat::from_axis_angle(Vec3::X, controller.pitch);
+    }
+
     // --- 2. FLIGHT TRANSITION LOGIC ---
-    let space_just_pressed = keyboard.just_pressed(KeyCode::Space);
+    let space_just_pressed = keyboard.just_pressed(KeyCode::Space)
+        || gamepad_input::any_just_pressed(&gamepads, GamepadButton::South);
 
     match controller.mode {
         LocomotionMode::Walking => {
@@ -322,6 +339,7 @@ fn player_locomotion(
             if keyboard.pressed(KeyCode::KeyS) { move_dir.y -= 1.0; }
             if keyboard.pressed(KeyCode::KeyA) { move_dir.x -= 1.0; }
             if keyboard.pressed(KeyCode::KeyD) { move_dir.x += 1.0; }
+            move_dir += gamepad_input::combined_left_stick(&gamepads, settings.gamepad_deadzone);
 
             let forward = Vec3::new(-controller.yaw.sin(), 0.0, -controller.yaw.cos());
             let right = Vec3::new(controller.yaw.cos(), 0.0, -controller.yaw.sin());
@@ -433,6 +451,7 @@ fn player_locomotion(
             if keyboard.pressed(KeyCode::KeyS) { move_dir.y -= 1.0; }
             if keyboard.pressed(KeyCode::KeyA) { move_dir.x -= 1.0; }
             if keyboard.pressed(KeyCode::KeyD) { move_dir.x += 1.0; }
+            move_dir += gamepad_input::combined_left_stick(&gamepads, settings.gamepad_deadzone);
 
             let forward = Vec3::new(-controller.yaw.sin(), 0.0, -controller.yaw.cos());
             let right = Vec3::new(controller.yaw.cos(), 0.0, -controller.yaw.sin());
@@ -444,15 +463,18 @@ fn player_locomotion(
             }
 
             // Vertical flight controls:
-            // Spacebar hold moves upward
-            if keyboard.pressed(KeyCode::Space) {
+            // Spacebar or the right trigger (RT) holds ascend
+            if keyboard.pressed(KeyCode::Space)
+                || gamepad_input::any_pressed(&gamepads, GamepadButton::RightTrigger2)
+            {
                 transform.translation.y += controller.flight_speed * dt;
             }
 
-            // Hold shift to descend to floor level
+            // Hold shift, or the left trigger (LT), to descend to floor level
             let shift_pressed = keyboard.pressed(KeyCode::ShiftLeft)
                 || keyboard.pressed(KeyCode::ShiftRight)
-                || keyboard.pressed(KeyCode::KeyC);
+                || keyboard.pressed(KeyCode::KeyC)
+                || gamepad_input::any_pressed(&gamepads, GamepadButton::LeftTrigger2);
 
             let current_feet_y = transform.translation.y - controller.eye_height;
             let ground_y = seed_castle_ground_y(Vec2::new(transform.translation.x, transform.translation.z), current_feet_y);
