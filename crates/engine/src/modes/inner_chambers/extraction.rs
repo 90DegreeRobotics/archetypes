@@ -1,12 +1,25 @@
 use super::catalog::{all_nodes, council_chambers, NODE_RADIUS};
+use super::interaction::{InnerActions, InnerInteractionSet, InnerModalState};
 use super::seed::persist_extracted_truth;
-use super::world::InnerChambersHint;
+use super::world::{HintPriority, HintRequest, InnerHintSet};
 use super::InnerChambersState;
-use super::encounters::EncounterState;
 use crate::modes::game_mode::GameMode;
 use crate::services::ledger::append_to_ledger;
 use bevy::prelude::*;
 use serde_json::json;
+
+/// The truth-node overlay is parked, not deleted.
+///
+/// `catalog.rs` places its fourteen nodes on the retired heptagon (seven rooms around a 22m
+/// hub), while the live Seed-of-Life castle puts six rooms at 62m. Measured against the world
+/// as built, six of the fourteen hang over the abyss, and the reachable ones sit beside
+/// whichever bridge happens to pass nearby — the Architect's own pair lands ~0.8m from the
+/// *Empath* bridge, so "LUMINOUS BLUEPRINT / NODE 1 ALIGNED" reads out in the wrong room
+/// entirely. Re-anchoring the nodes to the real rooms is its own unit of work; until then the
+/// overlay stays off rather than competing for `E` and the hint line with the systems that are
+/// correctly placed. `persist_extracted_truth` and the Oracle Riddle seeding it feeds are
+/// untouched.
+const TRUTH_NODES_ENABLED: bool = false;
 
 pub struct ExtractionPlugin;
 
@@ -14,59 +27,62 @@ impl Plugin for ExtractionPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            check_extraction.run_if(in_state(InnerChambersState::Navigating)),
+            (leave_inner_chambers, check_extraction)
+                .after(InnerInteractionSet::Resolve)
+                .in_set(InnerHintSet::Request)
+                .run_if(in_state(InnerChambersState::Navigating)),
         );
     }
 }
 
-fn check_extraction(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    query: Query<(&Transform, &super::camera::CameraController), With<super::camera::PlayerCamera>>,
-    mut hint: Query<&mut Text, With<InnerChambersHint>>,
+/// The only binding that leaves the castle. It stands down whenever a modal owns input, so
+/// cancelling a conversation, a manifestation, or a plan edit can never also eject the player
+/// out of the mode in the same frame.
+fn leave_inner_chambers(
+    actions: Res<InnerActions>,
+    modal: Res<InnerModalState>,
     mut next_state: ResMut<NextState<InnerChambersState>>,
-    encounter_state: Res<EncounterState>,
 ) {
-    if encounter_state.is_open() {
+    if modal.any() || !actions.cancel {
         return;
     }
-    let Ok((transform, controller)) = query.single() else {
+    next_state.set(InnerChambersState::Exiting);
+}
+
+fn check_extraction(
+    actions: Res<InnerActions>,
+    modal: Res<InnerModalState>,
+    query: Query<&Transform, With<super::camera::PlayerCamera>>,
+    mut hint: ResMut<HintRequest>,
+    mut next_state: ResMut<NextState<InnerChambersState>>,
+) {
+    if !TRUTH_NODES_ENABLED || modal.any() {
+        return;
+    }
+    let Ok(transform) = query.single() else {
         return;
     };
 
-    if keyboard.just_pressed(KeyCode::Escape) {
-        next_state.set(InnerChambersState::Exiting);
-        return;
-    }
-
-    let aligned = nearest_truth_node(transform.translation);
-    if let Ok(mut text) = hint.single_mut() {
-        text.0 = if let Some((chamber_index, node_index, words)) = aligned {
-            let spec = council_chambers()[chamber_index];
-            format!(
-                "{}\nNODE {} ALIGNED\nPress E to read: {} / {} / {}",
-                spec.title,
-                node_index + 1,
-                words[0],
-                words[1],
-                words[2]
-            )
-        } else {
-            controller.locomotion_hud_text()
-        };
-    }
-
-    if !keyboard.just_pressed(KeyCode::KeyE) {
-        return;
-    }
-
-    let Some((chamber_index, node_index, words)) = aligned else {
-        if let Ok(mut text) = hint.single_mut() {
-            text.0 = "No node aligned. Enter a chamber and stand with a luminous node.".to_owned();
-        }
+    let Some((chamber_index, node_index, words)) = nearest_truth_node(transform.translation) else {
         return;
     };
-
     let spec = council_chambers()[chamber_index];
+    hint.request(
+        HintPriority::TruthNode,
+        format!(
+            "{}\nNODE {} ALIGNED\nPress E to read: {} / {} / {}",
+            spec.title,
+            node_index + 1,
+            words[0],
+            words[1],
+            words[2]
+        ),
+    );
+
+    if !actions.interact {
+        return;
+    }
+
     let payload = inner_chamber_truth_payload(
         transform.translation,
         chamber_index,
@@ -80,9 +96,10 @@ fn check_extraction(
         payload,
     ) {
         warn!("inner chamber ledger seal failed: {error}");
-        if let Ok(mut text) = hint.single_mut() {
-            text.0 = "Ledger seal failed. The chamber did not accept the reading.".to_owned();
-        }
+        hint.request(
+            HintPriority::Modal,
+            "Ledger seal failed. The chamber did not accept the reading.",
+        );
         return;
     }
     if let Err(error) = persist_extracted_truth(words, node_index, spec.archetype.theme().name) {

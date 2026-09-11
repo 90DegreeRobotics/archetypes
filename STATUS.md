@@ -1,10 +1,26 @@
 # Archetypes Status
 
-**Last Updated: 2026-09-11 (Gamepad + Settings, Encounter Memory, Smash Room Plan Retired)**
+**Last Updated: 2026-09-11 (Architect Workshop, Castle Movement Repair)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Architect workshop + castle movement repair (2026-09-11):** The Architect's room has a real
+  drafting bench (`world.rs`) that opens a plan workshop: create, sequence, complete, stall and
+  close player-owned `BuildIntent` artifacts (`services/build_intent.rs`), every write shown
+  verbatim on a confirm screen first, append-only and folded from disk on each read. Getting
+  there required fixing four defects the audit found first: (1) the room-wall collision ejected
+  any **walking** player ~8.5m backwards the moment they passed a room's centre, making every
+  archetype figure and every piece of back-of-room furniture reachable only by flying — it is now
+  a shell with real thickness; (2) the Architect and Empath figure colliders were transcribed
+  mirrored, 10m onto the wrong side of their rooms, and are now derived from the spawn formula;
+  (3) three systems raced to write the single hint line and the proximity prompt always lost — a
+  `HintRequest` priority resource now owns it; (4) `Esc` could close a modal *and* exit the mode
+  in the same frame — an `InnerActions`/`InnerModalState` arbiter now resolves context keys once
+  per frame. A new `ARCHETYPES_WALK_CAPTURE` harness proves all of it by **walking** and pressing
+  real keys (the old harness flies and teleports, which is why the movement bug survived).
+  Evidence: `artifacts/visual-proof/architect-workshop-2026-09-11/`.
+  Plan: `docs/ledger/2026/09/plan_2026-09-11_0035_architect_workshop.md`.
 - **Smash Room redesign retired (2026-09-11):** `Game Plan_ Archetypes — The Inner Chambers
   Smash Room.md` (the 2026-09-08 physics/prop-destruction redesign) is marked SUPERSEDED by
   operator decision. It was never built (no physics crate, no `WorldProp`/`SmashSim`/cards
@@ -125,6 +141,15 @@ This document tracks time-sensitive status, current blockers, and recent test ru
 - **Lane A (Oracle Riddle) implemented and audit-corrected (2026-07-13; fairness corrected 2026-07-14):** The Oracle Riddle reverse-prompt mode is now playable from the mode selector. It runs its own isolated state machine in `modes::oracle_riddle` without breaking the Standard Mode ritual. Players are presented with a generated Chronos image derived from a hidden concrete 3-word visual prompt, then may guess the three clues in any order. Scoring gives exact and alias credit first, can use embeddings for softer semantic matches, and still produces a lexical score if embeddings are unavailable. Results show per-clue matches, total score, and an Insight reward tier; completion/failure records are sealed to the local Lane 0 ledger. Inner Chambers and Living Engine remain visibly locked.
 
 ## Blockers
+- **The local audit ledger chain is broken at line 34** (`%LOCALAPPDATA%\NeuroCognica\Archetypes\data\ledger.jsonl`,
+  `inner_castle_encounter_created`). Caused on 2026-09-11 by `encounter_memory` unit tests that
+  appended to the one real `ledger.jsonl` from parallel test threads and forked the chain. The
+  tests were fixed the same day (they now use scratch files); the damaged file was deliberately
+  **not** rewritten, because repairing a tamper-evident audit trail is an operator decision.
+  Effect until decided: `last_hash()` verifies the whole chain before every append, so **every**
+  ledger seal now fails — gameplay writes still succeed and are reported honestly as "kept, but
+  unsealed" with the reason. Operator decision needed: quarantine the file (rename aside, fresh
+  chain starts, old file preserved as evidence) or leave it as is.
 - **Sentinel certified (not candidate) release** still needs admin-signed key lifecycle, revocation ceremony, and release/policy signing. Strict certify is **PASS**; adoption remains **candidate**.
 - Chronos Foundry and ComfyUI remain sibling products. The launcher starts them when they are installed and down; it does not download Chronos.
 - Lore-chamber seated figures remain generated placeholders until an operator-supplied GLB replaces them.

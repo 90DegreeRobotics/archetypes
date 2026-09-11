@@ -1,7 +1,62 @@
 # Plan: Architect Workshop — 2026-09-11 00:35
 
 ## Status
-PENDING
+Phases 0-4 COMPLETE (2026-09-11). Phase 5 (Architect proposals) deliberately not started.
+
+## Outcome — 2026-09-11
+
+All four blocking defects are fixed and all of Phases 0-4 are implemented and proven in the
+installed build. `cargo test --workspace` passes 172 (148 engine + 19 launcher + 5
+windows_identity), up from 138 before this unit.
+
+**Proof.** A new `ARCHETYPES_WALK_CAPTURE` harness exists precisely because the old capture
+proved nothing about this: it forces free flight and teleports, which is how a walking-movement
+bug survived unnoticed. The new harness places the player at the Architect doorway in `Walking`
+mode and then holds and taps real keys, so every frame runs the real locomotion, collision,
+focus, and input code. Frames and `walk_report.txt` are under
+`artifacts/visual-proof/architect-workshop-2026-09-11/`:
+
+| Frame | Reported state | What it proves |
+|---|---|---|
+| `00_doorway_standing` | `pos=(1.80, 3.25, -46.00) Walking focus=none` | Standing at the doorway on foot. |
+| `01_at_the_bench_prompt` | `pos=(0.83, 3.25, -68.43) focus=ArchitectWorkshop` | **B1 fixed** — walked past the room centre (z=-62) to the bench; the old code ejected to z≈-79.1. **B3 fixed** — the frame shows the bench prompt, not the locomotion legend. |
+| `02_bench_open` | `bench=Browsing` | `E` opens the bench from a real keypress. |
+| `03_confirm_before_writing` | `bench=Confirming` | Title and intent typed; nothing written yet. |
+| `04_plan_written` | `bench=Browsing plans=1` | The confirmed write reached disk; the plan is listed. |
+| `05_back_in_the_room` | `bench=Closed mode_state=Navigating` | **B4 fixed** — `Esc` closed the bench and returned to the room instead of exiting the castle. |
+
+The real journal at `%LOCALAPPDATA%\NeuroCognica\Archetypes\data\plans\journal.jsonl` holds the
+resulting `Created` event.
+
+**A real defect this surfaced, and the fix.** The `04` frame reads:
+`Written: plan "proof". (kept, but the audit ledger did not accept it: ledger line 34 expected
+previous hash 0ba077… got 0409ade…)`. Two separate findings:
+
+1. *The local ledger chain is broken at line 34*, and this session caused it: the first
+   `encounter_memory` unit tests called `append_to_ledger` from parallel test threads against
+   the one real `ledger.jsonl`, forking the chain. Because `last_hash()` verifies the whole
+   chain before every append, **every ledger write in the app has failed since**. The tests were
+   fixed at the time; the damaged file was not, and has deliberately **not** been rewritten here
+   — repairing a tamper-evident audit trail is the operator's call, not the agent's. Open
+   decision for the operator: quarantine the file (rename it aside so a fresh chain starts,
+   preserving the old one as evidence) or leave it.
+2. *The write path was reporting that failure dishonestly.* Both `build_intent` and
+   `encounter_memory` appended the journal row first and then sealed, returning `Err` if sealing
+   failed — so the UI said "not written" about a row that was on disk and would reappear on the
+   next load. Writes now return a `WriteReceipt`: a journal failure is still a real failure, but
+   a seal failure reports "kept, but unsealed" with the reason, which is what the frame shows.
+
+**Not done, deliberately:**
+- Phase 5 (Architect proposes a next action or risk) — not started, as planned; v1's workflow
+  should prove useful first.
+- The bench has no collision, so the player can walk through it. All room furniture behaves this
+  way today; giving furniture colliders is its own unit.
+- The room remains visually austere and dim. The bench, board, posts and task light are real
+  authored geometry now, but this is geometry/function proof and **not** an aesthetic approval —
+  the operator has not reviewed the look.
+- The truth-node overlay is parked behind `TRUTH_NODES_ENABLED = false` (B5), not re-anchored.
+- The capture writes one real plan titled "proof" into the operator's own plan journal; it is
+  evidence, not player content, and can be closed in-game or removed with the file.
 
 ## Goal
 

@@ -22,7 +22,26 @@ impl Plugin for CameraPlugin {
                 Update,
                 player_locomotion.run_if(in_state(InnerChambersState::Navigating)),
             )
+            .add_systems(
+                Update,
+                request_locomotion_hint
+                    .in_set(super::world::InnerHintSet::Request)
+                    .run_if(in_state(InnerChambersState::Navigating)),
+            )
             .add_systems(OnEnter(InnerChambersState::Exiting), teardown_camera);
+    }
+}
+
+/// The lowest-priority hint: whatever the player is standing next to may override it.
+fn request_locomotion_hint(
+    mut hint: ResMut<super::world::HintRequest>,
+    controller: Query<&CameraController, With<PlayerCamera>>,
+) {
+    if let Ok(controller) = controller.single() {
+        hint.request(
+            super::world::HintPriority::Locomotion,
+            controller.locomotion_hud_text(),
+        );
     }
 }
 
@@ -163,6 +182,69 @@ fn teardown_camera(
     }
 }
 
+/// Standing obstacles the player cannot walk through: the two Council-circle figures, the
+/// manifestation pedestal, and each outer room's archetype figure.
+///
+/// The six room figures are derived from the same offset `world.rs` spawns them at, because
+/// the previous hand-transcribed table had the Architect and Empath entries mirrored onto the
+/// wrong side of their rooms — a 10m error that put an invisible pillar in each of those
+/// doorways and left both figures uncollidable.
+fn character_obstacles() -> [(Vec2, f32); 9] {
+    let rooms = SEED_ROOM_CENTERS
+        .map(|center| (center + center.normalize() * super::world::EMBODIMENT_RADIAL_OFFSET, 1.5));
+    [
+        (Vec2::new(0.0, -8.5), 1.5), // AURA central embodiment
+        (Vec2::new(10.2, 6.2), 1.5), // Jester Council host
+        (Vec2::new(0.0, 3.4), 1.25), // Active manifestation pedestal
+        rooms[0], rooms[1], rooms[2], rooms[3], rooms[4], rooms[5],
+    ]
+}
+
+/// Pushes the player out of any standing obstacle they have walked into.
+fn resolve_character_obstacles(position: Vec2) -> Vec2 {
+    let mut position = position;
+    for (obstacle, radius) in character_obstacles() {
+        let to_player = position - obstacle;
+        let distance = to_player.length();
+        if distance < radius {
+            let push = if distance > 0.01 { to_player / distance } else { Vec2::Y };
+            position = obstacle + push * radius;
+        }
+    }
+    position
+}
+
+/// Collides the player against each outer room's cobblestone wall.
+///
+/// The wall is a shell with real thickness, not a boundary that ejects anyone standing inside
+/// it. The previous version pushed any player within the ring radius *outward*, which meant a
+/// walking player was teleported ~8.5m backwards into the far wall the moment they stepped past
+/// a room's centre — making every authored thing behind the centre (each archetype's own figure,
+/// the Architect's workshop bench) unreachable except by flying. The doorway arc stays open, and
+/// a player out on the bridge is far outside the shell and untouched.
+fn resolve_room_walls(position: Vec2) -> Vec2 {
+    let inner_face = super::world::ROOM_WALL_RADIUS - super::world::ROOM_WALL_HALF_THICKNESS;
+    let outer_face = super::world::ROOM_WALL_RADIUS + super::world::ROOM_WALL_HALF_THICKNESS;
+    let mut position = position;
+    for center in SEED_ROOM_CENTERS {
+        let to_player = position - center;
+        let distance = to_player.length();
+        if distance < inner_face || distance > outer_face {
+            continue;
+        }
+        let door_bearing = (-center.y).atan2(-center.x);
+        let bearing = to_player.y.atan2(to_player.x);
+        let mut diff = bearing - door_bearing;
+        diff = ((diff + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)) - std::f32::consts::PI;
+        if diff.abs() < super::world::ROOM_DOOR_HALF_ARC {
+            continue; // Inside the doorway arc: free passage, matching the gap in the mesh.
+        }
+        let face = if distance < super::world::ROOM_WALL_RADIUS { inner_face } else { outer_face };
+        position = center + (to_player / distance) * face;
+    }
+    position
+}
+
 /// Returns the actual top surface beneath a Seed-of-Life player position. Stepping
 /// off a circle or bridge is a real fall into the under-castle floor, not an invisible
 /// flat arena floor disguised as an abyss.
@@ -205,7 +287,7 @@ fn seed_castle_ground_y(position: Vec2, current_feet_y: f32) -> f32 {
     -19.8
 }
 
-fn player_locomotion(
+pub(super) fn player_locomotion(
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
@@ -215,18 +297,24 @@ fn player_locomotion(
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     manifestation_state: Option<Res<super::manifestation::ManifestationState>>,
     encounter_state: Option<Res<super::encounters::EncounterState>>,
+    workshop_state: Option<Res<super::workshop::WorkshopState>>,
     mut query: Query<(&mut Transform, &mut CameraController), With<PlayerCamera>>,
 ) {
     let Ok((mut transform, mut controller)) = query.single_mut() else {
         return;
     };
 
-    // If player is currently typing into the manifestation conduit, pause camera locomotion
+    // Any open typing surface pauses locomotion — otherwise the player walks or flies away
+    // from the thing they are typing into.
     if manifestation_state
         .as_ref()
         .map(|s| s.phase == super::manifestation::ManifestationPhase::Prompting)
         .unwrap_or(false)
         || encounter_state
+            .as_ref()
+            .map(|state| state.is_open())
+            .unwrap_or(false)
+        || workshop_state
             .as_ref()
             .map(|state| state.is_open())
             .unwrap_or(false)
@@ -384,46 +472,14 @@ fn player_locomotion(
                 transform.translation.z = corrected.y;
             }
 
-            // Center/room embodiment and active manifestation obstacles.
-            let character_obstacles = [
-                (Vec2::new(0.0, -8.5), 1.5), // AURA central embodiment
-                (Vec2::new(10.2, 6.2), 1.5), // Jester Council host
-                (Vec2::new(0.0, -57.0), 1.5), (Vec2::new(58.02, -33.5), 1.5),
-                (Vec2::new(58.02, 33.5), 1.5), (Vec2::new(0.0, 57.0), 1.5),
-                (Vec2::new(-58.02, 33.5), 1.5), (Vec2::new(-58.02, -33.5), 1.5),
-                (Vec2::new(0.0, 3.4), 1.25), // Active manifestation pedestal
-            ];
-            for (char_pos, radius) in character_obstacles {
-                let to_char = Vec2::new(transform.translation.x, transform.translation.z) - char_pos;
-                let dist_char = to_char.length();
-                if dist_char < radius {
-                    let push = if dist_char > 0.01 { to_char / dist_char } else { Vec2::Y };
-                    let corrected = char_pos + push * radius;
-                    transform.translation.x = corrected.x;
-                    transform.translation.z = corrected.y;
-                }
-            }
-
-            // Each outer room is blocked by its cobblestone ring except across the
-            // doorway that faces the Council bridge.
-            for center2 in SEED_ROOM_CENTERS {
-                let to_player = Vec2::new(transform.translation.x, transform.translation.z) - center2;
-                let dist = to_player.length();
-                if dist >= 17.1 || dist < 0.01 {
-                    continue;
-                }
-                let door_bearing = (-center2.y).atan2(-center2.x);
-                let bearing = to_player.y.atan2(to_player.x); // Vec2(x,z) local axes match world's (cos,sin) parameterization
-                let mut diff = bearing - door_bearing;
-                diff = ((diff + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)) - std::f32::consts::PI;
-                if diff.abs() < 0.24 {
-                    continue; // Inside the doorway arc: free passage.
-                }
-                let push = to_player / dist;
-                let corrected = center2 + push * 17.1;
-                transform.translation.x = corrected.x;
-                transform.translation.z = corrected.y;
-            }
+            // Center/room embodiment and active manifestation obstacles, then each outer
+            // room's cobblestone wall.
+            let resolved = resolve_room_walls(resolve_character_obstacles(Vec2::new(
+                transform.translation.x,
+                transform.translation.z,
+            )));
+            transform.translation.x = resolved.x;
+            transform.translation.z = resolved.y;
 
             let current_feet_y = transform.translation.y - controller.eye_height;
             let ground_y = seed_castle_ground_y(Vec2::new(transform.translation.x, transform.translation.z), current_feet_y);
@@ -492,5 +548,90 @@ fn player_locomotion(
             transform.translation.z = transform.translation.z.clamp(-100.0, 100.0);
             transform.translation.y = transform.translation.y.clamp(floor_level, 21.0);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The Architect room's centre, its figure, and its workshop bench, in world (x, z).
+    const ARCHITECT_CENTRE: Vec2 = Vec2::new(0.0, -62.0);
+    const ARCHITECT_BENCH: Vec2 = Vec2::new(0.0, -70.6);
+
+    fn wall_radius() -> f32 {
+        super::super::world::ROOM_WALL_RADIUS
+    }
+
+    #[test]
+    fn a_player_can_stand_at_the_architect_bench_behind_the_room_centre() {
+        // The previous ring collision ejected anything inside the ring radius outward, which
+        // teleported a walking player from the bench to the far wall ~8.5m away and made the
+        // whole back half of every room reachable only by flying.
+        let resolved = resolve_room_walls(ARCHITECT_BENCH);
+        assert!(
+            (resolved - ARCHITECT_BENCH).length() < 0.001,
+            "bench position was moved to {resolved:?}"
+        );
+        assert!((resolved - ARCHITECT_CENTRE).length() < wall_radius());
+    }
+
+    #[test]
+    fn the_wall_keeps_an_inside_player_inside_and_an_outside_player_outside() {
+        let inner_face = wall_radius() - super::super::world::ROOM_WALL_HALF_THICKNESS;
+        let outer_face = wall_radius() + super::super::world::ROOM_WALL_HALF_THICKNESS;
+        // Due east of the room centre, well away from the doorway arc.
+        let from_inside = ARCHITECT_CENTRE + Vec2::new(wall_radius() - 0.2, 0.0);
+        let from_outside = ARCHITECT_CENTRE + Vec2::new(wall_radius() + 0.3, 0.0);
+
+        let pushed_in = resolve_room_walls(from_inside);
+        let pushed_out = resolve_room_walls(from_outside);
+        assert!(((pushed_in - ARCHITECT_CENTRE).length() - inner_face).abs() < 0.01);
+        assert!(((pushed_out - ARCHITECT_CENTRE).length() - outer_face).abs() < 0.01);
+    }
+
+    #[test]
+    fn the_doorway_arc_stays_open() {
+        // The doorway faces the hub, so the passable bearing is straight back toward origin.
+        let toward_hub = -ARCHITECT_CENTRE.normalize();
+        let in_the_doorway = ARCHITECT_CENTRE + toward_hub * wall_radius();
+        let resolved = resolve_room_walls(in_the_doorway);
+        assert!((resolved - in_the_doorway).length() < 0.001);
+    }
+
+    #[test]
+    fn a_player_out_on_the_bridge_is_untouched_by_the_room_wall() {
+        let on_the_bridge = Vec2::new(0.0, -40.0);
+        assert!((resolve_room_walls(on_the_bridge) - on_the_bridge).length() < 0.001);
+    }
+
+    #[test]
+    fn every_room_figure_is_collidable_where_it_actually_stands() {
+        // Two of the six used to be transcribed with a flipped sign, putting an invisible
+        // pillar in the Architect and Empath doorways and leaving both figures walk-through.
+        let obstacles = character_obstacles();
+        for (index, centre) in SEED_ROOM_CENTERS.iter().enumerate() {
+            let (obstacle, radius) = obstacles[3 + index];
+            let expected = *centre + centre.normalize() * super::super::world::EMBODIMENT_RADIAL_OFFSET;
+            assert!((obstacle - expected).length() < 0.001, "room {index} obstacle is misplaced");
+            assert!(
+                obstacle.length() > centre.length(),
+                "room {index} figure must sit further from the hub than its room centre"
+            );
+            assert!(radius > 0.0);
+        }
+    }
+
+    #[test]
+    fn the_architect_figure_is_collidable_at_minus_sixty_seven_not_minus_fifty_seven() {
+        let architect = character_obstacles()[3].0;
+        assert!((architect - Vec2::new(0.0, -67.0)).length() < 0.01);
+    }
+
+    #[test]
+    fn walking_into_a_figure_is_pushed_back_out_to_its_radius() {
+        let inside_the_figure = Vec2::new(0.0, -66.6);
+        let resolved = resolve_character_obstacles(inside_the_figure);
+        assert!((resolved - Vec2::new(0.0, -67.0)).length() >= 1.49);
     }
 }

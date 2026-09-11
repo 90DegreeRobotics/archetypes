@@ -126,7 +126,10 @@ fn append_event(path: &Path, event: &EncounterEvent) -> Result<(), String> {
     file.write_all(line.as_bytes()).map_err(|error| error.to_string())
 }
 
-fn seal_in_ledger(kind: &str, event: &EncounterEvent) -> Result<(), String> {
+/// True when the ledger accepted the seal. A seal failure is reported, never treated as if the
+/// journal write itself had failed: the record is already on disk, and telling the player it
+/// was not written would be contradicted the moment they reload.
+fn seal_in_ledger(kind: &str, event: &EncounterEvent) -> bool {
     let payload = match event {
         EncounterEvent::Created { record } => serde_json::json!({
             "id": record.id, "archetype": record.archetype, "capability": record.capability,
@@ -135,7 +138,13 @@ fn seal_in_ledger(kind: &str, event: &EncounterEvent) -> Result<(), String> {
         EncounterEvent::Remembered { id, .. } => serde_json::json!({ "id": id }),
         EncounterEvent::Forgotten { id, reason, .. } => serde_json::json!({ "id": id, "reason": reason }),
     };
-    append_to_ledger(GameMode::InnerChambers, kind, payload)
+    match append_to_ledger(GameMode::InnerChambers, kind, payload) {
+        Ok(()) => true,
+        Err(error) => {
+            bevy::log::warn!("encounter journal row written but not sealed in the ledger: {error}");
+            false
+        }
+    }
 }
 
 /// Logs a completed turn as `Transient`. Transient turns are provable and inspectable
@@ -145,7 +154,7 @@ pub fn record_turn(archetype: &str, capability: &str, player_input: &str, respon
     let record = EncounterRecord::new(archetype, capability, player_input, response);
     let event = EncounterEvent::Created { record: record.clone() };
     append_event(&journal_path(), &event)?;
-    seal_in_ledger("inner_castle_encounter_created", &event)?;
+    seal_in_ledger("inner_castle_encounter_created", &event);
     Ok(record)
 }
 
@@ -160,7 +169,8 @@ fn record_turn_at(path: &Path, archetype: &str, capability: &str, player_input: 
 pub fn remember(id: &str) -> Result<(), String> {
     let event = EncounterEvent::Remembered { id: id.to_owned(), at_utc_ms: now_ms() };
     append_event(&journal_path(), &event)?;
-    seal_in_ledger("inner_castle_encounter_remembered", &event)
+    seal_in_ledger("inner_castle_encounter_remembered", &event);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -174,7 +184,8 @@ fn remember_at(path: &Path, id: &str) -> Result<(), String> {
 pub fn forget(id: &str, reason: Option<&str>) -> Result<(), String> {
     let event = EncounterEvent::Forgotten { id: id.to_owned(), at_utc_ms: now_ms(), reason: reason.map(str::to_owned) };
     append_event(&journal_path(), &event)?;
-    seal_in_ledger("inner_castle_encounter_forgotten", &event)
+    seal_in_ledger("inner_castle_encounter_forgotten", &event);
+    Ok(())
 }
 
 #[cfg(test)]

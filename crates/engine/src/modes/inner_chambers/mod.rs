@@ -15,6 +15,8 @@ pub mod manifest_capture;
 pub mod manifestation;
 pub mod music;
 pub mod seed;
+pub mod walk_capture;
+pub mod workshop;
 pub mod world;
 
 pub use seed::{persist_extracted_truth, take_seeded_truth};
@@ -48,6 +50,7 @@ impl Plugin for InnerChambersPlugin {
                 interaction::InteractionPlugin,
                 manifestation::ManifestationPlugin,
                 music::InnerCastleMusicPlugin,
+                workshop::WorkshopPlugin,
             ));
 
         if let Some(run) = capture::InnerCaptureRun::from_env() {
@@ -58,6 +61,18 @@ impl Plugin for InnerChambersPlugin {
         if let Some(run) = manifest_capture::ManifestCaptureRun::from_env() {
             app.insert_resource(run)
                 .add_systems(Update, manifest_capture::drive_manifest_capture);
+        }
+
+        // Ordered before both the action resolver and locomotion: `just_pressed` lives for
+        // exactly one frame, so a synthesized press issued after the resolver would never be
+        // observed by anything.
+        if let Some(run) = walk_capture::WalkCaptureRun::from_env() {
+            app.insert_resource(run).add_systems(
+                Update,
+                walk_capture::drive_walk_capture
+                    .before(interaction::InnerInteractionSet::Resolve)
+                    .before(camera::player_locomotion),
+            );
         }
     }
 }

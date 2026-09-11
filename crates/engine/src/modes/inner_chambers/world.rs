@@ -34,6 +34,21 @@ pub(super) const OUTER_ROOM_DISTANCE: f32 = 62.0;
 pub(super) const BRIDGE_LENGTH: f32 = 28.0;
 pub(super) const CASTLE_RADIUS: f32 = 92.0;
 
+/// The room's cobblestone wall as a physical shell. `camera.rs` collides against exactly these
+/// numbers, so the wall a player can touch is the wall that was drawn: the ring is spawned at
+/// `ROOM_WALL_RADIUS` with `ROOM_WALL_HALF_THICKNESS * 2.0` thickness, and the doorway gap is
+/// `ROOM_DOOR_HALF_ARC * 2.0` wide in both the mesh and the collision.
+pub(super) const ROOM_WALL_RADIUS: f32 = OUTER_ROOM_RADIUS - 0.9;
+pub(super) const ROOM_WALL_HALF_THICKNESS: f32 = 0.525;
+pub(super) const ROOM_DOOR_HALF_ARC: f32 = 0.24;
+
+/// Radial offsets of each room's authored contents, measured from the room centre outward.
+/// `camera.rs` derives its collision capsules from these rather than from hand-typed world
+/// coordinates — two of the six used to be transcribed with a flipped sign, which put an
+/// invisible pillar in the Architect and Empath doorways and left their figures uncollidable.
+pub(super) const EMBODIMENT_RADIAL_OFFSET: f32 = 5.0;
+pub(super) const WORKSHOP_TABLE_RADIAL_OFFSET: f32 = 8.6;
+
 /// The five archetype figure positions, duplicated here (rather than shared with the
 /// spawn-time literals in `setup_inner_world`) so collision code has a plain data
 /// table to iterate without depending on Bevy ECS state. Kept in lockstep by the
@@ -52,11 +67,19 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(InnerChambersState::Loading), setup_inner_world)
+        app.init_resource::<HintRequest>()
+            .configure_sets(
+                Update,
+                (InnerHintSet::Request, InnerHintSet::Render)
+                    .chain()
+                    .run_if(in_state(InnerChambersState::Navigating)),
+            )
+            .add_systems(OnEnter(InnerChambersState::Loading), setup_inner_world)
             .add_systems(
                 Update,
                 rotate_chronos_exhibits.run_if(in_state(InnerChambersState::Navigating)),
             )
+            .add_systems(Update, render_hint.in_set(InnerHintSet::Render))
             .add_systems(OnEnter(InnerChambersState::Exiting), teardown_inner_world);
     }
 }
@@ -66,6 +89,66 @@ pub struct InnerWorldElement;
 
 #[derive(Component)]
 pub struct InnerChambersHint;
+
+/// The workshop table in the Architect's room. `interaction.rs` resolves focus against this
+/// entity's transform, so the prompt appears where the furniture actually stands.
+#[derive(Component)]
+pub struct ArchitectWorkshopTable;
+
+/// Who gets the one hint line, when several systems have something to say.
+///
+/// The line previously had three independent writers racing for it every frame, and the
+/// proximity prompt lost: a player could stand beside an archetype and only ever see the
+/// locomotion legend. Systems now publish a request and exactly one system renders it.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum HintPriority {
+    Modal = 0,
+    Device = 1,
+    Embodiment = 2,
+    TruthNode = 3,
+    Locomotion = 4,
+}
+
+#[derive(Resource, Default)]
+pub struct HintRequest {
+    current: Option<(u8, String)>,
+}
+
+impl HintRequest {
+    /// Publishes a hint for this frame. The most important request wins regardless of which
+    /// system ran first, so the outcome does not depend on schedule ordering.
+    pub fn request(&mut self, priority: HintPriority, text: impl Into<String>) {
+        let priority = priority as u8;
+        if self
+            .current
+            .as_ref()
+            .map_or(true, |(existing, _)| priority < *existing)
+        {
+            self.current = Some((priority, text.into()));
+        }
+    }
+}
+
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InnerHintSet {
+    Request,
+    Render,
+}
+
+fn render_hint(
+    mut request: ResMut<HintRequest>,
+    mut hint: Query<&mut Text, With<InnerChambersHint>>,
+) {
+    let Some((_, text)) = request.current.take() else {
+        return;
+    };
+    let Ok(mut target) = hint.single_mut() else {
+        return;
+    };
+    if target.0 != text {
+        target.0 = text;
+    }
+}
 
 #[derive(Component)]
 pub struct ChronosExhibitTurntable {
@@ -233,7 +316,7 @@ fn setup_inner_world(
     ));
 
     commands.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(24.0), bottom: Val::Px(24.0), padding: UiRect::axes(Val::Px(18.0), Val::Px(12.0)), max_width: Val::Px(780.0), ..default() }, BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.88)), GlobalZIndex(920), InnerWorldElement))
-        .with_children(|parent| { parent.spawn((Text::new("INNER CASTLE  •  [STATUS: GROUND WALKING]\\nWASD: Move & Strafe  •  Space: Jump (Double-Tap: Fly)  •  Mouse: Look  •  Esc: Menu"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::srgb(0.92, 0.93, 0.88)), InnerChambersHint)); });
+        .with_children(|parent| { parent.spawn((Text::new("INNER CASTLE  •  [STATUS: GROUND WALKING]\nWASD: Move & Strafe  •  Space: Jump (Double-Tap: Fly)  •  Mouse: Look  •  Esc: Menu"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::srgb(0.92, 0.93, 0.88)), InnerChambersHint)); });
     next_state.set(InnerChambersState::Navigating);
 }
 
@@ -275,7 +358,7 @@ fn spawn_seed_room(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials
     spawn_castle_platform(commands, meshes, stone, trim.clone(), center, OUTER_ROOM_RADIUS, room.name);
     let room_mat = materials.add(StandardMaterial { base_color: room.stone, perceptual_roughness: 0.87, metallic: 0.05, double_sided: true, cull_mode: None, ..default() });
     let toward_center = room.angle + std::f32::consts::PI;
-    commands.spawn((Mesh3d(meshes.add(build_wall_ring_mesh(OUTER_ROOM_RADIUS - 0.9, 12.5, 1.05, 88, toward_center, 0.48))), MeshMaterial3d(room_mat.clone()), Transform::from_translation(center + Vec3::Y * 0.42), InnerWorldElement, Name::new(format!("{}_CobblestoneRoomWall", room.name))));
+    commands.spawn((Mesh3d(meshes.add(build_wall_ring_mesh(ROOM_WALL_RADIUS, 12.5, ROOM_WALL_HALF_THICKNESS * 2.0, 88, toward_center, ROOM_DOOR_HALF_ARC * 2.0))), MeshMaterial3d(room_mat.clone()), Transform::from_translation(center + Vec3::Y * 0.42), InnerWorldElement, Name::new(format!("{}_CobblestoneRoomWall", room.name))));
     // Projecting irregular courses turn the structural ring into actual visible
     // cobblestone rather than a flat cylinder with a flattering name.  The doorway
     // interval stays clear for the trimmed threshold below.
@@ -297,7 +380,10 @@ fn spawn_seed_room(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials
     commands.spawn((Mesh3d(meshes.add(Cuboid::new(BRIDGE_LENGTH, 0.55, 5.4))), MeshMaterial3d(room_mat.clone()), Transform::from_translation(bridge_center + Vec3::Y * 0.10).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_BridgeOverAbyss", room.name))));
     for side in [-1.0_f32, 1.0] { commands.spawn((Mesh3d(meshes.add(Cuboid::new(BRIDGE_LENGTH, 1.6, 0.24))), MeshMaterial3d(trim.clone()), Transform::from_translation(bridge_center + Vec3::new(-room.angle.sin(), 0.0, room.angle.cos()) * side * 2.56 + Vec3::Y * 0.95).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_BridgeRail", room.name)))); }
     spawn_room_furniture(commands, meshes, room_mat.clone(), trim.clone(), center, room);
-    if let Some(path) = room.asset { commands.spawn((SceneRoot(asset_server.load(path)), Transform::from_translation(center + radial * 5.0 + Vec3::Y * 0.42).with_rotation(Quat::from_rotation_y(toward_center)).with_scale(Vec3::splat(2.20)), ArchetypeEmbodiment { archetype: archetype_for_room(room.name), chamber_title: room.title }, InnerWorldElement, Name::new(format!("{}_Embodiment", room.name)))); }
+    if room.name == "Architect" {
+        spawn_architect_workshop(commands, meshes, materials, trim.clone(), center, room.angle);
+    }
+    if let Some(path) = room.asset { commands.spawn((SceneRoot(asset_server.load(path)), Transform::from_translation(center + radial * EMBODIMENT_RADIAL_OFFSET + Vec3::Y * 0.42).with_rotation(Quat::from_rotation_y(toward_center)).with_scale(Vec3::splat(2.20)), ArchetypeEmbodiment { archetype: archetype_for_room(room.name), chamber_title: room.title }, InnerWorldElement, Name::new(format!("{}_Embodiment", room.name)))); }
     commands.spawn((PointLight { intensity: 180_000.0, range: 28.0, color: room.light, shadows_enabled: false, ..default() }, Transform::from_translation(center + Vec3::new(-radial.z * 6.5, 9.5, radial.x * 6.5)), InnerWorldElement, Name::new(format!("{}_ThemeKeyLight", room.name))));
     commands.spawn((PointLight { intensity: 95_000.0, range: 18.0, color: Color::srgb(1.0, 0.66, 0.30), shadows_enabled: false, ..default() }, Transform::from_translation(center - radial * 12.5 + Vec3::Y * 5.5), InnerWorldElement, Name::new(format!("{}_WarmThresholdLight", room.name))));
     commands.spawn((Name::new(format!("{}_{}", room.name, room.title)), InnerWorldElement));
@@ -314,8 +400,132 @@ fn spawn_room_furniture(commands: &mut Commands, meshes: &mut Assets<Mesh>, ston
     let tangent = Vec3::new(-room.angle.sin(), 0.0, room.angle.cos());
     let radial = Vec3::new(room.angle.cos(), 0.0, room.angle.sin());
     for side in [-1.0_f32, 1.0] { commands.spawn((Mesh3d(meshes.add(Cuboid::new(1.35, 3.8, 6.4))), MeshMaterial3d(stone.clone()), Transform::from_translation(center + tangent * side * 11.5 + radial * 3.0 + Vec3::Y * 2.3).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_StoneShelf_{side}", room.name)))); }
+    // The Architect's counter is replaced by the authored workshop bench below, so the plain
+    // slab is not spawned on top of it.
+    if room.name == "Architect" {
+        return;
+    }
     let (width, depth) = match room.furniture { FurnitureKind::Drafting => (7.2, 2.4), FurnitureKind::Guard => (5.8, 2.0), FurnitureKind::Map => (8.0, 2.2), FurnitureKind::Hearth => (6.4, 3.2), FurnitureKind::Library => (5.2, 2.0), FurnitureKind::Observatory => (4.4, 4.4) };
-    commands.spawn((Mesh3d(meshes.add(Cuboid::new(width, 1.5, depth))), MeshMaterial3d(trim), Transform::from_translation(center + radial * 8.6 + Vec3::Y * 1.15).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_FunctionalCounter", room.name))));
+    commands.spawn((Mesh3d(meshes.add(Cuboid::new(width, 1.5, depth))), MeshMaterial3d(trim), Transform::from_translation(center + radial * WORKSHOP_TABLE_RADIAL_OFFSET + Vec3::Y * 1.15).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_FunctionalCounter", room.name))));
+}
+
+/// The Architect's planning bench: a drafting table with a raked board, a tool shelf, and a
+/// notice board behind it. This is the physical entry point to the workshop — the player walks
+/// to real furniture and reads a prompt, rather than opening a menu attached to the room.
+fn spawn_architect_workshop(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    trim: Handle<StandardMaterial>,
+    center: Vec3,
+    angle: f32,
+) {
+    let radial = Vec3::new(angle.cos(), 0.0, angle.sin());
+    let tangent = Vec3::new(-angle.sin(), 0.0, angle.cos());
+    // A yaw of `-(angle + 90°)` — not the `-angle` the older room furniture uses — is what
+    // actually maps a mesh's local +X onto the room's tangent, so the bench presents its long
+    // edge to a player walking in through the doorway. With `-angle` the pieces stand edge-on.
+    let facing = Quat::from_rotation_y(-(angle + std::f32::consts::FRAC_PI_2));
+    let bench = center + radial * WORKSHOP_TABLE_RADIAL_OFFSET;
+
+    let timber = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.26, 0.19, 0.13),
+        perceptual_roughness: 0.82,
+        ..default()
+    });
+    let vellum = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.74, 0.79, 0.84),
+        perceptual_roughness: 0.58,
+        ..default()
+    });
+    let blueprint = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.16, 0.34, 0.52),
+        perceptual_roughness: 0.5,
+        emissive: LinearRgba::rgb(0.04, 0.12, 0.22),
+        ..default()
+    });
+
+    for side in [-1.0_f32, 1.0] {
+        for depth in [-1.0_f32, 1.0] {
+            commands.spawn((
+                Mesh3d(meshes.add(Cuboid::new(0.17, 1.0, 0.17))),
+                MeshMaterial3d(timber.clone()),
+                Transform::from_translation(bench + tangent * side * 1.72 + radial * depth * 0.56 + Vec3::Y * 0.90).with_rotation(facing),
+                InnerWorldElement,
+                Name::new("Architect_WorkshopBenchLeg"),
+            ));
+        }
+    }
+
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(3.9, 0.16, 1.5))),
+        MeshMaterial3d(timber.clone()),
+        Transform::from_translation(bench + Vec3::Y * 1.46).with_rotation(facing),
+        InnerWorldElement,
+        Name::new("Architect_WorkshopBenchTop"),
+    ));
+
+    // The raked board is the readable silhouette from the doorway: a lit pale surface at a
+    // drafting angle, unlike anything else in the room.
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(3.3, 0.07, 1.25))),
+        MeshMaterial3d(vellum),
+        Transform::from_translation(bench + Vec3::Y * 1.72 + radial * 0.1)
+            .with_rotation(facing * Quat::from_rotation_x(0.30)),
+        InnerWorldElement,
+        Name::new("Architect_WorkshopDraftingBoard"),
+    ));
+
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(3.9, 1.5, 0.34))),
+        MeshMaterial3d(timber),
+        Transform::from_translation(bench + radial * 1.35 + Vec3::Y * 0.95).with_rotation(facing),
+        InnerWorldElement,
+        Name::new("Architect_WorkshopToolShelf"),
+    ));
+
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(2.6, 1.7, 0.12))),
+        MeshMaterial3d(blueprint),
+        Transform::from_translation(bench + radial * 1.5 + Vec3::Y * 2.75).with_rotation(facing),
+        InnerWorldElement,
+        Name::new("Architect_WorkshopNoticeBoard"),
+    ));
+
+    for side in [-1.0_f32, 1.0] {
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(0.12, 2.6, 0.12))),
+            MeshMaterial3d(trim.clone()),
+            Transform::from_translation(bench + tangent * side * 1.45 + radial * 1.5 + Vec3::Y * 1.7).with_rotation(facing),
+            InnerWorldElement,
+            Name::new("Architect_WorkshopBoardPost"),
+        ));
+    }
+
+    // A dedicated task light so the bench reads as a destination from the doorway; the room's
+    // key light alone leaves this end of the floor near-black.
+    commands.spawn((
+        PointLight {
+            intensity: 90_000.0,
+            range: 14.0,
+            color: Color::srgb(1.0, 0.86, 0.66),
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_translation(bench - radial * 1.2 + Vec3::Y * 4.2),
+        InnerWorldElement,
+        Name::new("Architect_WorkshopTaskLight"),
+    ));
+
+    // The interaction anchor sits at the working edge of the bench, on the side the player
+    // approaches from, so the prompt appears where a person would actually stand to draft.
+    commands.spawn((
+        Transform::from_translation(bench - radial * 0.7 + Vec3::Y * 1.55),
+        Visibility::Hidden,
+        ArchitectWorkshopTable,
+        InnerWorldElement,
+        Name::new("Architect_WorkshopInteractionAnchor"),
+    ));
 }
 
 /// Seven circular galleries occupy the inner face of the far enclosing wall. The

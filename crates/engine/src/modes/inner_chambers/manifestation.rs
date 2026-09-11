@@ -15,12 +15,11 @@ use super::world::ChronosExhibitTurntable;
 use super::encounters::EncounterState;
 use super::interaction::{InnerInteractionSet, InteractionFocus, InteractionTarget};
 use super::InnerChambersState;
-use bevy::input::gamepad::{Gamepad, GamepadButton};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use bevy::winit::{UpdateMode, WinitSettings};
 
-use crate::services::gamepad_input;
+use crate::services::text_entry;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
@@ -751,7 +750,7 @@ fn animate_pedestal_symbols(
 fn handle_manifestation_input(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
-    gamepads: Query<&Gamepad>,
+    actions: Res<crate::modes::inner_chambers::interaction::InnerActions>,
     time: Res<Time>,
     mut state: ResMut<ManifestationState>,
     channels: Res<ManifestationChannels>,
@@ -803,7 +802,7 @@ fn handle_manifestation_input(
 
     match state.phase {
         ManifestationPhase::Idle | ManifestationPhase::Completed | ManifestationPhase::Failed => {
-            if is_near && !encounter_state.is_open() && interaction_focus.0 == Some(InteractionTarget::ManifestationAltar) && (keyboard.just_pressed(KeyCode::KeyE) || gamepad_input::any_just_pressed(&gamepads, GamepadButton::West)) {
+            if is_near && !encounter_state.is_open() && interaction_focus.0 == Some(InteractionTarget::ManifestationAltar) && actions.interact {
                 state.phase = ManifestationPhase::Prompting;
                 state.prompt_buffer.clear();
                 if let Ok(mut cursor) = cursor_options.single_mut() {
@@ -820,7 +819,7 @@ fn handle_manifestation_input(
                 *vis = Visibility::Visible;
             }
 
-            if keyboard.just_pressed(KeyCode::Escape) || gamepad_input::any_just_pressed(&gamepads, GamepadButton::East) {
+            if actions.cancel {
                 state.phase = ManifestationPhase::Idle;
                 if let Ok(mut vis) = modal_query.single_mut() {
                     *vis = Visibility::Hidden;
@@ -832,54 +831,7 @@ fn handle_manifestation_input(
                 return;
             }
 
-            if keyboard.just_pressed(KeyCode::Backspace) {
-                state.prompt_buffer.pop();
-            }
-
-            for (key, ch) in [
-                (KeyCode::KeyA, 'a'),
-                (KeyCode::KeyB, 'b'),
-                (KeyCode::KeyC, 'c'),
-                (KeyCode::KeyD, 'd'),
-                (KeyCode::KeyE, 'e'),
-                (KeyCode::KeyF, 'f'),
-                (KeyCode::KeyG, 'g'),
-                (KeyCode::KeyH, 'h'),
-                (KeyCode::KeyI, 'i'),
-                (KeyCode::KeyJ, 'j'),
-                (KeyCode::KeyK, 'k'),
-                (KeyCode::KeyL, 'l'),
-                (KeyCode::KeyM, 'm'),
-                (KeyCode::KeyN, 'n'),
-                (KeyCode::KeyO, 'o'),
-                (KeyCode::KeyP, 'p'),
-                (KeyCode::KeyQ, 'q'),
-                (KeyCode::KeyR, 'r'),
-                (KeyCode::KeyS, 's'),
-                (KeyCode::KeyT, 't'),
-                (KeyCode::KeyU, 'u'),
-                (KeyCode::KeyV, 'v'),
-                (KeyCode::KeyW, 'w'),
-                (KeyCode::KeyX, 'x'),
-                (KeyCode::KeyY, 'y'),
-                (KeyCode::KeyZ, 'z'),
-                (KeyCode::Space, ' '),
-                (KeyCode::Digit0, '0'),
-                (KeyCode::Digit1, '1'),
-                (KeyCode::Digit2, '2'),
-                (KeyCode::Digit3, '3'),
-                (KeyCode::Digit4, '4'),
-                (KeyCode::Digit5, '5'),
-                (KeyCode::Digit6, '6'),
-                (KeyCode::Digit7, '7'),
-                (KeyCode::Digit8, '8'),
-                (KeyCode::Digit9, '9'),
-                (KeyCode::Minus, '-'),
-            ] {
-                if keyboard.just_pressed(key) && state.prompt_buffer.len() < 64 {
-                    state.prompt_buffer.push(ch);
-                }
-            }
+            text_entry::apply_typed_keys(&keyboard, &mut state.prompt_buffer, 64);
 
             if let Ok(mut text) = text_query.single_mut() {
                 let cursor = if (time.elapsed_secs() * 2.0).fract() < 0.5 {
@@ -936,7 +888,7 @@ fn handle_manifestation_input(
                 *vis = Visibility::Hidden;
             }
             state.waiting_elapsed += time.delta_secs();
-            if keyboard.just_pressed(KeyCode::Escape) || gamepad_input::any_just_pressed(&gamepads, GamepadButton::East) {
+            if actions.cancel {
                 cancel_manifestation(&channels);
                 state.phase = ManifestationPhase::Idle;
                 state.current_stage_id.clear();

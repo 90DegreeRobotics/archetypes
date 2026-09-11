@@ -1,4 +1,5 @@
 pub mod archetype_conversation;
+pub mod build_intent;
 pub mod chronos;
 pub mod encounter_memory;
 pub mod gamepad_input;
@@ -9,3 +10,4 @@ pub mod paths;
 pub mod readiness;
 pub mod sentinel;
 pub mod settings;
+pub mod text_entry;

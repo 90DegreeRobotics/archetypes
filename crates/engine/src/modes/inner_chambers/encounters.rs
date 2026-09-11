@@ -6,23 +6,25 @@
 use std::{fs, io::Write, sync::{mpsc, Mutex}, time::{SystemTime, UNIX_EPOCH}};
 use std::thread;
 
-use bevy::input::gamepad::{Gamepad, GamepadButton};
 use bevy::prelude::*;
-use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+use bevy::window::{CursorOptions, PrimaryWindow};
 use serde_json::json;
 
 use crate::modes::game_mode::GameMode;
 use crate::services::archetype_conversation::{request_reply, ArchetypeChatRecord};
 use crate::services::encounter_memory::{self, RetentionState};
-use crate::services::gamepad_input;
 use crate::services::ledger::append_to_ledger;
 use crate::services::paths::app_data_root;
+use crate::services::text_entry;
 use crate::theme::Archetype;
 
 pub const INNER_CASTLE_ENCOUNTER_CAPABILITY: &str = "inner_castle_encounter";
 
-use super::interaction::{InnerInteractionSet, InteractionFocus, InteractionTarget};
-use super::world::{InnerChambersHint, InnerWorldElement};
+use super::interaction::{
+    set_modal_cursor, InnerActions, InnerInteractionSet, InnerModalState, InteractionFocus,
+    InteractionTarget,
+};
+use super::world::{HintPriority, HintRequest, InnerHintSet, InnerWorldElement};
 use super::InnerChambersState;
 
 pub const ENCOUNTER_RANGE: f32 = 6.75;
@@ -67,8 +69,19 @@ impl Plugin for EncounterPlugin {
         app.init_resource::<EncounterState>()
             .init_resource::<EncounterBridge>()
             .add_systems(OnEnter(InnerChambersState::Navigating), spawn_encounter_ui)
-            .add_systems(Update, (focus_or_open_encounter, type_or_close_encounter, poll_reply, render_encounter_ui).chain().after(InnerInteractionSet::Resolve).run_if(in_state(InnerChambersState::Navigating)));
+            .add_systems(OnEnter(InnerChambersState::Exiting), close_encounter_on_exit)
+            .add_systems(Update, (focus_or_open_encounter, type_or_close_encounter, poll_reply, render_encounter_ui).chain().in_set(InnerHintSet::Request).after(InnerInteractionSet::Resolve).run_if(in_state(InnerChambersState::Navigating)));
     }
+}
+
+/// Leaving the castle mid-conversation would otherwise leave the encounter marked open, which
+/// keeps locomotion frozen the next time the player walks back in.
+fn close_encounter_on_exit(mut state: ResMut<EncounterState>) {
+    state.active = None;
+    state.draft.clear();
+    state.status.clear();
+    state.last_record_id = None;
+    state.last_record_state = None;
 }
 
 fn spawn_encounter_ui(mut commands: Commands) {
@@ -81,31 +94,27 @@ fn spawn_encounter_ui(mut commands: Commands) {
 }
 
 fn focus_or_open_encounter(
-    keyboard: Res<ButtonInput<KeyCode>>, gamepads: Query<&Gamepad>, focus: Res<InteractionFocus>,
-    mut state: ResMut<EncounterState>, mut hint: Query<&mut Text, With<InnerChambersHint>>, mut cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    actions: Res<InnerActions>, modal: Res<InnerModalState>, focus: Res<InteractionFocus>,
+    mut state: ResMut<EncounterState>, mut hint: ResMut<HintRequest>, mut cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     if state.is_open() { return; }
-    if let Ok(mut hint) = hint.single_mut() {
-        if let Some(InteractionTarget::Archetype(embodiment)) = focus.0 { hint.0 = format!("[E / Pad-X] Speak with {} — typed local conversation", embodiment.archetype.theme().name); }
-    }
-    if keyboard.just_pressed(KeyCode::KeyE) || gamepad_input::any_just_pressed(&gamepads, GamepadButton::West) {
-        if let Some(InteractionTarget::Archetype(embodiment)) = focus.0 {
-            state.active = Some(embodiment); state.draft.clear();
-            state.last_record_id = None; state.last_record_state = None;
-            state.status = format!("Speak with {}. Enter sends locally; Esc returns to the chamber.", embodiment.archetype.theme().name);
-            if let Ok(mut cursor) = cursor.single_mut() { cursor.visible = true; cursor.grab_mode = CursorGrabMode::None; }
-        }
-    }
+    let Some(InteractionTarget::Archetype(embodiment)) = focus.0 else { return; };
+    hint.request(HintPriority::Embodiment, format!("[E / Pad-X] Speak with {} — typed local conversation", embodiment.archetype.theme().name));
+    if modal.any() || !actions.interact { return; }
+    state.active = Some(embodiment); state.draft.clear();
+    state.last_record_id = None; state.last_record_state = None;
+    state.status = format!("Speak with {}. Enter sends locally; Esc returns to the chamber.", embodiment.archetype.theme().name);
+    set_modal_cursor(&mut cursor, true);
 }
 
 fn type_or_close_encounter(
-    keyboard: Res<ButtonInput<KeyCode>>, gamepads: Query<&Gamepad>, mut state: ResMut<EncounterState>, mut bridge: ResMut<EncounterBridge>, mut cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    keyboard: Res<ButtonInput<KeyCode>>, actions: Res<InnerActions>, mut state: ResMut<EncounterState>, mut bridge: ResMut<EncounterBridge>, mut cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     let Some(active) = state.active else { return; };
-    if keyboard.just_pressed(KeyCode::Escape) || gamepad_input::any_just_pressed(&gamepads, GamepadButton::East) {
+    if actions.cancel {
         state.active = None; state.draft.clear(); state.status.clear();
         state.last_record_id = None; state.last_record_state = None;
-        if let Ok(mut cursor) = cursor.single_mut() { cursor.visible = false; cursor.grab_mode = CursorGrabMode::Locked; }
+        set_modal_cursor(&mut cursor, false);
         return;
     }
     if let Some(record_id) = state.last_record_id.clone() {
@@ -135,10 +144,7 @@ fn type_or_close_encounter(
         }
     }
     if bridge.waiting { return; }
-    if keyboard.just_pressed(KeyCode::Backspace) { state.draft.pop(); }
-    for (key, ch) in [(KeyCode::KeyA,'a'),(KeyCode::KeyB,'b'),(KeyCode::KeyC,'c'),(KeyCode::KeyD,'d'),(KeyCode::KeyE,'e'),(KeyCode::KeyF,'f'),(KeyCode::KeyG,'g'),(KeyCode::KeyH,'h'),(KeyCode::KeyI,'i'),(KeyCode::KeyJ,'j'),(KeyCode::KeyK,'k'),(KeyCode::KeyL,'l'),(KeyCode::KeyM,'m'),(KeyCode::KeyN,'n'),(KeyCode::KeyO,'o'),(KeyCode::KeyP,'p'),(KeyCode::KeyQ,'q'),(KeyCode::KeyR,'r'),(KeyCode::KeyS,'s'),(KeyCode::KeyT,'t'),(KeyCode::KeyU,'u'),(KeyCode::KeyV,'v'),(KeyCode::KeyW,'w'),(KeyCode::KeyX,'x'),(KeyCode::KeyY,'y'),(KeyCode::KeyZ,'z'),(KeyCode::Space,' '), (KeyCode::Comma,','),(KeyCode::Period,'.'),(KeyCode::Quote,'\''),(KeyCode::Minus,'-'),(KeyCode::Slash,'/'),(KeyCode::Digit0,'0'),(KeyCode::Digit1,'1'),(KeyCode::Digit2,'2'),(KeyCode::Digit3,'3'),(KeyCode::Digit4,'4'),(KeyCode::Digit5,'5'),(KeyCode::Digit6,'6'),(KeyCode::Digit7,'7'),(KeyCode::Digit8,'8'),(KeyCode::Digit9,'9')] {
-        if keyboard.just_pressed(key) && state.draft.chars().count() < 600 { state.draft.push(ch); }
-    }
+    text_entry::apply_typed_keys(&keyboard, &mut state.draft, 600);
     if !keyboard.just_pressed(KeyCode::Enter) || state.draft.trim().is_empty() { return; }
     let message = state.draft.trim().to_owned();
     state.transcript.push(ArchetypeChatRecord { role: "Witness".into(), content: message.clone() });

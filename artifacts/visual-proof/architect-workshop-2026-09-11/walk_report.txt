@@ -1,0 +1,7 @@
+start  pos=Vec3(1.8, 3.25, -46.0) mode=Walking
+00_doorway_standing  pos=(1.80, 3.25, -46.00)  mode=Walking  focus=none  bench=Closed  plans=0  mode_state=Navigating
+01_at_the_bench_prompt  pos=(0.83, 3.25, -68.43)  mode=Walking  focus=ArchitectWorkshop  bench=Closed  plans=0  mode_state=Navigating
+02_bench_open  pos=(0.83, 3.25, -68.43)  mode=Walking  focus=ArchitectWorkshop  bench=Browsing  plans=0  mode_state=Navigating
+03_confirm_before_writing  pos=(0.83, 3.25, -68.43)  mode=Walking  focus=ArchitectWorkshop  bench=Confirming  plans=0  mode_state=Navigating
+04_plan_written  pos=(0.83, 3.25, -68.43)  mode=Walking  focus=ArchitectWorkshop  bench=Browsing  plans=1  mode_state=Navigating
+05_back_in_the_room  pos=(0.83, 3.25, -68.43)  mode=Walking  focus=ArchitectWorkshop  bench=Closed  plans=0  mode_state=Navigating
