@@ -1,7 +1,10 @@
 # Plan: Inner Chamber architecture and real multiview evaluation — 2026-09-09 22:20
 
 ## Status
-IN PROGRESS — Steps 2-4 landed and verified in follow-up sessions (2026-09-10); Step 5 (multiview evaluation) not started.
+IN PROGRESS — Steps 2-4 landed and verified in follow-up sessions (2026-09-10). Step 5's
+"download a licensed candidate" path is CLOSED for real as of 2026-09-11 (systemic licensing
+dead end, evidence below) and replaced with a from-scratch original-code research direction
+that has not yet started.
 
 ## Goal
 Replace the current open warehouse-like Council Chamber blockout with a legible central rotunda, a physical light-reactive floor, and one explorable chamber for each of the five standing archetype meshes (Sentinel, Aura, Empath, Oracle, and Nebula Jester). Use those rooms as the first live test bed for distinct archetype design languages. In parallel, evaluate an additional reconstruction view honestly: validation-only while TripoSR remains single-view, and geometry-constraining only after a 12 GB-safe multiview engine proves it consumes distinct persisted views.
@@ -45,11 +48,69 @@ Replace the current open warehouse-like Council Chamber blockout with a legible 
 - Expected outcome: Five rooms are unmistakably different in mood and form while remaining one coherent building.
 
 ### Step 5 — Add a second view without theatre
-- [ ] Near-term experiment: generate and persist a genuinely distinct second camera view; measure identity/framing consistency and use it only as retry/quality evidence while TripoSR consumes one image.
-- [ ] Real multiview experiment: benchmark an open local multiview reconstruction engine that demonstrably consumes front/side/rear views, including peak dedicated/shared GPU memory, wall time, geometry quality, license, and offline install size on the RTX 3060 12 GB.
-- [ ] Never label validation-only views as reconstruction inputs. Adopt the engine only if a live ablation proves removing view two changes geometry and quality improves enough to justify latency.
-- Files touched: Chronos2 engine evaluation plan/results first; production code only after a passing benchmark.
-- Expected outcome: Either a proven multiview upgrade or an honest documented no-go, never a fake extra camera.
+
+**"Download and benchmark a candidate" is CLOSED, permanently, as a dead end — not deferred.**
+Every existing open multiview-to-3D reconstruction model was checked at primary sources
+(GitHub/HF LICENSE files, training configs, model-zoo resolvers, commit-pinned) via a
+Manus research thread appended to
+`C:\chronos2\docs\plans\plan_2026-09-07_1530_quality-engine-licence.md`. The result is
+systemic, not one bad candidate:
+
+- **InstantMesh** — Apache-2.0 wrapper, but requires Zero123++ (SUDO-AI), whose weights
+  are CC-BY-NC-4.0. Flatly non-commercial.
+- **Stable Zero123** (Stability) — non-commercial-only free tier; the commercial variant
+  requires an ongoing paid Stability AI membership.
+- **CRM** (thu-ml) — MIT badge on the repo, but both diffusion checkpoints resume-train
+  from ImageDream's `sd-v2.1-base-4view-ipmv.pt`, an Open RAIL++-M derivative of Stable
+  Diffusion 2.1-base (confirmed via CRM's own `imagedream/model_zoo.py` resolver and
+  training configs, commit `8a16cf6`). §5 of Open RAIL++-M reaches *running* the model,
+  not just distributing it, so the operator-install posture that cleared TripoSR's MIT
+  does not fully clear this. The separable reconstruction net (`CRM.pth`) has no published
+  training record at all (unverifiable, not proven clean), and its own constructor makes
+  an unpinned runtime fetch to `stabilityai/stable-diffusion-2-1-base` — which by itself
+  already breaks the "ships and fetches nothing" rule TripoSR's whole license position
+  depends on, independent of the legal question.
+- **OpenLRM** — Apache-2.0 code, CC-BY-NC-4.0 weights. Same shape as InstantMesh.
+- **LGM** (3DTopia) — MIT wrapper, but its own paper states it requires ImageDream for
+  image-conditioned input. Same contamination as CRM, same source.
+- **TRELLIS / TRELLIS.2** (Microsoft) — MIT, but 16 GB / 24 GB VRAM minimum respectively
+  (verified only on A100/H100). Fails this machine's 12 GB gate before the license
+  question is even reached; submodule licenses (`diffoctreerast`, modified Flexicubes)
+  remain unresolved regardless.
+- **TripoSplat** (VAST-AI/Tripo, same clean lineage as TripoSR) — genuinely MIT, but
+  single-image input producing Gaussian splats, not multiview, not a mesh. Does not
+  address this problem.
+- **Tripo 3.0 Multiview** — real multiview capability, but a paid third-party SaaS API,
+  not a downloadable model. Wrong shape entirely for an operator-installed, nothing-shipped
+  product.
+
+The root cause is structural, not incidental: essentially every capable multiview image
+generator in this ecosystem descends from the Zero123/MVDream/ImageDream family, and every
+one of those is a Stable Diffusion derivative carrying Open RAIL++-M or a CC-BY-NC
+relicense. TripoSR is clean specifically *because* it is not diffusion-based view synthesis
+at all — a direct feed-forward image-to-triplane model. That is why it was the only
+candidate to pass the original Sept 7 sweep and still the only one that passes today.
+
+**New direction (operator, 2026-09-11): do not treat "no license-clean pretrained model
+exists" as a dead end for the capability.** Multiview/better-than-single-view
+reconstruction stays a real goal. The path to it is original, from-scratch code —
+council-driven trial and error on a novel reconstruction approach we own outright — not
+adopting a third party's encumbered weights. This is downstream of the same law as
+[[no-recipes-is-the-north-star]]: the answer to "the licensed ecosystem doesn't offer a
+clean path" is to build the capability, not to declare the goal impossible or fall back to
+a hardcoded substitute.
+
+- [ ] Near-term experiment (unaffected by the above, still open): generate and persist a
+  genuinely distinct second camera view; measure identity/framing consistency and use it
+  only as retry/quality evidence while TripoSR consumes one image.
+- [ ] Original-code multiview research track (new, unstarted): scope what a from-scratch
+  reconstruction approach would need to measurably beat single-view TripoSR on this
+  hardware — this is a research/architecture question first, not an implementation task,
+  and deserves its own dated plan when picked up rather than folding into this one.
+- Files touched: this plan (closure of the download-candidate path); a future dedicated
+  plan for the original-code track.
+- Expected outcome achieved: an honest, evidence-backed, permanently documented no-go on
+  every existing licensed candidate. Not yet started: the original-code track.
 
 ### Step 6 — Verify the whole buyer experience
 - [ ] Run focused geometry/material/light tests, `cargo test --workspace`, and `pwsh -File scripts\install_shortcut.ps1`.
@@ -140,4 +201,8 @@ noted honestly rather than checking that box). What actually landed, source-veri
   The proof is geometrical and runtime-real, not aesthetic approval: palette and large niche
   cylinders need a separate art-direction decision if they are to change.
 
-**What remains open for a future session:** Step 5's multiview evaluation has not been touched.
+**What remains open for a future session:** Step 5's "download a licensed candidate" question
+is now closed for good (see Step 5 above — systemic Open RAIL/CC-BY-NC contamination across
+every existing multiview reconstruction model, not fixable by picking a different one). The
+open work is the from-scratch original-code multiview research track, which has not started
+and deserves its own dated plan when picked up.
