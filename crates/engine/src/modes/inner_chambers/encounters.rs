@@ -13,10 +13,13 @@ use serde_json::json;
 
 use crate::modes::game_mode::GameMode;
 use crate::services::archetype_conversation::{request_reply, ArchetypeChatRecord};
+use crate::services::encounter_memory::{self, RetentionState};
 use crate::services::gamepad_input;
 use crate::services::ledger::append_to_ledger;
 use crate::services::paths::app_data_root;
 use crate::theme::Archetype;
+
+pub const INNER_CASTLE_ENCOUNTER_CAPABILITY: &str = "inner_castle_encounter";
 
 use super::interaction::{InnerInteractionSet, InteractionFocus, InteractionTarget};
 use super::world::{InnerChambersHint, InnerWorldElement};
@@ -36,6 +39,11 @@ pub struct EncounterState {
     draft: String,
     transcript: Vec<ArchetypeChatRecord>,
     status: String,
+    /// The most recently completed turn's journal id, pending a Remember/Forget decision.
+    /// A turn is logged as Transient the moment a reply arrives; it only becomes part of
+    /// this archetype's recallable history once the player explicitly remembers it.
+    last_record_id: Option<String>,
+    last_record_state: Option<RetentionState>,
 }
 
 impl EncounterState {
@@ -83,6 +91,7 @@ fn focus_or_open_encounter(
     if keyboard.just_pressed(KeyCode::KeyE) || gamepad_input::any_just_pressed(&gamepads, GamepadButton::West) {
         if let Some(InteractionTarget::Archetype(embodiment)) = focus.0 {
             state.active = Some(embodiment); state.draft.clear();
+            state.last_record_id = None; state.last_record_state = None;
             state.status = format!("Speak with {}. Enter sends locally; Esc returns to the chamber.", embodiment.archetype.theme().name);
             if let Ok(mut cursor) = cursor.single_mut() { cursor.visible = true; cursor.grab_mode = CursorGrabMode::None; }
         }
@@ -95,8 +104,35 @@ fn type_or_close_encounter(
     let Some(active) = state.active else { return; };
     if keyboard.just_pressed(KeyCode::Escape) || gamepad_input::any_just_pressed(&gamepads, GamepadButton::East) {
         state.active = None; state.draft.clear(); state.status.clear();
+        state.last_record_id = None; state.last_record_state = None;
         if let Ok(mut cursor) = cursor.single_mut() { cursor.visible = false; cursor.grab_mode = CursorGrabMode::Locked; }
         return;
+    }
+    if let Some(record_id) = state.last_record_id.clone() {
+        if keyboard.just_pressed(KeyCode::F5) {
+            match encounter_memory::remember(&record_id) {
+                Ok(()) => { state.last_record_state = Some(RetentionState::Remembered); state.status = "Remembered — this turn will be recalled in future encounters. F6 Forget • F7 View record".into(); }
+                Err(error) => state.status = format!("Could not remember this turn: {error}"),
+            }
+        } else if keyboard.just_pressed(KeyCode::F6) {
+            match encounter_memory::forget(&record_id, Some("player pressed Forget")) {
+                Ok(()) => { state.last_record_state = Some(RetentionState::Forgotten); state.status = "Forgotten — withdrawn, and will not be recalled again. F7 View record".into(); }
+                Err(error) => state.status = format!("Could not forget this turn: {error}"),
+            }
+        } else if keyboard.just_pressed(KeyCode::F7) {
+            match encounter_memory::view_record(&record_id) {
+                Ok(Some(found)) => state.status = format!(
+                    "Record {} [{:?}]\n> {}\n{}: {}",
+                    &found.record.id[..8.min(found.record.id.len())],
+                    found.retention_state,
+                    found.record.player_input,
+                    active.archetype.theme().name,
+                    found.record.response,
+                ),
+                Ok(None) => state.status = "That record could not be found on disk.".into(),
+                Err(error) => state.status = format!("Could not read the local record: {error}"),
+            }
+        }
     }
     if bridge.waiting { return; }
     if keyboard.just_pressed(KeyCode::Backspace) { state.draft.pop(); }
@@ -123,7 +159,22 @@ fn poll_reply(mut commands: Commands, mut state: ResMut<EncounterState>, mut bri
     if !bridge.waiting { return; }
     let reply = bridge.receiver.lock().expect("encounter receiver lock").as_ref().and_then(|receiver| receiver.try_recv().ok());
     let Some(reply) = reply else { return; }; bridge.waiting = false;
-    match reply { Ok(reply) => { let role = state.active.map(|a| a.archetype.theme().name.to_owned()).unwrap_or_else(|| "Archetype".into()); if let Some(active) = state.active { if let Err(error) = append_encounter_record(active, &role, &reply.text) { state.status = format!("Reply received but could not persist local transcript ({error})."); return; } } for entity in &playing { commands.entity(entity).despawn(); } let bytes: std::sync::Arc<[u8]> = reply.wav.into(); let handle = audio_assets.add(AudioSource { bytes }); commands.spawn((AudioPlayer::new(handle), PlaybackSettings::DESPAWN, EncounterVoice, Name::new("InnerCastleArchetypeVoice"))); state.transcript.push(ArchetypeChatRecord { role, content: reply.text }); state.status = "Local reply received and speaking. Enter sends; Esc returns to the chamber.".into(); }
+    match reply { Ok(reply) => { let role = state.active.map(|a| a.archetype.theme().name.to_owned()).unwrap_or_else(|| "Archetype".into()); if let Some(active) = state.active { if let Err(error) = append_encounter_record(active, &role, &reply.text) { state.status = format!("Reply received but could not persist local transcript ({error})."); return; } } for entity in &playing { commands.entity(entity).despawn(); } let bytes: std::sync::Arc<[u8]> = reply.wav.into(); let handle = audio_assets.add(AudioSource { bytes }); commands.spawn((AudioPlayer::new(handle), PlaybackSettings::DESPAWN, EncounterVoice, Name::new("InnerCastleArchetypeVoice")));
+            let player_turn = state.transcript.last().map(|turn| turn.content.clone()).unwrap_or_default();
+            state.transcript.push(ArchetypeChatRecord { role: role.clone(), content: reply.text.clone() });
+            match encounter_memory::record_turn(&role, INNER_CASTLE_ENCOUNTER_CAPABILITY, &player_turn, &reply.text) {
+                Ok(record) => {
+                    state.last_record_id = Some(record.id);
+                    state.last_record_state = Some(RetentionState::Transient);
+                    state.status = "Local reply received and speaking. Enter sends • F5 Remember • F6 Forget • F7 View record • Esc returns to the chamber.".into();
+                }
+                Err(error) => {
+                    state.last_record_id = None;
+                    state.last_record_state = None;
+                    state.status = format!("Reply received but could not open a memory record for it ({error}). This turn cannot be remembered.");
+                }
+            }
+        }
         Err(error) => state.status = format!("Local reply failed: {error} Your message remains in this encounter record."), }
 }
 

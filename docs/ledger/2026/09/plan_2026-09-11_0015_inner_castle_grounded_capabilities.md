@@ -1,7 +1,7 @@
 # Plan: Inner Castle Grounded Capabilities — 2026-09-11 00:15
 
 ## Status
-PENDING
+IN-PROGRESS (Step 1's journal/consent model landed 2026-09-11; Steps 2-9 remain PENDING)
 
 ## Goal
 
@@ -29,20 +29,52 @@ their unsent input and an explanatory status.
 ## Shared foundation — encounter records, consent, and evidence
 
 ### Step 1 — Replace the current transcript-only encounter log with an owned journal model
-- [ ] Action: Add a versioned local `EncounterRecord` format under
+- [x] Action: Add a versioned local `EncounterRecord` format under
   `%LOCALAPPDATA%\NeuroCognica\Archetypes\data\encounters\`, including unique ID,
   archetype, UTC timestamps, player-reviewed input, response, source references, capability,
   retention state, and hash/ledger receipt where appropriate.
-- [ ] Action: Separate transient encounter turns from durable records. A conversation is not
+- [x] Action: Separate transient encounter turns from durable records. A conversation is not
   remembered merely because it was spoken or typed.
-- [ ] Action: Add explicit `[Remember]`, `[Forget]`, and `[View record]` controls to the
+- [x] Action: Add explicit `[Remember]`, `[Forget]`, and `[View record]` controls to the
   encounter overlay. Forget creates an auditable withdrawal/tombstone and removes the record
   from recall; it must not silently leave the content available to RAG or future prompts.
-- Files: `crates/engine/src/modes/inner_chambers/encounters.rs`, new mode-neutral memory
-  service, ledger/path tests, UI tests.
-- Verification: Create, decline, remember, forget, restart, and prove recall behavior from
-  LocalAppData records and a hash-chain witness. A deliberately bad STT transcript must remain
-  transient unless the player explicitly approves it.
+- Landed: `services/encounter_memory.rs` — an append-only `journal.jsonl` under
+  `data/encounters/`, mirroring the ledger's tamper-evident shape: state is never mutated in
+  place, only superseded by a later `Created`/`Remembered`/`Forgotten` event. Recall is
+  recomputed by folding the whole file every call (`recallable_records`), so there is no
+  in-memory cache that could go stale across a restart — a record is recall-eligible only if
+  its latest transition is `Remembered`, and a later `Forgotten` always wins over an earlier
+  `Remembered`. Each event is also sealed into the existing hash-chained `services::ledger`
+  (kinds `inner_castle_encounter_created`/`_remembered`/`_forgotten`) for tamper evidence, and
+  each record carries its own local SHA-256 `content_hash` receipt independent of the ledger.
+  `modes/inner_chambers/encounters.rs` now opens one `EncounterRecord` per completed turn as
+  `Transient`, and binds `F5` Remember / `F6` Forget / `F7` View record (chosen instead of
+  bare letter keys because the typed-draft system already consumes every A-Z keystroke into
+  the message box) — F7 renders the record's id, retention state, player line, and archetype
+  reply straight from disk. The pre-existing raw `conversation_history/inner_castle.jsonl`
+  transcript is untouched and still writes every line unconditionally; it is a debug/support
+  log only, nothing reads it back as memory, and any future recall/RAG consumer must read
+  exclusively from `recallable_records`, never that file.
+- Files: `crates/engine/src/services/encounter_memory.rs` (new),
+  `crates/engine/src/modes/inner_chambers/encounters.rs`.
+- Verification: `cargo build -p engine` and `cargo test --workspace` pass (114 engine + 19
+  launcher + 5 windows_identity; 6 new tests directly prove create→decline stays unrecallable,
+  create→remember survives a fresh fold-from-disk "restart", create→remember→forget is
+  permanently excluded from recall while the withdrawal itself stays inspectable via
+  `view_record`, per-archetype filtering, and content-hash tamper sensitivity). Tests run
+  against isolated scratch files rather than the shared `ledger.jsonl`/journal, since the
+  ledger is a single process-wide hash chain and parallel test threads writing to it directly
+  raced and corrupted the chain on the first attempt — the fix separates the journal write
+  from the ledger-sealing call so only the real (non-test) code path touches the shared
+  ledger. `scripts\install_shortcut.ps1` rebuilt release and restaged Desktop/Start
+  Menu/Taskbar with SHA-256-verified binaries; a real `ARCHETYPES_INNER_CAPTURE=1` run of the
+  installed engine produced 8 fresh frames under
+  `artifacts/visual-proof/encounter-memory-2026-09-11/` proving Inner Chambers still boots and
+  renders cleanly with the new plugin wiring. **Not yet done:** a live conversational
+  walkthrough (approach an archetype, type a message, wait for a real local Ollama/TTS reply,
+  press F5/F6/F7, and inspect the real `journal.jsonl`) has not been performed — that needs an
+  actual round-trip through Ollama and the TTS worker, which no capture-mode run drives. This
+  is an honest verification gap, not a claimed pass.
 
 ### Step 2 — Build one capability registry and physical-device contract
 - [ ] Action: Define a typed `CastleCapability` registry: `OracleArchive`, `MentorReading`,

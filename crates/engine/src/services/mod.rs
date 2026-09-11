@@ -1,5 +1,6 @@
 pub mod archetype_conversation;
 pub mod chronos;
+pub mod encounter_memory;
 pub mod gamepad_input;
 pub mod ledger;
 pub mod llm;
