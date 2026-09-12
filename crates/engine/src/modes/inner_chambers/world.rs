@@ -364,6 +364,48 @@ fn archetype_for_room(name: &str) -> Archetype {
     }
 }
 
+/// The twelve walkable exhibition chambers behind the open arches.
+///
+/// The chamber module is authored in the same local frame as the arcade bay — +X along the
+/// wall, +Y into it, +Z up from the deck — so it takes the same position and yaw the bay in
+/// front of it does, and the two meet at the wall face with no gap.
+fn spawn_museum_chambers(commands: &mut Commands, asset_server: &AssetServer) {
+    for chamber in 0..total_museum_chambers() {
+        let bearing = museum_bay_bearing(chamber);
+        commands.spawn((
+            SceneRoot(asset_server.load("scenes/museum_chamber.glb#Scene0")),
+            Transform::from_translation(
+                Vec3::new(bearing.cos(), 0.0, bearing.sin()) * castle_inner_face()
+                    + Vec3::Y * museum_chamber_floor_y(),
+            )
+            .with_rotation(Quat::from_rotation_y(wall_module_yaw(bearing))),
+            KitStone::at(MUSEUM_LEVEL),
+            InnerWorldElement,
+            Name::new(format!("MuseumChamber_{chamber:02}")),
+        ));
+
+        // The gallery's tiered lamps do not reach into a 9m recess, so each chamber carries
+        // its own warm source. Placed short of the back wall and above the springing line, so
+        // it lights the hung works from in front rather than silhouetting them.
+        commands.spawn((
+            PointLight {
+                intensity: 900_000.0,
+                range: 26.0,
+                color: Color::srgb(1.0, 0.88, 0.72),
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_translation(
+                Vec3::new(bearing.cos(), 0.0, bearing.sin())
+                    * (castle_inner_face() + MUSEUM_CHAMBER_DEPTH * 0.45)
+                    + Vec3::Y * (museum_chamber_floor_y() + 5.0),
+            ),
+            InnerWorldElement,
+            Name::new(format!("MuseumChamber_{chamber:02}_Light")),
+        ));
+    }
+}
+
 fn spawn_castle_platform(commands: &mut Commands, meshes: &mut Assets<Mesh>, stone: Handle<StandardMaterial>, trim: Handle<StandardMaterial>, center: Vec3, radius: f32, name: &str) {
     commands.spawn((Mesh3d(meshes.add(Cylinder::new(radius, 0.8))), MeshMaterial3d(stone.clone()), Transform::from_translation(center), InnerWorldElement, Name::new(format!("{name}_StoneSlabPlatform"))));
     // Broad, individually separated flagstones make the walking surface read as
@@ -674,6 +716,10 @@ fn spawn_castle_ascent(
         // which is what an arcade is made of. `castle.rs` still decides where each bay goes.
         for index in 0..ARCADE_BAYS_PER_LEVEL {
             let bearing = arcade_bay_bearing(index);
+            // Twelve of this storey's seventy-two arches are real openings into museum
+            // chambers. At those bays the module's blind panel is hidden, because the slab
+            // that makes a blind arch read as an opening is a wall across a real one.
+            let is_museum_arch = level == MUSEUM_LEVEL && index % MUSEUM_BAY_STRIDE == 0;
             commands.spawn((
                 SceneRoot(asset_server.load("scenes/arcade_bay.glb#Scene0")),
                 Transform::from_translation(arcade_bay_position(level, index))
@@ -681,11 +727,18 @@ fn spawn_castle_ascent(
                 // One bay GLB serves every storey; the stone is swapped per level once the
                 // scene's children exist. Exporting a bay per stone would multiply a 151KB
                 // asset by seven and fork the module.
-                KitStone::at(level),
+                if is_museum_arch {
+                    KitStone::open_arch(level)
+                } else {
+                    KitStone::at(level)
+                },
                 InnerWorldElement,
                 Name::new(format!("Gallery_{:02}_ArcadeBay_{index:02}", level + 1)),
             ));
-            if index % 6 == 0 {
+            // Offset from the museum stride on purpose. Sconces used to sit on `index % 6`,
+            // which is exactly the bays whose arches are now doorways, so every chamber had a
+            // glowing sphere hanging in its entrance.
+            if (index + MUSEUM_BAY_STRIDE / 2) % 6 == 0 {
                 let radial = Vec3::new(bearing.cos(), 0.0, bearing.sin());
                 // Emissive sconces rather than point lights: hundreds of real lights would
                 // blow the clustered-forward budget, and the glow is what reads at distance.
@@ -717,6 +770,10 @@ fn spawn_castle_ascent(
                 InnerWorldElement,
                 Name::new(format!("Gallery_{:02}_Lamp_{lamp}", level + 1)),
             ));
+        }
+
+        if level == MUSEUM_LEVEL {
+            spawn_museum_chambers(commands, asset_server);
         }
 
         spawn_ascent_flight(commands, asset_server, level);

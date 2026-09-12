@@ -5,6 +5,26 @@
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Twelve arches are now doorways into walkable chambers (2026-09-12):** Per
+  `docs/ledger/2026/09/plan_2026-09-11_2130_museum_arches.md`, 12 of the ground gallery's 72
+  bays (every 6th, 30 degrees apart) open into rooms cut 9m into the 12m wall, leaving 3m of
+  masonry behind each. `castle.rs` gained `MUSEUM_BAYS`/`museum_bay_bearing`, a chamber-shaped
+  exemption in `clamp_inside_wall`, `museum_chamber_surface_y` (without which the chambers were
+  a hole in the world — `gallery_surface_y` only answers between the gallery radii, so a player
+  who walked through an arch would have fallen to the abyss), and `museum_hanging_positions`.
+  **The exemption stays conditional**: a test walks every one of the other 60 bays and asserts
+  the wall still stops the player. A second test pins that strafing into a chamber's side wall
+  clamps to that wall rather than ejecting the player back into the hall — the shape of bug
+  that survived for weeks in the room walls. `scripts/author_museum_chamber.py` is the fourth
+  kit module (1,632 tris, 115KB): floor, two hanging walls with plinth courses, back wall, and
+  a barrel vault springing from the same 5.5m line as the arch outside, so the vault inside and
+  the arch head outside are one piece of geometry. Two defects found by walking it: the bay
+  module's near-black `Bay_BlindPanel` is a wall across a real opening and is now hidden at
+  those twelve bays, and the gallery sconces sat on `index % 6` — exactly the museum stride —
+  so every chamber had a glowing sphere hanging in its doorway. A third found on the way: the
+  player could walk around with the settings menu open, because W/S both navigate the menu and
+  drive locomotion. Evidence: `artifacts/visual-proof/museum-arches-2026-09-12/`, whose walk
+  report records a real walking player crossing the 114m wall face to 118.42m inside a chamber.
 - **The settings menu exists (2026-09-12):** Specified in full in
   `GAMEPAD_AND_SETTINGS_GUIDE.md` and never built; two prior units left it. `Esc` (or `B`, or
   `Start`) now opens it — the HUD had been advertising "Esc/B: Menu" the whole time `Esc`

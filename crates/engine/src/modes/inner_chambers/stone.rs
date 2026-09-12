@@ -68,6 +68,23 @@ const BAY_TRIM_NODES: [&str; 5] = [
 /// material or the arcade collapses into flat rectangles. Texturing it would undo that.
 const BAY_RECESS_NODE: &str = "Bay_BlindPanel";
 
+/// Museum chamber nodes. The chamber is where the player stands closest to the stone in the
+/// whole building, so it is the last place that can afford to be flat colour.
+const CHAMBER_STONE_NODES: [&str; 4] = [
+    "Chamber_Vault",
+    "Chamber_SideWall_Left",
+    "Chamber_SideWall_Right",
+    "Chamber_BackWall",
+];
+const CHAMBER_TRIM_NODES: [&str; 6] = [
+    "Chamber_Floor",
+    "Chamber_Plinth_Left",
+    "Chamber_Plinth_Right",
+    "Chamber_BackPlinth",
+    "Chamber_Impost_Left",
+    "Chamber_Impost_Right",
+];
+
 /// Stair nodes, matched the same way. Names taken from `author_stair_flight.py`'s own
 /// `required` set, so the two cannot drift without the test below noticing.
 const STAIR_STONE_NODES: [&str; 1] = ["Stair_Steps"];
@@ -190,6 +207,12 @@ pub fn build_palette(
 pub struct KitStone {
     pub level: usize,
     pub bound: bool,
+    /// True for the twelve bays whose arch is a real doorway.
+    ///
+    /// The bay module fills every arch with `Bay_BlindPanel`, a near-black slab that is what
+    /// makes a blind arch read as an opening. At a bay that is *actually* an opening the same
+    /// slab is a wall across the doorway, so it is hidden rather than dressed.
+    pub open_arch: bool,
 }
 
 impl KitStone {
@@ -197,6 +220,15 @@ impl KitStone {
         Self {
             level,
             bound: false,
+            open_arch: false,
+        }
+    }
+
+    pub fn open_arch(level: usize) -> Self {
+        Self {
+            level,
+            bound: false,
+            open_arch: true,
         }
     }
 }
@@ -205,10 +237,16 @@ fn role_for(name: &str) -> Option<StoneRole> {
     if name == BAY_RECESS_NODE {
         return None;
     }
-    if BAY_STONE_NODES.contains(&name) || STAIR_STONE_NODES.contains(&name) {
+    if BAY_STONE_NODES.contains(&name)
+        || STAIR_STONE_NODES.contains(&name)
+        || CHAMBER_STONE_NODES.contains(&name)
+    {
         return Some(StoneRole::Face);
     }
-    if BAY_TRIM_NODES.contains(&name) || STAIR_TRIM_NODES.contains(&name) {
+    if BAY_TRIM_NODES.contains(&name)
+        || STAIR_TRIM_NODES.contains(&name)
+        || CHAMBER_TRIM_NODES.contains(&name)
+    {
         return Some(StoneRole::Trim);
     }
     None
@@ -232,6 +270,7 @@ pub fn bind_kit_stone(
     children: Query<&Children>,
     names: Query<&Name>,
     meshes: Query<(), With<Mesh3d>>,
+    mut visibility: Query<&mut Visibility>,
 ) {
     let Some(palette) = palette else {
         return;
@@ -248,6 +287,16 @@ pub fn bind_kit_stone(
             let Ok(name) = names.get(descendant) else {
                 continue;
             };
+            // The blind panel is the wall across a blind arch. Where the arch is a doorway,
+            // hide it — and count that as work done, so a museum bay does not sit in the
+            // unbound queue forever being re-walked every frame.
+            if module.open_arch && name.as_str() == BAY_RECESS_NODE {
+                if let Ok(mut visible) = visibility.get_mut(descendant) {
+                    *visible = Visibility::Hidden;
+                    bound_any = true;
+                }
+                continue;
+            }
             let Some(role) = role_for(name.as_str()) else {
                 continue;
             };
@@ -358,6 +407,28 @@ mod tests {
             assert!(
                 source.contains(&format!("\"{node}\"")),
                 "{node} is bound here but not authored by author_stair_flight.py"
+            );
+        }
+    }
+
+    /// The chamber module's node names live in its own authoring script's `required` set and
+    /// its build function. If one is renamed there, this fails rather than letting a chamber
+    /// ship flat-coloured inside a stone building.
+    #[test]
+    fn every_chamber_node_bound_here_is_authored_by_its_script() {
+        let source = std::fs::read_to_string("../../scripts/author_museum_chamber.py")
+            .expect("museum chamber script readable");
+        for node in CHAMBER_STONE_NODES.iter().chain(CHAMBER_TRIM_NODES.iter()) {
+            // The script builds its mirrored parts from an f-string — `Chamber_Plinth_{label}`
+            // for Left and Right — so the full name is not a literal in the source. Fall back
+            // to the stem, which still catches a rename of the part itself.
+            let stem = node
+                .rsplit_once('_')
+                .map(|(prefix, _)| format!("{prefix}_"))
+                .unwrap_or_else(|| node.to_string());
+            assert!(
+                source.contains(node) || source.contains(&stem),
+                "{node} is bound here but neither it nor `{stem}` is authored by                  author_museum_chamber.py"
             );
         }
     }

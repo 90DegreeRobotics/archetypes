@@ -227,6 +227,7 @@ pub(super) fn player_locomotion(
     manifestation_state: Option<Res<super::manifestation::ManifestationState>>,
     encounter_state: Option<Res<super::encounters::EncounterState>>,
     workshop_state: Option<Res<super::workshop::WorkshopState>>,
+    settings_menu: Option<Res<super::settings_menu::SettingsMenuState>>,
     mut query: Query<(&mut Transform, &mut CameraController), With<PlayerCamera>>,
 ) {
     let Ok((mut transform, mut controller)) = query.single_mut() else {
@@ -246,6 +247,13 @@ pub(super) fn player_locomotion(
         || workshop_state
             .as_ref()
             .map(|state| state.is_open())
+            .unwrap_or(false)
+        // The settings menu navigates on W/S and adjusts on A/D, which are also the movement
+        // keys. Without this the player walks off across the castle while reading the menu,
+        // and every keystroke does two things at once.
+        || settings_menu
+            .as_ref()
+            .map(|menu| menu.open)
             .unwrap_or(false)
     {
         return;

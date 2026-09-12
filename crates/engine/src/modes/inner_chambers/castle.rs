@@ -138,6 +138,209 @@ pub fn total_arches() -> usize {
     ARCADE_BAYS_PER_LEVEL * GALLERY_LEVELS
 }
 
+// ---------------------------------------------------------------------------------------
+// Museum chambers: the arches that are actually openings
+// ---------------------------------------------------------------------------------------
+
+/// Which storey carries the walkable chambers. The ground-most gallery, so the circuit is
+/// reachable by one flight of stairs rather than seven.
+pub const MUSEUM_LEVEL: usize = 0;
+
+/// One chamber every sixth bay, so twelve of the storey's seventy-two arches open and five
+/// bays of solid masonry stand between each pair.
+///
+/// **All 504 arches must not become chambers.** At 7.745m wide by 9m deep that would be about
+/// 35,000 m² of excavated interior, every square metre needing geometry, collision and
+/// content — and the wall would stop being a wall, leaving piers standing between holes.
+/// Twelve on one storey, 30 degrees apart, is a complete circuit a player can walk in a few
+/// minutes and a number the art library can fill without repeating itself.
+pub const MUSEUM_BAY_STRIDE: usize = 6;
+
+/// Clear width of one arch opening: the bay chord less the pier that stands on its edge.
+/// `scripts/author_arcade_bay.py` derives the same number from the same two values and fails
+/// its own export check if they drift.
+pub const ARCADE_PIER_WIDTH: f32 = 2.2;
+
+pub fn arch_opening_width() -> f32 {
+    arcade_bay_width() - ARCADE_PIER_WIDTH
+}
+
+/// How far a chamber is cut into the 12m wall, leaving 3m of solid masonry behind it. The wall
+/// is load-bearing to the fiction as well as the geometry; cutting all the way through would
+/// turn the building into scaffolding.
+pub const MUSEUM_CHAMBER_DEPTH: f32 = 9.0;
+
+/// Clearance kept off every chamber surface, so a player stops short of the wall rather than
+/// standing in it.
+const MUSEUM_CHAMBER_CLEARANCE: f32 = 0.6;
+
+/// How far past a chamber's side wall a position is still treated as that chamber's problem.
+/// One movement step's worth: enough to catch a player pressing sideways, far too little to
+/// catch a position out in the hall at a different bay.
+const SIDE_WALL_GRIP: f32 = 1.2;
+
+pub fn museum_bay_indices() -> Vec<usize> {
+    (0..ARCADE_BAYS_PER_LEVEL)
+        .step_by(MUSEUM_BAY_STRIDE)
+        .collect()
+}
+
+pub fn total_museum_chambers() -> usize {
+    museum_bay_indices().len()
+}
+
+pub fn museum_bay_bearing(chamber: usize) -> f32 {
+    arcade_bay_bearing(museum_bay_indices()[chamber])
+}
+
+/// Radius of the chamber's back wall.
+pub fn museum_chamber_back() -> f32 {
+    castle_inner_face() + MUSEUM_CHAMBER_DEPTH
+}
+
+/// The chamber deck. Continuous with the gallery it opens off, so there is no step at the
+/// threshold — a step there reads as a bug even when it is only a few centimetres.
+pub fn museum_chamber_floor_y() -> f32 {
+    gallery_y(MUSEUM_LEVEL)
+}
+
+/// Hanging positions per chamber: two on each side wall, one on the back wall.
+///
+/// Five works per chamber across twelve chambers is sixty hangings against the 151 first-light
+/// bundles that exist, which leaves real choice rather than forcing repeats.
+pub const HANGINGS_PER_CHAMBER: usize = 5;
+
+/// Height of a hung work's centre above the chamber deck. Eye height in this game is 2.85m
+/// above the floor, which is tall; hanging at a real gallery's 1.5m centre line would put every
+/// painting at the player's chest. This is a compromise between the two.
+pub const HANGING_CENTRE_HEIGHT: f32 = 2.4;
+
+/// How far a hung work stands off the wall it hangs on, clearing the plinth course below it.
+const HANGING_WALL_OFFSET: f32 = 0.18;
+
+/// Where the works hang in one chamber, in world space.
+///
+/// Returned as `(position, yaw)` where the yaw faces the work **into** the room, so a frame
+/// placed here is seen from the chamber rather than from inside the masonry.
+///
+/// Computed rather than read from the GLB: `castle.rs` is the only place dimensions live in
+/// this repo, and a transform baked into the asset would be a second source of truth that
+/// could drift from the collision that has to agree with it.
+pub fn museum_hanging_positions(chamber: usize) -> [(Vec3, f32); HANGINGS_PER_CHAMBER] {
+    let bearing = museum_bay_bearing(chamber);
+    let radial = Vec3::new(bearing.cos(), 0.0, bearing.sin());
+    let tangent = Vec3::new(-radial.z, 0.0, radial.x);
+    let face = castle_inner_face();
+    let half = arch_opening_width() * 0.5;
+    let floor = museum_chamber_floor_y();
+    let centre = Vec3::Y * (floor + HANGING_CENTRE_HEIGHT);
+
+    // Two depths down each side wall, spaced so a walker meets them one at a time rather than
+    // seeing all four at once from the threshold.
+    let near = face + MUSEUM_CHAMBER_DEPTH * 0.32;
+    let far = face + MUSEUM_CHAMBER_DEPTH * 0.72;
+    let lateral = half - HANGING_WALL_OFFSET;
+
+    // A wall's yaw is the bearing of its own inward normal, seated by the same convention the
+    // kit modules use.
+    let left_yaw = wall_module_yaw(bearing) + FRAC_PI_2;
+    let right_yaw = wall_module_yaw(bearing) - FRAC_PI_2;
+    let back_yaw = wall_module_yaw(bearing) + PI;
+
+    [
+        (radial * near + tangent * -lateral + centre, left_yaw),
+        (radial * far + tangent * -lateral + centre, left_yaw),
+        (radial * near + tangent * lateral + centre, right_yaw),
+        (radial * far + tangent * lateral + centre, right_yaw),
+        (
+            radial * (museum_chamber_back() - HANGING_WALL_OFFSET) + centre,
+            back_yaw,
+        ),
+    ]
+}
+
+/// Every hanging position in the building, in a stable order, so an exhibit list maps onto
+/// them deterministically: chamber 0's five, then chamber 1's, and so on.
+pub fn all_hanging_positions() -> Vec<(Vec3, f32)> {
+    (0..total_museum_chambers())
+        .flat_map(museum_hanging_positions)
+        .collect()
+}
+
+/// Resolves a position against one museum chamber's box, in that chamber's own frame.
+///
+/// Returns `(along, across)` where `along` is the distance out from the hall's centre and
+/// `across` is the lateral offset from the chamber's centre line.
+fn chamber_frame(position: Vec2, bearing: f32) -> (f32, f32) {
+    let radial = Vec2::new(bearing.cos(), bearing.sin());
+    let tangent = Vec2::new(-radial.y, radial.x);
+    (position.dot(radial), position.dot(tangent))
+}
+
+/// True when a position stands inside a museum chamber's footprint, at any height.
+pub fn inside_museum_chamber(position: Vec2) -> bool {
+    let half = arch_opening_width() * 0.5;
+    let face = castle_inner_face();
+    let back = museum_chamber_back();
+    museum_bay_indices().into_iter().any(|index| {
+        let (along, across) = chamber_frame(position, arcade_bay_bearing(index));
+        along >= face - 0.01 && along <= back && across.abs() <= half
+    })
+}
+
+/// The chamber floor beneath a position, if the position is inside one.
+///
+/// Without this the chambers would be a hole in the world: `gallery_surface_y` only answers
+/// between the gallery's inner and outer radius, and a chamber lies entirely beyond the outer
+/// one, so a player who walked through an arch would fall to the abyss.
+pub fn museum_chamber_surface_y(position: Vec2, feet_y: f32) -> Option<f32> {
+    if !inside_museum_chamber(position) {
+        return None;
+    }
+    let floor = museum_chamber_floor_y();
+    ((floor - feet_y).abs() <= GALLERY_RISE * 0.75).then_some(floor)
+}
+
+/// Lets a player pass the wall face where — and only where — an arch is a real opening.
+///
+/// Returns `Some` when the position is in a chamber's doorway or interior, already clamped to
+/// that chamber's walls. The caller applies the ordinary circular wall clamp otherwise.
+fn clamp_within_museum_chamber(position: Vec2) -> Option<Vec2> {
+    let hall_limit = castle_inner_face() - MUSEUM_CHAMBER_CLEARANCE;
+    let face = castle_inner_face();
+    let clear_half = arch_opening_width() * 0.5 - MUSEUM_CHAMBER_CLEARANCE;
+    let clear_back = museum_chamber_back() - MUSEUM_CHAMBER_CLEARANCE;
+
+    for index in museum_bay_indices() {
+        let bearing = arcade_bay_bearing(index);
+        let radial = Vec2::new(bearing.cos(), bearing.sin());
+        let tangent = Vec2::new(-radial.y, radial.x);
+        let (along, across) = chamber_frame(position, bearing);
+
+        if along <= hall_limit {
+            continue;
+        }
+
+        // Squarely in the opening, or beyond it: walk through.
+        if across.abs() <= clear_half {
+            return Some(radial * along.min(clear_back) + tangent * across);
+        }
+
+        // Just past the chamber's side wall, within its depth: a player pressing sideways
+        // against it. Clamp to that wall rather than falling through to the circular clamp,
+        // which would throw them several metres back into the hall — an eject exactly like
+        // that survived for weeks in the room walls.
+        //
+        // The lateral guard matters. Without it this branch claims *any* far-off position that
+        // happens to lie past the face in roughly this direction, including one at a blind bay
+        // several bays away, and the whole wall becomes passable.
+        if along > face && along <= clear_back && across.abs() <= clear_half + SIDE_WALL_GRIP {
+            return Some(radial * along + tangent * across.clamp(-clear_half, clear_half));
+        }
+    }
+    None
+}
+
 /// Yaw that seats a wall kit module: its local +X along the wall tangent and its local +Z
 /// pointing in toward the hall, with its back face on the wall.
 ///
@@ -403,13 +606,24 @@ pub fn castle_surface_y(position: Vec2, feet_y: f32) -> f32 {
     if let Some(y) = stair_surface_y(position, feet_y) {
         candidates.push(y);
     }
+    if let Some(y) = museum_chamber_surface_y(position, feet_y) {
+        candidates.push(y);
+    }
     choose_surface(&candidates, feet_y).unwrap_or(ABYSS_Y)
 }
 
 /// Keeps the player inside the enclosing wall. The wall previously had no collision at all —
 /// a square clamp at ±100 let a player walk out past a 92m wall entirely.
 pub fn clamp_inside_wall(position: Vec2) -> Vec2 {
-    let limit = castle_inner_face() - 0.6;
+    // Chambers first. A player standing inside one is further out than the hall limit, so the
+    // circular clamp below would drag them back through the wall they just walked through.
+    //
+    // This exemption stays conditional on purpose: the wall is a shell everywhere else, and
+    // making the clamp unconditional would let a player walk out of the building.
+    if let Some(inside) = clamp_within_museum_chamber(position) {
+        return inside;
+    }
+    let limit = castle_inner_face() - MUSEUM_CHAMBER_CLEARANCE;
     if position.length() > limit {
         position.normalize() * limit
     } else {
@@ -444,6 +658,163 @@ pub fn resolve_room_walls(position: Vec2) -> Vec2 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Twelve of the storey's seventy-two arches, evenly spaced, with five bays of solid
+    /// masonry between each pair. Not all 504: a wall with a hole in every bay is not a wall.
+    #[test]
+    fn twelve_arches_open_and_the_rest_stay_masonry() {
+        assert_eq!(total_museum_chambers(), 12);
+        assert_eq!(total_arches(), 504);
+        let bays = museum_bay_indices();
+        assert_eq!(bays.len() * MUSEUM_BAY_STRIDE, ARCADE_BAYS_PER_LEVEL);
+        for pair in bays.windows(2) {
+            assert_eq!(pair[1] - pair[0], MUSEUM_BAY_STRIDE);
+        }
+        // Evenly spaced around the circle.
+        let step = museum_bay_bearing(1) - museum_bay_bearing(0);
+        assert!((step - TAU / 12.0).abs() < 1e-5, "chambers are {step} rad apart");
+    }
+
+    /// The whole point: a player walking at a museum bearing passes the wall face, and one
+    /// walking at a bearing one bay over does not.
+    #[test]
+    fn a_museum_bearing_is_passable_and_its_neighbour_is_not() {
+        let open = museum_bay_bearing(0);
+        let radial = Vec2::new(open.cos(), open.sin());
+        let deep = radial * (museum_chamber_back() + 4.0);
+        let clamped = clamp_inside_wall(deep);
+        assert!(
+            clamped.length() > castle_inner_face(),
+            "a player at an open arch was held at {:.2}m, inside the {:.2}m wall face",
+            clamped.length(),
+            castle_inner_face()
+        );
+
+        let blind = arcade_bay_bearing(3);
+        let blind_radial = Vec2::new(blind.cos(), blind.sin());
+        let into_masonry = blind_radial * (castle_inner_face() + 4.0);
+        let stopped = clamp_inside_wall(into_masonry);
+        assert!(
+            stopped.length() <= castle_inner_face() - MUSEUM_CHAMBER_CLEARANCE + 1e-3,
+            "a player at a blind bay reached {:.2}m and walked into the wall",
+            stopped.length()
+        );
+    }
+
+    /// A chamber has a back. Walking on through would leave the building.
+    #[test]
+    fn a_chamber_stops_the_player_at_its_back_wall() {
+        let bearing = museum_bay_bearing(4);
+        let radial = Vec2::new(bearing.cos(), bearing.sin());
+        let clamped = clamp_inside_wall(radial * (museum_chamber_back() + 20.0));
+        let reach = clamped.dot(radial);
+        assert!(
+            reach <= museum_chamber_back() - MUSEUM_CHAMBER_CLEARANCE + 1e-3,
+            "player reached {reach:.2}m past a back wall at {:.2}m",
+            museum_chamber_back()
+        );
+        assert!(
+            reach > castle_inner_face(),
+            "player never got past the wall face at all"
+        );
+    }
+
+    /// Strafing inside a chamber must meet its side wall, not throw the player back into the
+    /// hall. The room walls ejected a walking player ~8.5m backwards for weeks; the same shape
+    /// of bug here would be worse, because it would fire every time someone looked at a
+    /// painting side-on.
+    #[test]
+    fn strafing_into_a_chamber_side_wall_does_not_eject_the_player() {
+        let bearing = museum_bay_bearing(7);
+        let radial = Vec2::new(bearing.cos(), bearing.sin());
+        let tangent = Vec2::new(-radial.y, radial.x);
+        // 4.0m off centre: past the 3.27m clear half-width, so the side wall has to catch it,
+        // but still inside the 3.87m physical opening, which is where a real strafe ends up.
+        let inside = radial * (castle_inner_face() + 5.0) + tangent * 4.0;
+        let clamped = clamp_inside_wall(inside);
+        let along = clamped.dot(radial);
+        let across = clamped.dot(tangent);
+        assert!(
+            (along - (castle_inner_face() + 5.0)).abs() < 0.01,
+            "the player was pushed {:.2}m along the chamber instead of sideways",
+            along - (castle_inner_face() + 5.0)
+        );
+        assert!(
+            across.abs() <= arch_opening_width() * 0.5,
+            "player ended {across:.2}m off centre, outside the opening"
+        );
+    }
+
+    /// Without a chamber floor the arches would be a hole in the world: `gallery_surface_y`
+    /// only answers between the gallery radii and a chamber lies entirely beyond the outer one.
+    #[test]
+    fn a_chamber_has_a_floor_level_with_the_gallery_it_opens_off() {
+        let bearing = museum_bay_bearing(2);
+        let radial = Vec2::new(bearing.cos(), bearing.sin());
+        let inside = radial * (castle_inner_face() + 4.0);
+        let feet = museum_chamber_floor_y();
+
+        assert_eq!(museum_chamber_surface_y(inside, feet), Some(feet));
+        assert_eq!(
+            castle_surface_y(inside, feet),
+            feet,
+            "a player inside a chamber found no floor and would fall to the abyss"
+        );
+        assert_eq!(
+            museum_chamber_floor_y(),
+            gallery_y(MUSEUM_LEVEL),
+            "a step at the threshold reads as a bug even at a few centimetres"
+        );
+    }
+
+    /// The chamber must not cut through the wall. Three metres of masonry stay behind it.
+    #[test]
+    fn a_chamber_leaves_solid_wall_behind_it() {
+        let outer_face = CASTLE_RADIUS + CASTLE_WALL_THICKNESS * 0.5;
+        let remaining = outer_face - museum_chamber_back();
+        assert!(
+            remaining >= 2.9,
+            "only {remaining:.2}m of masonry behind a chamber; the wall would be scaffolding"
+        );
+        assert_eq!(MUSEUM_CHAMBER_DEPTH + remaining, CASTLE_WALL_THICKNESS);
+    }
+
+    /// The opening the chamber is cut to must match the arch the Blender module actually
+    /// builds, or the doorway and the hole in the wall are different sizes.
+    #[test]
+    fn the_chamber_opening_matches_the_authored_arch() {
+        let expected = arcade_bay_width() - ARCADE_PIER_WIDTH;
+        assert!((arch_opening_width() - expected).abs() < 1e-5);
+        assert!(
+            (arch_opening_width() - 7.7452).abs() < 0.01,
+            "opening is {:.4}m; the bay script builds 7.7452m",
+            arch_opening_width()
+        );
+
+        let source = std::fs::read_to_string("../../scripts/author_arcade_bay.py")
+            .expect("arcade bay script readable");
+        assert!(
+            source.contains("PIER_WIDTH = 2.2"),
+            "the bay script's pier width changed; the chamber opening no longer matches the arch"
+        );
+    }
+
+    /// A player standing in the hall is unaffected by any of this.
+    #[test]
+    fn the_wall_is_still_a_shell_everywhere_else() {
+        for index in 0..ARCADE_BAYS_PER_LEVEL {
+            if index % MUSEUM_BAY_STRIDE == 0 {
+                continue;
+            }
+            let bearing = arcade_bay_bearing(index);
+            let radial = Vec2::new(bearing.cos(), bearing.sin());
+            let clamped = clamp_inside_wall(radial * 200.0);
+            assert!(
+                clamped.length() <= castle_inner_face() - MUSEUM_CHAMBER_CLEARANCE + 1e-3,
+                "bay {index} let a player walk out of the castle"
+            );
+        }
+    }
 
     #[test]
     fn a_storey_is_climbed_by_a_stair_a_person_could_actually_use() {
@@ -721,7 +1092,12 @@ mod tests {
 
     #[test]
     fn the_outer_wall_actually_stops_the_player() {
-        let outside = Vec2::new(0.0, 200.0);
+        // Probed at a blind bay on purpose. `Vec2::new(0.0, 200.0)` is a bearing of 90
+        // degrees, which is bay 18 — a multiple of the museum stride, and therefore one of the
+        // twelve arches that is now a real opening. Testing the shell there would be testing
+        // the doorway.
+        let blind = arcade_bay_bearing(1);
+        let outside = Vec2::new(blind.cos(), blind.sin()) * 200.0;
         let clamped = clamp_inside_wall(outside);
         assert!(clamped.length() < castle_inner_face());
         let inside = Vec2::new(10.0, 10.0);

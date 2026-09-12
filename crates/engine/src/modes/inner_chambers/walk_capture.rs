@@ -117,7 +117,22 @@ impl WalkCaptureRun {
             (24.4, Beat::Tap(KeyCode::ArrowRight)),
             (24.7, Beat::Tap(KeyCode::ArrowRight)),
             (25.4, Beat::Shot("07_settings_menu_slider_moved")),
-            (26.0, Beat::Finish),
+            // Close the menu before walking anywhere: W/S both navigate the menu and drive
+            // locomotion, so leaving it open would make the next beats mean two things.
+            (25.6, Beat::Tap(KeyCode::Escape)),
+            // Walk through a museum arch. This is the gate for the whole doorway change: a
+            // flying camera would pass through the wall whether or not the exemption works, so
+            // it has to be a real walk with real collision.
+            (26.0, Beat::Place(museum_threshold(), museum_facing_yaw())),
+            (27.0, Beat::Shot("08_museum_arch_from_the_gallery")),
+            // Short: walk speed is ~6.4 m/s and the chamber is 9m deep, so a longer hold
+            // puts the camera against the back wall and the frame is a photograph of a wall.
+            (27.4, Beat::Hold(&[KeyCode::KeyW])),
+            (28.2, Beat::Hold(&[])),
+            (29.0, Beat::Shot("09_standing_inside_the_chamber")),
+            (29.4, Beat::Aim(0.10)),
+            (30.2, Beat::Shot("10_chamber_vault")),
+            (30.8, Beat::Finish),
         ];
 
         Some(Self {
@@ -282,6 +297,22 @@ fn describe_focus(focus: &InteractionFocus) -> String {
 }
 
 /// Standing spot just short of the first tread, out on the ground promenade.
+/// Standing on the gallery deck a few metres in front of one museum arch, on foot.
+fn museum_threshold() -> Vec3 {
+    let bearing = castle::museum_bay_bearing(0);
+    let ground = Vec3::new(bearing.cos(), 0.0, bearing.sin())
+        * (castle::castle_inner_face() - 6.0);
+    ground + Vec3::Y * (castle::museum_chamber_floor_y() + 2.85)
+}
+
+/// Facing straight at that arch, so a plain forward walk goes through it.
+fn museum_facing_yaw() -> f32 {
+    let bearing = castle::museum_bay_bearing(0);
+    let heading = Vec2::new(bearing.cos(), bearing.sin());
+    // `player_locomotion` builds forward as (-sin(yaw), 0, -cos(yaw)).
+    (-heading.x).atan2(-heading.y)
+}
+
 fn stair_approach() -> Vec3 {
     let bearing = castle::stair_start_bearing(0) - 0.03;
     let ground = Vec3::new(bearing.cos(), 0.0, bearing.sin()) * castle::STAIR_CENTRE_RADIUS;
