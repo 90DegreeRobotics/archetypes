@@ -1040,30 +1040,10 @@ fn find_import_script() -> Option<PathBuf> {
     None
 }
 
-/// Below this share of the reference image, subject extraction has failed and TripoSR was
-/// handed a nearly blank frame.
-///
-/// Measured across a six-subject spread (`scripts/manifest_quality_lab.py`): subjects that
-/// reconstructed recognisably scored 0.4456, 0.1298 and 0.0947, while two that came back as
-/// noise scored **0.0006** — a white ceramic figure and a cut-crystal decanter, both close in
-/// colour to their own backdrop, both erased by the GrabCut refinement before reconstruction
-/// began. There is no overlap between the two groups, so a floor separates them cleanly.
-///
-/// Deliberately not `subject_match.json`: that guard scored 0.260 for the destroyed figure and
-/// 0.259 for a good astrolabe, so it does not discriminate here and gating on it would reject
-/// good work and pass bad.
-const MIN_SUBJECT_COVERAGE: f64 = 0.02;
-
-/// What the reconstruction record says about the image the mesh was actually built from.
-///
-/// Returns `None` when the record is missing or unreadable — an absent record is not evidence
-/// of failure, and refusing on it would fail runs that are fine.
-fn subject_coverage(bundle: &std::path::Path) -> Option<f64> {
-    let raw =
-        std::fs::read_to_string(bundle.join("engine_mesh").join("triposr_artifact.json")).ok()?;
-    let doc: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    doc.get("preparation")?.get("subject_coverage")?.as_f64()
-}
+// The subject-coverage floor and its reader moved to `services/chronos_receipt.rs`, which now
+// applies them as part of verifying the whole bundle -- before Blender is invoked rather than
+// after a GLB has already been built from noise. The reasoning behind the threshold, and the
+// measurement ruling out `subject_match.json` as an alternative, travelled with it.
 
 /// Scene path for a manifested artifact.
 ///
@@ -1292,32 +1272,30 @@ fn dispatch_manifestation_worker(
             return;
         }
 
-        // Verify receipt and mesh
-        let receipt = bundle.join("engine_mesh").join("triposr_artifact.json");
-        let mesh_0 = bundle.join("engine_mesh").join("0").join("mesh.obj");
-        let mesh_direct = bundle.join("engine_mesh").join("mesh.obj");
-        let mesh = if mesh_0.is_file() {
-            mesh_0
-        } else if mesh_direct.is_file() {
-            mesh_direct
-        } else {
-            let _ = sender.send(ManifestationEvent::Failure {
-                prompt,
-                stage_id: Some("geometry_forge".into()),
-                detail: "Chronos2 did not return its required TripoSR mesh receipt; no artifact was staged.".into(),
-            });
-            return;
+        // Verify the bundle against the contract before trusting a single byte of it.
+        //
+        // What was here was `these two files exist`, which is not evidence of anything. A bundle
+        // left over from an earlier prompt satisfies it. So does a run the Sentinel *refused* --
+        // a refusal is a successful run of the governance path, exiting zero and writing its
+        // bundle like any other. So does a mesh truncated by a crash mid-write.
+        //
+        // `chronos_receipt::verify` checks what Chronos2 actually records: its own integrity
+        // verdict, the Sentinel's disposition, that the bundled prompt is the one we asked for,
+        // and that the mesh and reference image still hash to what the sealed receipt declared.
+        // The subject-coverage floor moved in there too, so a reconstruction built from a blank
+        // frame is now refused before Blender is invoked rather than after.
+        let artifact = match crate::services::chronos_receipt::verify(&bundle, &prompt) {
+            Ok(artifact) => artifact,
+            Err(fault) => {
+                let _ = sender.send(ManifestationEvent::Failure {
+                    stage_id: Some(fault.stage_id().to_string()),
+                    detail: format!("{fault} Bundle kept at {}", bundle.display()),
+                    prompt,
+                });
+                return;
+            }
         };
-
-        if !receipt.is_file() {
-            let _ = sender.send(ManifestationEvent::Failure {
-                prompt,
-                stage_id: Some("geometry_forge".into()),
-                detail: "TripoSR artifact receipt missing from Chronos bundle; failing closed."
-                    .into(),
-            });
-            return;
-        }
+        let mesh = artifact.mesh.clone();
 
         // Conversion stage
         let _ = sender.send(ManifestationEvent::Stage {
@@ -1381,31 +1359,6 @@ fn dispatch_manifestation_worker(
                     let _ = std::fs::copy(&primary_output, other);
                 }
 
-                // Refuse a reconstruction built from a blank frame.
-                //
-                // When subject extraction collapses, TripoSR still returns a mesh — it is just
-                // noise shaped like nothing. Staging it would put a blob on the altar and call
-                // it the player's work. Reporting the measurement is the honest outcome, and
-                // the bundle is kept so the failure is inspectable rather than merely asserted.
-                if let Some(coverage) = subject_coverage(&bundle) {
-                    if coverage < MIN_SUBJECT_COVERAGE {
-                        let _ = sender.send(ManifestationEvent::Failure {
-                            prompt,
-                            stage_id: Some("subject".into()),
-                            detail: format!(
-                                "The subject could not be separated from its background: only \
-                                 {:.2}% of the reference survived, so the reconstruction was \
-                                 built from a nearly blank frame. This usually means the \
-                                 subject was close in colour to its backdrop. Bundle kept at \
-                                 {}",
-                                coverage * 100.0,
-                                bundle.display()
-                            ),
-                        });
-                        return;
-                    }
-                }
-
                 // The object's own file. Until now every manifestation overwrote one shared
                 // path, and Bevy caches by path - so two creations in the world were two views
                 // of whatever was made last, and a third silently changed both. Nothing could be
@@ -1420,7 +1373,23 @@ fn dispatch_manifestation_worker(
                     if std::fs::create_dir_all(&dir).is_ok()
                         && std::fs::copy(&primary_output, &own).is_ok()
                     {
-                        match crate::services::artifacts::record_artifact(&artifact_id, &prompt) {
+                        // Our own digest of the finished GLB. Chronos2 cannot supply this --
+                        // the GLB is produced by the Blender import above, after its bundle was
+                        // sealed -- so if Archetypes does not measure it here nothing ever does,
+                        // and the bundle is a temp directory that will not survive.
+                        let provenance = crate::services::artifacts::Provenance {
+                            sentinel_verdict: artifact.sentinel_verdict.clone(),
+                            mesh_sha256: artifact.mesh_sha256.clone(),
+                            source_image_sha256: artifact.source_image_sha256.clone(),
+                            glb_sha256: crate::services::chronos_receipt::sha256_file(&own)
+                                .unwrap_or_default(),
+                            subject_coverage: artifact.subject_coverage,
+                        };
+                        match crate::services::artifacts::record_artifact(
+                            &artifact_id,
+                            &prompt,
+                            provenance,
+                        ) {
                             Ok(_) => staged_id = Some(artifact_id.clone()),
                             Err(error) => {
                                 // Reported, not swallowed. The object exists either way; what is

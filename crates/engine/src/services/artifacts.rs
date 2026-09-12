@@ -23,9 +23,33 @@ use std::path::{Path, PathBuf};
 
 use super::paths::app_data_root;
 
+/// What a creation is beyond its file: what governed it, and the digests binding it to the
+/// Chronos2 run it came from.
+///
+/// Recorded at manifestation time because it cannot be recovered later -- the bundle lives in a
+/// temp directory that will not survive, and once it is gone a GLB on disk is just a GLB. The
+/// row is the only durable place these numbers exist.
+///
+/// `glb_sha256` is Archetypes' own measurement. Chronos2 cannot supply it: the GLB is produced
+/// afterwards by this repository's Blender import, so no hash of it can exist in a Chronos2
+/// bundle. See `services/chronos_receipt.rs`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Provenance {
+    #[serde(default)]
+    pub sentinel_verdict: String,
+    #[serde(default)]
+    pub mesh_sha256: String,
+    #[serde(default)]
+    pub source_image_sha256: String,
+    #[serde(default)]
+    pub glb_sha256: String,
+    #[serde(default)]
+    pub subject_coverage: f64,
+}
+
 /// One object the player has made. `asset` is relative to the assets root, so it is what the
 /// asset server is handed directly.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ArtifactRecord {
     pub id: String,
     pub asset: String,
@@ -33,6 +57,10 @@ pub struct ArtifactRecord {
     pub prompt: String,
     #[serde(default)]
     pub created: String,
+    /// Absent on rows written before provenance was recorded. Those creations are still the
+    /// player's and still load; they simply cannot show where they came from.
+    #[serde(default)]
+    pub provenance: Provenance,
 }
 
 /// One row of the placement ledger. Append-only: a `Placed` and a later `Withdrawn` for the
@@ -114,16 +142,31 @@ fn append_line(path: &Path, line: &str) -> Result<(), String> {
 }
 
 /// Records a newly manifested object in the library.
-pub fn record_artifact(id: &str, prompt: &str) -> Result<ArtifactRecord, String> {
+pub fn record_artifact(
+    id: &str,
+    prompt: &str,
+    provenance: Provenance,
+) -> Result<ArtifactRecord, String> {
     let record = ArtifactRecord {
         id: id.to_string(),
         asset: asset_path_for(id),
         prompt: prompt.to_string(),
         created: now_stamp(),
+        provenance,
     };
     let line = serde_json::to_string(&record).map_err(|error| error.to_string())?;
     append_line(&library_path(), &line)?;
     Ok(record)
+}
+
+/// The library row for one artifact id, if the player still has it.
+///
+/// Picking an object up off the floor knows only what the placement recorded -- an id, an asset
+/// path and a scale. Everything that makes it *the player's creation* rather than a mesh (the
+/// prompt it came from, what governed it, the digests binding it to its run) lives on the
+/// library row, so it is fetched from there rather than synthesised as blanks.
+pub fn find_artifact(id: &str) -> Option<ArtifactRecord> {
+    load_library().into_iter().rev().find(|record| record.id == id)
 }
 
 pub fn load_library() -> Vec<ArtifactRecord> {
@@ -276,6 +319,48 @@ mod tests {
         assert!(!a.contains('\\'));
     }
 
+    /// Rows written before provenance existed must still load. The player's earlier creations
+    /// are theirs; a new field is not a reason to lose them.
+    #[test]
+    fn creations_recorded_before_provenance_existed_still_load() {
+        let path = scratch("legacy-rows");
+        fs::write(
+            &path,
+            "{\"id\":\"old-1\",\"asset\":\"manifested/old-1.glb\",\"prompt\":\"a lantern\",\"created\":\"1\"}
+",
+        )
+        .unwrap();
+        let rows = load_library_from(&path);
+        assert_eq!(rows.len(), 1, "a pre-provenance row was dropped");
+        assert_eq!(rows[0].prompt, "a lantern");
+        assert_eq!(rows[0].provenance, Provenance::default());
+        let _ = fs::remove_file(&path);
+    }
+
+    /// Provenance survives the round trip, so what the library shows is what was measured at
+    /// manifestation rather than a default that merely looks plausible.
+    #[test]
+    fn provenance_survives_the_round_trip() {
+        let path = scratch("provenance-round-trip");
+        let record = ArtifactRecord {
+            id: "a".into(),
+            asset: asset_path_for("a"),
+            prompt: "a brass astrolabe".into(),
+            created: "1".into(),
+            provenance: Provenance {
+                sentinel_verdict: "allowed".into(),
+                mesh_sha256: "f17709c7".into(),
+                source_image_sha256: "62b2e3b7".into(),
+                glb_sha256: "aabbccdd".into(),
+                subject_coverage: 0.4456,
+            },
+        };
+        fs::write(&path, serde_json::to_string(&record).unwrap() + "
+").unwrap();
+        assert_eq!(load_library_from(&path), vec![record]);
+        let _ = fs::remove_file(&path);
+    }
+
     #[test]
     fn a_missing_ledger_is_an_empty_world_not_a_crash() {
         assert!(load_library_from(Path::new("does-not-exist.jsonl")).is_empty());
@@ -290,6 +375,7 @@ mod tests {
             asset: asset_path_for("a"),
             prompt: "lantern".into(),
             created: "1".into(),
+            provenance: Provenance::default(),
         })
         .unwrap();
         fs::write(&path, format!("{good}\nnot json at all\n{good}\n")).unwrap();

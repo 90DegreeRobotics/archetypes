@@ -205,7 +205,7 @@ mod tests {
     fn newest_record_is_selectable_and_its_identity_is_visible() {
         let state = LibraryState {
             open: true,
-            records: vec![ArtifactRecord { id: "kept-1".to_owned(), asset: "manifested/kept-1.glb".to_owned(), prompt: "a brass astrolabe".to_owned(), created: "1".to_owned() }],
+            records: vec![ArtifactRecord { id: "kept-1".to_owned(), asset: "manifested/kept-1.glb".to_owned(), prompt: "a brass astrolabe".to_owned(), created: "1".to_owned(), ..Default::default() }],
             selected: 0,
             status: String::new(),
         };

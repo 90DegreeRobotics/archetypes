@@ -257,12 +257,15 @@ fn take_object(
     if let Err(error) = artifacts::withdraw_placement(&object.placement) {
         warn!("objects: picked up {} but could not record it: {error}", object.placement);
     }
-    carried.artifact = Some(ArtifactRecord {
+    // Prefer the library row: a placement records an id and an asset path, but the prompt this
+    // object came from and the provenance of its run live on the row. Falling back to the
+    // placement keeps an object whose row was lost still pickup-able -- it is the player's
+    // either way, it just cannot say where it came from.
+    carried.artifact = Some(artifacts::find_artifact(&object.artifact).unwrap_or(ArtifactRecord {
         id: object.artifact.clone(),
         asset: object.asset.clone(),
-        prompt: String::new(),
-        created: String::new(),
-    });
+        ..Default::default()
+    }));
     carried.copies = 0;
     commands.entity(entity).despawn();
     sfx.write(PlaySfx::new(Sfx::PickUp));
@@ -298,12 +301,12 @@ fn take_from_altar(
     commands.entity(entity).despawn();
     state.active_artifact = None;
     state.active_artifact_id = None;
-    carried.artifact = Some(ArtifactRecord {
+    carried.artifact = Some(artifacts::find_artifact(&id).unwrap_or(ArtifactRecord {
         asset: artifacts::asset_path_for(&id),
         id,
         prompt: state.active_prompt.clone(),
-        created: String::new(),
-    });
+        ..Default::default()
+    }));
     carried.copies = 0;
     sfx.write(PlaySfx::new(Sfx::PickUp));
 }
@@ -614,6 +617,7 @@ mod tests {
             asset: artifacts::asset_path_for("a"),
             prompt: String::new(),
             created: String::new(),
+            ..Default::default()
         });
         carried.copies = 0;
         assert_eq!(carried.copies, 0);
@@ -660,6 +664,7 @@ mod tests {
             asset: artifacts::asset_path_for("a"),
             prompt: String::new(),
             created: String::new(),
+            ..Default::default()
         });
         assert!(carried.is_carrying());
         carried.artifact = None;
