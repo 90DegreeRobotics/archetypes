@@ -546,6 +546,23 @@ mod tests {
     }
 
     #[test]
+    fn the_vault_fresco_module_matches_the_shell_it_caps() {
+        // `scripts/author_vault_fresco.py` builds the dome from these two numbers and asserts
+        // its own export spans 228.0m and rises 30.0m. If the shell changes without the dome
+        // being re-authored, the ceiling either shows a gap at the wall head or buries itself
+        // in the masonry.
+        assert!((castle_inner_face() - 114.0).abs() < 0.001);
+        assert!((VAULT_RISE - 30.0).abs() < 0.001);
+
+        // The dome is a spherical cap cut from this sphere; the script derives the same value.
+        let sphere_radius =
+            (castle_inner_face().powi(2) + VAULT_RISE.powi(2)) / (2.0 * VAULT_RISE);
+        assert!((sphere_radius - 231.6).abs() < 0.01, "sphere radius is {sphere_radius}");
+        // Shallow enough to read as a painted saucer dome rather than foreshortening away.
+        assert!(VAULT_RISE / castle_inner_face() < 0.35);
+    }
+
+    #[test]
     fn bays_close_the_ring_exactly() {
         let total = arcade_bay_width() * ARCADE_BAYS_PER_LEVEL as f32;
         let polygon = 2.0 * GALLERY_OUTER_RADIUS * (PI / ARCADE_BAYS_PER_LEVEL as f32).sin()

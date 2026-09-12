@@ -1,10 +1,20 @@
 # Archetypes Status
 
-**Last Updated: 2026-09-11 (Blender Architecture Kit, Castle Scale)**
+**Last Updated: 2026-09-11 (Blender Kit: Arcade Bay + Vault Fresco)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Painted vault fresco (2026-09-11):** The ceiling is now an operator-supplied circular
+  painting on a real saucer dome. `scripts/author_vault_fresco.py` builds a spherical cap with a
+  114m base and 30m rise (cut from a 231.6m sphere) and maps the image with polar UVs projected
+  orthographically from below, so the painting's border lands exactly on the springing circle and
+  its centre burst exactly on the crown, with no wrap and therefore no seam. This replaced a
+  procedural `Cone` — whose UVs run around its lateral surface and would have smeared a circular
+  painting into a spiral — and the 24 rib bars that cut across it. Source image lives at
+  `assets/textures/vault_fresco.png`; module at `assets/scenes/vault_fresco.glb` (5,280 tris).
+  UVs are inset to 97.5% because the PNG's transparent corners carry undefined RGB that sampled
+  as coloured speckle along the springing line. Evidence: `artifacts/visual-proof/vault-fresco/`.
 - **Castle architecture moves to a Blender kit (2026-09-11):** The perimeter arcade is no longer
   procedural Bevy primitives. `scripts/author_arcade_bay.py` authors one arcade bay headlessly
   in Blender 4.5 — pier with plinth/shaft/capital, a real semicircular voussoir arch plus

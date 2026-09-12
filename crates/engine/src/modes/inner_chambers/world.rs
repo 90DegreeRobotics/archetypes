@@ -665,59 +665,17 @@ fn spawn_castle_ascent(
         InnerWorldElement,
         Name::new("Castle_WallHeadCornice"),
     ));
+    // The vault is a Blender kit module: a saucer dome carrying a painted ceiling fresco.
+    // It replaces a procedural `Cone`, whose UVs run around its lateral surface and would have
+    // smeared a circular painting into a spiral, and the 24 rib bars that used to cut straight
+    // across it. The dome is authored springing from its own base plane, so it seats on the
+    // wall head with no offset.
     commands.spawn((
-        Mesh3d(meshes.add(Cone {
-            radius: castle_inner_face(),
-            height: VAULT_RISE,
-        })),
-        MeshMaterial3d(stone.clone()),
-        // Apex up, base seated on the wall head. Rotating this cone flipped it into a funnel
-        // that hung down into the hall.
-        Transform::from_xyz(0.0, CASTLE_WALL_HEIGHT + VAULT_RISE * 0.5, 0.0),
+        SceneRoot(asset_server.load("scenes/vault_fresco.glb#Scene0")),
+        Transform::from_xyz(0.0, CASTLE_WALL_HEIGHT, 0.0),
         InnerWorldElement,
-        Name::new("Castle_Vault"),
+        Name::new("Castle_VaultFresco"),
     ));
-    for crown in 0..6 {
-        let theta = crown as f32 * std::f32::consts::TAU / 6.0;
-        let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
-        commands.spawn((
-            PointLight {
-                intensity: 26_000_000.0,
-                range: 230.0,
-                color: Color::srgb(0.96, 0.86, 0.72),
-                shadows_enabled: false,
-                ..default()
-            },
-            Transform::from_translation(radial * 52.0 + Vec3::Y * (CASTLE_WALL_HEIGHT + 6.0)),
-            InnerWorldElement,
-            Name::new(format!("Castle_CrownLight_{crown}")),
-        ));
-    }
-    // Ribs follow the actual line of the vault: from the wall head at (r = inner face, y = wall
-    // height) to the crown at (r = 0, y = wall height + rise).
-    let rib_length = (castle_inner_face().powi(2) + VAULT_RISE.powi(2)).sqrt();
-    let rib_tilt = (VAULT_RISE / castle_inner_face()).atan();
-    for rib in 0..24 {
-        let theta = rib as f32 * std::f32::consts::TAU / 24.0;
-        let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(1.6, 1.6, rib_length))),
-            MeshMaterial3d(trim.clone()),
-            Transform::from_translation(
-                radial * (castle_inner_face() * 0.5) + Vec3::Y * (CASTLE_WALL_HEIGHT + VAULT_RISE * 0.5),
-            )
-            // `from_rotation_y(phi)` sends local +Z to (sin phi, 0, cos phi), so aligning a
-            // rib's length with the radial needs phi = 90° - theta. Using -theta (the
-            // convention the older room furniture uses) leaves the ribs skewed across the
-            // vault instead of radiating from its crown.
-            .with_rotation(
-                Quat::from_rotation_y(std::f32::consts::FRAC_PI_2 - theta)
-                    * Quat::from_rotation_x(rib_tilt),
-            ),
-            InnerWorldElement,
-            Name::new(format!("Castle_VaultRib_{rib:02}")),
-        ));
-    }
 }
 
 /// One storey's stair: two flights of 36 treads with a landing between them, wrapped onto the
