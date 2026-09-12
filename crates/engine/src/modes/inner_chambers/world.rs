@@ -1,4 +1,5 @@
 use super::InnerChambersState;
+use super::manifestation::MANIFESTATION_PEDESTAL_POS;
 use crate::chamber::boot::spawn_main_menu;
 use crate::modes::ModeRegistry;
 use bevy::asset::RenderAssetUsages;
@@ -11,6 +12,16 @@ use bevy::render::render_resource::{Extent3d, PrimitiveTopology, TextureDimensio
 /// decals. Keeping them deterministic makes the chamber self-contained while the material
 /// still travels through Bevy's normal-map lighting path.
 const FLOOR_TEXTURE_SIZE: usize = 256;
+
+/// The authored `table.glb` has feet at local z=-0.766 and its Stargate disc at local z=0.300.
+/// glTF's z-up asset becomes Bevy's y-up scene, so these values place the table on the current
+/// Council floor and make the disc the physical foundation for the manifestation altar.
+const COUNCIL_TABLE_SCALE: f32 = 2.6;
+const COUNCIL_TABLE_FOOT_LOCAL_Z: f32 = -0.766;
+const COUNCIL_TABLE_PORTAL_LOCAL_Z: f32 = 0.300;
+const COUNCIL_TABLE_ROOT_Y: f32 = GROUND_Y - COUNCIL_TABLE_FOOT_LOCAL_Z * COUNCIL_TABLE_SCALE;
+const COUNCIL_TABLE_PORTAL_Y: f32 =
+    COUNCIL_TABLE_ROOT_Y + COUNCIL_TABLE_PORTAL_LOCAL_Z * COUNCIL_TABLE_SCALE;
 
 /// Archetype niche bay geometry — shared by every figure's chamber so the five bays
 /// read as one coherent architectural language, distinguished only by stone tint,
@@ -256,40 +267,27 @@ fn setup_inner_world(
         Name::new("UnderCastle_AbyssGlow"),
     ));
 
-    // Center Council circle: surface-level spinning portal inlay replaces the table.
+    // Center Council circle: the authored Council table is the actual centrepiece. Its child
+    // `Stargate_Portal` is bound and animated by `PortalPlugin`; do not replace it with a
+    // procedural stand-in or the real vortex disappears from the live castle again.
     spawn_castle_platform(&mut commands, &mut meshes, stone.clone(), trim.clone(), Vec3::ZERO, COUNCIL_RADIUS, "Council");
-    let portal_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.05, 0.22, 0.38),
-        emissive: LinearRgba::new(0.04, 0.36, 0.85, 1.0),
-        metallic: 0.55,
-        perceptual_roughness: 0.25,
-        ..default()
-    });
     commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(3.15, 0.08))),
-        MeshMaterial3d(portal_mat),
-        Transform::from_xyz(0.0, 0.44, 0.0),
-        ChronosExhibitTurntable { speed: 0.16 },
+        SceneRoot(asset_server.load("scenes/table.glb#Scene0")),
+        Transform::from_xyz(0.0, COUNCIL_TABLE_ROOT_Y, 0.0)
+            .with_scale(Vec3::splat(COUNCIL_TABLE_SCALE)),
         InnerWorldElement,
-        Name::new("CouncilPortalFloorInlay_Spin"),
+        Name::new("RotundaCouncilTable"),
     ));
-    for i in 0..3 {
-        let angle = i as f32 * std::f32::consts::TAU / 3.0;
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(0.22, 0.10, 4.9))),
-            MeshMaterial3d(trim.clone()),
-            Transform::from_xyz(0.0, 0.50, 0.0).with_rotation(Quat::from_rotation_y(angle)),
-            ChronosExhibitTurntable { speed: 0.16 },
-            InnerWorldElement,
-            Name::new(format!("CouncilPortalInlaySpoke_{i}")),
-        ));
-    }
     commands.spawn((
         PointLight { intensity: 75_000.0, range: 12.0, color: Color::srgb(0.25, 0.70, 1.0), shadows_enabled: false, ..default() },
-        Transform::from_xyz(0.0, 1.0, 0.0),
+        Transform::from_xyz(0.0, COUNCIL_TABLE_PORTAL_Y + 0.6, 0.0),
         InnerWorldElement,
-        Name::new("CouncilPortalInlayLight"),
+        Name::new("CouncilPortalLight"),
     ));
+    debug_assert!(
+        (MANIFESTATION_PEDESTAL_POS.y - COUNCIL_TABLE_PORTAL_Y).abs() < 0.01,
+        "the manifestation altar must stand on the Council table's real portal disc"
+    );
     // Operator decision (2026-09-11): Hide satellite rooms, furniture, and all character
     // figures except the Jester for now. The rooms may be relocated into arcade archways.
     const SPAWN_AURA: bool = false;
@@ -1989,6 +1987,21 @@ mod tests {
         );
         // Normal maps are data, never gamma-corrected color images.
         assert_eq!(normal.texture_descriptor.format, TextureFormat::Rgba8Unorm);
+    }
+
+    #[test]
+    fn manifestation_altar_stands_on_the_measured_council_table_portal() {
+        assert!(
+            (MANIFESTATION_PEDESTAL_POS.y - COUNCIL_TABLE_PORTAL_Y).abs() < 0.01,
+            "altar y={} must match table portal y={}",
+            MANIFESTATION_PEDESTAL_POS.y,
+            COUNCIL_TABLE_PORTAL_Y
+        );
+        assert_eq!(MANIFESTATION_PEDESTAL_POS.xz(), Vec2::ZERO);
+        assert!(
+            COUNCIL_TABLE_ROOT_Y > GROUND_Y,
+            "the table root must be raised so its authored feet rest on the Council floor"
+        );
     }
 
     #[test]

@@ -1,0 +1,7 @@
+start  pos=Vec3(0.0, 3.25, 12.0) mode=Walking
+00_council_entrance_standing  pos=(0.00, 3.25, 12.00)  mode=Walking  focus=none  bench=Closed  plans=0  mode_state=Navigating
+01_approaching_center_portal  pos=(0.00, 3.25, 1.63)  mode=Walking  focus=ManifestationAltar  bench=Closed  plans=0  mode_state=Navigating
+02_facing_jester_council_host  pos=(6.00, 3.25, 9.00)  mode=Walking  focus=none  bench=Closed  plans=0  mode_state=Navigating
+03_standing_before_jester  pos=(13.25, 3.25, 1.52)  mode=Walking  focus=none  bench=Closed  plans=0  mode_state=Navigating
+04_foot_of_the_ascent  pos=(-3.24, 3.35, -107.95)  mode=Walking  focus=none  bench=Closed  plans=0  mode_state=Navigating
+05_one_storey_climbed  pos=(28.99, 15.35, -103.81)  mode=Walking  focus=none  bench=Closed  plans=0  mode_state=Navigating

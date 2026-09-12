@@ -5,6 +5,20 @@
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Rotunda heart restored (2026-09-12):** The live Seed-of-Life castle now spawns the authored
+  `table.glb` at the Council centre instead of the procedural inlay stand-in. Its real child
+  `Stargate_Portal` is again found and animated by the already-registered `PortalPlugin`. The
+  manifestation altar is centred directly on the measured portal plane (table feet local
+  `z=-0.766`, disc local `z=0.300`, 2.6x scale, current floor y=0.4), so the blue vortex remains
+  visible as a ring beneath the altar base. A visual inspection caught the first collision
+  radius covering only the altar, which let a walking player enter the wider Council table; it
+  now covers the complete 2.6m-scale table silhouette. Source regressions pin the shared altar
+  and collision position. Tests: 201 passing; Desktop/Taskbar installed build restaged and
+  hash-verified. Evidence: `artifacts/visual-proof/rotunda-heart-2026-09-12/` (the free-flight
+  `01_council_floor_inlay.png` establishes the portal/altar geometry) and
+  `artifacts/visual-proof/rotunda-heart-walk-2026-09-12-final/` (the walking report establishes
+  collision at `(0.00, 3.25, 2.65)` and `focus=ManifestationAltar`). The close walking frame is
+  interaction/collision evidence, not aesthetic approval.
 - **Satellite rooms and non-Jester figures hidden (2026-09-11):** Per operator directive, the six
   satellite archetype rooms (platforms, cobblestone walls, doorways, bridges over the abyss, room
   furniture, drafting bench, and threshold lights) and the central AURA figure are cleanly hidden,

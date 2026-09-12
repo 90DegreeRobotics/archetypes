@@ -10,6 +10,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 pub struct CameraPlugin;
 
 use super::castle;
+use super::manifestation::MANIFESTATION_PEDESTAL_POS;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
@@ -178,13 +179,19 @@ fn teardown_camera(
     }
 }
 
-/// Standing obstacles currently present in the world: the Jester Council host and the
-/// manifestation pedestal. When AURA and the satellite rooms are hidden, only the entities
-/// actually on the Council floor push the player, preventing invisible phantom collision.
+/// Standing obstacles currently present in the world: the Jester Council host and the combined
+/// Council table / manifestation altar. When AURA and the satellite rooms are hidden, only the
+/// entities actually on the Council floor push the player, preventing invisible phantom collision.
 fn character_obstacles() -> [(Vec2, f32); 2] {
     [
         (Vec2::new(10.2, 6.2), 1.5), // Jester Council host
-        (Vec2::new(0.0, 3.4), 1.25), // Active manifestation pedestal
+        (
+            Vec2::new(MANIFESTATION_PEDESTAL_POS.x, MANIFESTATION_PEDESTAL_POS.z),
+            // The altar base is only 1.20m across, but it stands on the 2.56m-radius Council
+            // table. Colliding with the full furniture silhouette stops a walking player from
+            // clipping through the tabletop just to reach an otherwise-valid altar interaction.
+            2.65,
+        ), // Active table/altar centre; derived from its shared world position.
     ]
 }
 
@@ -476,5 +483,18 @@ mod tests {
         let inside = figure + Vec2::new(0.0, 0.4);
         let resolved = resolve_character_obstacles(inside);
         assert!((resolved - figure).length() >= 1.49);
+    }
+
+    #[test]
+    fn manifestation_obstacle_is_at_the_shared_pedestal_position() {
+        let obstacle = character_obstacles()[1].0;
+        assert_eq!(
+            obstacle,
+            Vec2::new(MANIFESTATION_PEDESTAL_POS.x, MANIFESTATION_PEDESTAL_POS.z)
+        );
+        assert!(
+            character_obstacles()[1].1 >= 2.6,
+            "the collision radius must cover the 2.6m-scale Council table, not only the altar base"
+        );
     }
 }

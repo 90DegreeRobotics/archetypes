@@ -31,7 +31,10 @@ use std::time::Duration;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-pub const MANIFESTATION_PEDESTAL_POS: Vec3 = Vec3::new(0.0, 0.30, 3.4);
+/// The pedestal stands at the Council-table centre, directly on its real animated Stargate disc.
+/// See the matching measured table transform in `world.rs`: local disc z=0.300, feet z=-0.766,
+/// 2.6x table scale, current floor top y=0.4.
+pub const MANIFESTATION_PEDESTAL_POS: Vec3 = Vec3::new(0.0, 3.1716, 0.0);
 pub const MANIFESTATION_CUSHION_HEIGHT: f32 = 1.62;
 pub const MANIFESTATION_HOVER_Y: f32 = 2.40;
 
