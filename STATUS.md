@@ -5,6 +5,38 @@
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Manifested object quality, measured (2026-09-12):** `scripts/manifest_quality_lab.py` is a
+  repeatable loop — generate a spread of subjects once, then re-render the *same* meshes after
+  each change, so a tuning result is isolated from generation variance. Seven subjects run
+  (astrolabe, ceramic owl, candelabra, crystal decanter, copper kettle, granite lion, plus the
+  live relic). **The dominant variable is subject extraction, not reconstruction.** Where the
+  image handed to TripoSR is clean the mesh is recognisable; where extraction collapses the mesh
+  is noise. Measured `subject_coverage`: 0.4456 / 0.1298 / 0.0947 for good results against
+  **0.0006** for the white owl and **0.0006** for the crystal decanter — both subjects close in
+  colour to their own backdrop. There is no overlap between the groups.
+  Three changes shipped here, each measured rather than asserted:
+  (1) `import_chronos_object.py` no longer force-smooths every polygon. Hard edges above 30
+  degrees survive via an EdgeSplit that bakes into the geometry so it holds through glTF; the
+  plinth's flat faces and gold band now read as edges instead of melting. It also writes an
+  explicit material carrying the reconstruction's vertex colour — the export previously carried
+  `COLOR_0` but **no material at all**, leaving every consumer to invent one.
+  (2) `CHRONOS_TRIPOSR_MC_RESOLUTION` raised from Chronos2's default 256 to **384**, measured on
+  the same cached reference: 141,269 faces to 320,670 for five seconds more, and after both were
+  decimated to the same 75k budget the finer source kept the knurled case rim and dial the
+  coarse one lost.
+  (3) A coverage floor of 0.02 now **refuses** a reconstruction built from a blank frame and
+  reports the measurement, rather than staging noise on the altar and calling it the player's
+  work. Deliberately not gated on `subject_match.json`: it scored 0.260 for the destroyed owl and
+  0.259 for the good astrolabe, so it does not discriminate.
+  Ruled out with evidence, not assumption: the vertex-colour round trip is **exactly correct**
+  (GLB `COLOR_0` equals `srgb_to_linear(OBJ)` to four decimals), so there is no gamma fault.
+  **Root cause still open and outside this repo:** the collapse happens in
+  `C:\chronos2	ools	riposr_mesh_emitter.py::subject_mask`, where GrabCut is seeded only by
+  colour distance (`distance >= 0.10`) and then its result is accepted unconditionally. A guard
+  keeping the flood mask when the refinement collapses is written up in
+  `docs/ledger/2026/09/plan_2026-09-12_1930_object_quality.md`; it needs an operator decision
+  because it edits a sibling product. Evidence:
+  `artifacts/visual-proof/quality-2026-09-12/` and `artifacts/quality-lab/`.
 - **The manifestation pipeline was never broken; the capture harness was (2026-09-12):** It was
   reported here as "no stage output in 25 minutes from inside the game, 5 minutes on the CLI."
   That was wrong. `drive_manifest_capture` was registered with **no system ordering**, while

@@ -32,6 +32,16 @@ use std::time::Duration;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// Marching-cubes resolution handed to TripoSR through Chronos2's own env knob.
+///
+/// Its default is 256. Measured on the same cached reference so nothing else varied
+/// (`artifacts/visual-proof/quality-2026-09-12/mc_resolution_256_vs_384.png`): 256 produced
+/// 141,269 faces, 384 produced 320,670 in five seconds more, and after both were decimated to
+/// the same 75k game budget the finer source kept the knurled case rim and the dial face that
+/// 256 rounded away. Decimating from a finer surface chooses better collapses than
+/// reconstructing coarsely in the first place.
+const TRIPOSR_MC_RESOLUTION: &str = "384";
+
 /// The altar stands on the Council floor at the exact centre of the spinning vortex disc, which
 /// lies in the floor around it. `castle::GROUND_Y` is the floor top, and the base plinth's own
 /// geometry starts at this y, so the altar rests on the stone rather than floating over it.
@@ -1030,6 +1040,31 @@ fn find_import_script() -> Option<PathBuf> {
     None
 }
 
+/// Below this share of the reference image, subject extraction has failed and TripoSR was
+/// handed a nearly blank frame.
+///
+/// Measured across a six-subject spread (`scripts/manifest_quality_lab.py`): subjects that
+/// reconstructed recognisably scored 0.4456, 0.1298 and 0.0947, while two that came back as
+/// noise scored **0.0006** — a white ceramic figure and a cut-crystal decanter, both close in
+/// colour to their own backdrop, both erased by the GrabCut refinement before reconstruction
+/// began. There is no overlap between the two groups, so a floor separates them cleanly.
+///
+/// Deliberately not `subject_match.json`: that guard scored 0.260 for the destroyed figure and
+/// 0.259 for a good astrolabe, so it does not discriminate here and gating on it would reject
+/// good work and pass bad.
+const MIN_SUBJECT_COVERAGE: f64 = 0.02;
+
+/// What the reconstruction record says about the image the mesh was actually built from.
+///
+/// Returns `None` when the record is missing or unreadable — an absent record is not evidence
+/// of failure, and refusing on it would fail runs that are fine.
+fn subject_coverage(bundle: &std::path::Path) -> Option<f64> {
+    let raw =
+        std::fs::read_to_string(bundle.join("engine_mesh").join("triposr_artifact.json")).ok()?;
+    let doc: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    doc.get("preparation")?.get("subject_coverage")?.as_f64()
+}
+
 /// Scene path for a manifested artifact.
 ///
 /// Per-artifact when the run staged its own file, and the legacy shared path only when it did
@@ -1154,6 +1189,12 @@ fn dispatch_manifestation_worker(
             );
         }
         command.env("CHRONOS_FLUX_PROFILE", "lowvram");
+        // Marching-cubes grid for the reconstruction. Chronos2 defaults to 256; this is the one
+        // geometry-fidelity knob it exposes, and a finer grid recovers detail that 256 rounds
+        // away. Overridable, so a slower machine can put it back without a rebuild.
+        if std::env::var("CHRONOS_TRIPOSR_MC_RESOLUTION").is_err() {
+            command.env("CHRONOS_TRIPOSR_MC_RESOLUTION", TRIPOSR_MC_RESOLUTION);
+        }
         command.stdout(std::process::Stdio::piped());
         command.stderr(std::process::Stdio::piped());
 
@@ -1338,6 +1379,31 @@ fn dispatch_manifestation_worker(
                         let _ = std::fs::create_dir_all(p);
                     }
                     let _ = std::fs::copy(&primary_output, other);
+                }
+
+                // Refuse a reconstruction built from a blank frame.
+                //
+                // When subject extraction collapses, TripoSR still returns a mesh — it is just
+                // noise shaped like nothing. Staging it would put a blob on the altar and call
+                // it the player's work. Reporting the measurement is the honest outcome, and
+                // the bundle is kept so the failure is inspectable rather than merely asserted.
+                if let Some(coverage) = subject_coverage(&bundle) {
+                    if coverage < MIN_SUBJECT_COVERAGE {
+                        let _ = sender.send(ManifestationEvent::Failure {
+                            prompt,
+                            stage_id: Some("subject".into()),
+                            detail: format!(
+                                "The subject could not be separated from its background: only \
+                                 {:.2}% of the reference survived, so the reconstruction was \
+                                 built from a nearly blank frame. This usually means the \
+                                 subject was close in colour to its backdrop. Bundle kept at \
+                                 {}",
+                                coverage * 100.0,
+                                bundle.display()
+                            ),
+                        });
+                        return;
+                    }
                 }
 
                 // The object's own file. Until now every manifestation overwrote one shared

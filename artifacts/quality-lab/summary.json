@@ -1,0 +1,114 @@
+[
+  {
+    "label": "baseline_relic",
+    "status": "ok",
+    "frames": [
+      "artifacts\\quality-lab\\renders\\baseline_relic\\00.png",
+      "artifacts\\quality-lab\\renders\\baseline_relic\\01.png",
+      "artifacts\\quality-lab\\renders\\baseline_relic\\02.png"
+    ],
+    "glb_bytes": 2057904,
+    "render_log": "",
+    "subject_coverage": 0.1403,
+    "vertices": 35051,
+    "faces": 69964,
+    "mc_resolution": 256,
+    "sheet": "artifacts\\quality-lab\\sheets\\baseline_relic.png"
+  },
+  {
+    "label": "hard_edge",
+    "status": "ok",
+    "frames": [
+      "artifacts\\quality-lab\\renders\\hard_edge\\00.png",
+      "artifacts\\quality-lab\\renders\\hard_edge\\01.png",
+      "artifacts\\quality-lab\\renders\\hard_edge\\02.png"
+    ],
+    "glb_bytes": 2024612,
+    "render_log": "",
+    "subject_coverage": 0.4456,
+    "vertices": 70779,
+    "faces": 141269,
+    "mc_resolution": 256,
+    "sheet": "artifacts\\quality-lab\\sheets\\hard_edge.png"
+  },
+  {
+    "label": "organic",
+    "status": "ok",
+    "frames": [
+      "artifacts\\quality-lab\\renders\\organic\\00.png",
+      "artifacts\\quality-lab\\renders\\organic\\01.png",
+      "artifacts\\quality-lab\\renders\\organic\\02.png"
+    ],
+    "glb_bytes": 1912692,
+    "render_log": "",
+    "subject_coverage": 0.0006,
+    "vertices": 38400,
+    "faces": 76688,
+    "mc_resolution": 256,
+    "sheet": "artifacts\\quality-lab\\sheets\\organic.png"
+  },
+  {
+    "label": "thin_limbs",
+    "status": "ok",
+    "frames": [
+      "artifacts\\quality-lab\\renders\\thin_limbs\\00.png",
+      "artifacts\\quality-lab\\renders\\thin_limbs\\01.png",
+      "artifacts\\quality-lab\\renders\\thin_limbs\\02.png"
+    ],
+    "glb_bytes": 956848,
+    "render_log": "",
+    "subject_coverage": 0.0947,
+    "vertices": 16675,
+    "faces": 33275,
+    "mc_resolution": 256,
+    "sheet": "artifacts\\quality-lab\\sheets\\thin_limbs.png"
+  },
+  {
+    "label": "transparent",
+    "status": "ok",
+    "frames": [
+      "artifacts\\quality-lab\\renders\\transparent\\00.png",
+      "artifacts\\quality-lab\\renders\\transparent\\01.png",
+      "artifacts\\quality-lab\\renders\\transparent\\02.png"
+    ],
+    "glb_bytes": 1346208,
+    "render_log": "",
+    "subject_coverage": 0.0006,
+    "vertices": 27475,
+    "faces": 54920,
+    "mc_resolution": 256,
+    "sheet": "artifacts\\quality-lab\\sheets\\transparent.png"
+  },
+  {
+    "label": "reflective",
+    "status": "ok",
+    "frames": [
+      "artifacts\\quality-lab\\renders\\reflective\\00.png",
+      "artifacts\\quality-lab\\renders\\reflective\\01.png",
+      "artifacts\\quality-lab\\renders\\reflective\\02.png"
+    ],
+    "glb_bytes": 1515296,
+    "render_log": "",
+    "subject_coverage": 0.1298,
+    "vertices": 29495,
+    "faces": 58892,
+    "mc_resolution": 256,
+    "sheet": "artifacts\\quality-lab\\sheets\\reflective.png"
+  },
+  {
+    "label": "rough_stone",
+    "status": "ok",
+    "frames": [
+      "artifacts\\quality-lab\\renders\\rough_stone\\00.png",
+      "artifacts\\quality-lab\\renders\\rough_stone\\01.png",
+      "artifacts\\quality-lab\\renders\\rough_stone\\02.png"
+    ],
+    "glb_bytes": 2331836,
+    "render_log": "",
+    "subject_coverage": 0.6024,
+    "vertices": 113465,
+    "faces": 226569,
+    "mc_resolution": 256,
+    "sheet": "artifacts\\quality-lab\\sheets\\rough_stone.png"
+  }
+]
