@@ -1,0 +1,5 @@
+[chronos-stage] id=start pct=2 state=begin msg=Starting your creation
+[first-light] creating a brand-new artifact from your prompt — this is a live generation, not a saved file.
+[first-light] material mode: Auto
+[chronos-stage] id=start pct=2 state=done msg=Starting your creation
+Error: output directory already contains a provenance ledger at C:\archetypes\artifacts\quality-lab\bundles${label}_fixed\codex; refusing to delete or overwrite it; choose a new UUID-named output directory
