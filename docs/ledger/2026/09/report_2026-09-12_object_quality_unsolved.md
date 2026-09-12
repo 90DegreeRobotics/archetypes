@@ -39,7 +39,36 @@ run's mask kept 0.18% of the frame — a sliver, not a cone)."*
 
 All three copies (`tools/`, `target/release/`, `target/debug/`) are now identical at 485 lines.
 
-### 2. Glass and pale subjects were erased before reconstruction
+### 2. Component selection was discarding the subject for a speck
+
+**This was the actual cause of both catastrophic failures, and it was not where I first looked.**
+
+`select_central_component` ranked candidates by `(centre_distance, -area)` — centre distance
+first, area only as a tiebreak — and built its pool as `interior or candidates`, so a *single*
+interior speck excluded every border-touching component from consideration. A subject large
+enough to fill the frame touches the border.
+
+The measurement that found it: the owl's mask retained **25.84%** of the image
+(`raw_subject_coverage`), and selection then handed TripoSR **0.06%** (`subject_coverage`) — a
+`retained_foreground_fraction` of 0.0025. The extraction was fine; the selection threw the body
+away.
+
+Area is now the quantity being maximised, with centrality as a penalty on it rather than the
+primary key, and the interior preference is overridden when it would discard a body more than
+three times larger than what it prefers.
+
+Measured result, same prompts, fresh runs:
+
+| subject | coverage before | coverage after | retained fraction |
+|---|---|---|---|
+| ceramic owl | 0.0006 | **0.2280** | 0.0025 to 0.8826 |
+| cut crystal decanter | 0.0006 | **0.1932** | 0.0025 to 1.000 |
+
+Both now reconstruct recognisably — the owl has its eyes, beak, ears and gold feet; the decanter
+has its stopper, neck and faceted body where it previously came back as a flat slab. Evidence:
+`component_selection_before_after.png`, `decanter_before_after.png`.
+
+### 3. Glass and pale subjects erased by the colour test
 
 Implemented the design already measured in `chronos2/docs/audits/glass_and_transparency.md`: run
 the colour mask, measure the largest connected component's share of the retained area, and **only
@@ -52,7 +81,14 @@ gradient test.
 The gate is what makes this safe. The audit's rocking chair, with five genuine gaps, scores 1.000
 and correctly does not trigger — edge closure would weld its holes shut.
 
-### 3. Objects were force-smoothed and had no material
+**Honest note on what this actually contributed.** On the re-runs above the fallback did *not*
+fire: once component selection stopped discarding the subject, the colour mask alone produced a
+coherent body for both the owl and the decanter. So the glass fallback is shipped and armed, but
+the improvement measured today is attributable to the selection fix and the stale-copy sync, not
+to it. It remains the right mechanism for the audit's hourglass case; it has not yet been shown
+to fire on a subject in this spread.
+
+### 4. Objects were force-smoothed and had no material
 
 `scripts/import_chronos_object.py` set `use_smooth = True` on every polygon, rounding off every
 hard edge on top of whatever softness marching cubes had introduced. Edges above 30 degrees now
@@ -62,14 +98,14 @@ smoothing metadata. Evidence: `shading_before_after.png`.
 The export also carried `COLOR_0` but **no material at all** (`materials: []`), leaving every
 consumer to invent one. It now writes an explicit material reading the vertex colour.
 
-### 4. Geometry resolution
+### 5. Geometry resolution
 
 `CHRONOS_TRIPOSR_MC_RESOLUTION` raised from Chronos2's default 256 to 384. Measured on the same
 cached reference so nothing else varied: 141,269 faces to 320,670 for five seconds more, and
 after both were decimated to the same 75k budget the finer source kept the knurled case rim and
 dial face that 256 rounded away. Evidence: `mc_resolution_256_vs_384.png`.
 
-### 5. Noise is no longer presented as the player's work
+### 6. Noise is no longer presented as the player's work
 
 A subject-coverage floor of 0.02 fails the manifestation with the measurement rather than staging
 a blob on the altar.
@@ -86,7 +122,15 @@ a blob on the altar.
 
 ## Not solved
 
-### A. The opposite failure: extraction that includes too much
+### A. The owl still loses part of its body
+
+Coverage went from 0.0006 to 0.2280 and the result is recognisable, but the image handed to
+TripoSR still has a section bitten out of the owl's white flank where it met the white backdrop,
+and the mesh is scooped there. The fragmentation gate does not fire because what survives is one
+coherent body — it is missing a piece, not cut into lumps. Detecting "coherent but incomplete"
+is a different measurement and has not been attempted.
+
+### B. The opposite failure: extraction that includes too much
 
 The granite lion measured **0.6024** coverage — not too little, too much. The mask kept a
 rectangular slab of backdrop along with the subject, and the reconstruction is a lion relief
@@ -97,7 +141,7 @@ share is high and the gate correctly declines to fire. What is needed is an uppe
 border model that does not accept a straight-edged region as subject. **No measurement has been
 done on this yet** — one sample is not a basis for a threshold.
 
-### B. Single-view reconstruction invents the back of every object
+### C. Single-view reconstruction invents the back of every object
 
 TripoSR sees one image. A subject photographed three-quarter on has a rear the model has never
 seen, so it is confabulated — this is why the relic's plinth came back as an open bent frame and
@@ -107,7 +151,7 @@ No amount of extraction or resolution tuning addresses this. The real answer is 
 reconstruction, which is a substantially larger piece of work and an engine change, not a
 parameter.
 
-### C. Edge closure returns a solid, not glass
+### D. Edge closure returns a solid, not glass
 
 For a transparent subject the closure gives the correct *shape* — a decanter-shaped body beats
 three floating lumps — but it is opaque. TripoSR bakes vertex colour, and the colour behind clear
@@ -118,7 +162,7 @@ currently does that, and doing it from the prompt text would be a recipe. A meas
 be to detect low colour variance within the closure region against high gradient energy at its
 boundary — untested, and I am not proposing it as done.
 
-### D. Both thresholds are under-calibrated
+### E. Thresholds are under-calibrated
 
 - `FRAGMENTATION_TRIGGER = 0.70` is read off **five** references in the chronos2 audit, which
   states plainly that it must be run across all 40 before shipping, checking specifically that no
@@ -129,14 +173,14 @@ boundary — untested, and I am not proposing it as done.
 
 Neither has been run against the full corpus.
 
-### E. The three emitter copies can drift again
+### F. The three emitter copies can drift again
 
 They were at three different hashes, and the live one was the stale one. Nothing copies
 `tools/` into `target/` — no `build.rs` references it — so they are kept in step by hand. They
 are in step now. There is no mechanism stopping them diverging again, and the failure mode is
 silent: the product runs the old code and every symptom points somewhere else.
 
-### F. Canny thresholds are tuned to a clean studio backdrop
+### G. Canny thresholds are tuned to a clean studio backdrop
 
 12/40 comes from the audit and is tuned to the white sweep the reference generator produces. A
 busy or low-contrast reference is untested.

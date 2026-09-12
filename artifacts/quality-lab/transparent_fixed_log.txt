@@ -2,4 +2,48 @@
 [first-light] creating a brand-new artifact from your prompt — this is a live generation, not a saved file.
 [first-light] material mode: Auto
 [chronos-stage] id=start pct=2 state=done msg=Starting your creation
-Error: output directory already contains a provenance ledger at C:\archetypes\artifacts\quality-lab\bundles${label}_fixed\codex; refusing to delete or overwrite it; choose a new UUID-named output directory
+[chronos-stage] id=intent pct=5 state=begin msg=Recording what you asked for
+[chronos-stage] id=intent pct=5 state=done msg=Recording what you asked for
+[chronos-stage] id=sentinel pct=6 state=begin msg=Sentinel is reviewing your request
+[chronos-stage] id=sentinel pct=6 state=done msg=Sentinel is reviewing your request - cleared - no prohibited use found
+[chronos-decision] kind=governance id=village_protection verdict=allowed msg=The Sentinel read your request against the published prohibited-use policy on this machine and cleared it.
+[chronos-stage] id=oracle pct=8 state=skip msg=Imagining your scene with the local language model - Object mode paints its own views; the language-model scene plan is not used
+[governed-artifact] oracle: skipped — Object mode does not consume the scene sketch
+[chronos-stage] id=staging pct=18 state=begin msg=Checking and freezing the scene plan
+[object] ComfyUI ready at http://127.0.0.1:8000 (attempt 1)
+[chronos-stage] id=forge_plan pct=52 state=begin msg=Planning the geometry - Object reference for TripoSR
+[weaver] reference cache hit  concept "a cut crystal decanter" → be7fb33730ada77eb914fff4162374d6
+[geometry-forge] requested ComfyUI VRAM free before GPU render
+[engine] building the Object-mode body with TripoSR…
+[chronos-stage] id=forge_plan pct=52 state=done msg=Planning the geometry
+[chronos-decision] kind=engine id=triposr verdict=chosen msg=TripoSR produced the Object-mode mesh from the generated reference.
+[chronos-stage] id=staging pct=18 state=done msg=Checking and freezing the scene plan
+[chronos-stage] id=materials pct=22 state=skip msg=Synthesizing the materials - Object mode paints its own reference views; PBR maps from this sketch are not used
+[object] staging the TripoSR mesh for buyer review
+[chronos-decision] kind=presentation id=triposr_showcase verdict=chosen msg=Staged the TripoSR mesh from the exact reference supplied to the engine.
+[chronos-stage] id=blender_connect pct=64 state=begin msg=Connecting to Blender
+[governed-artifact] connecting to BlenderMCP at tcp://127.0.0.1:9876
+[chronos-stage] id=blender_connect pct=64 state=done msg=Connecting to Blender
+[chronos-stage] id=render pct=68 state=begin msg=Building and rendering in Blender
+[governed-artifact] triposr_object: dispatching authorized render through the governed gate…
+[chronos-stage] id=render pct=68 state=done msg=Building and rendering in Blender
+[chronos-stage] id=redteam pct=88 state=begin msg=Governance check - proving the refusal path works
+[governed-artifact] red-team: attempting an unauthorized command (must be refused)…
+[chronos-stage] id=redteam pct=88 state=done msg=Governance check - proving the refusal path works
+[chronos-stage] id=seal pct=92 state=begin msg=Sealing the provenance record
+[chronos-stage] id=seal pct=92 state=done msg=Sealing the provenance record
+[chronos-decision] kind=guard id=subject_match verdict=chosen msg=The built object is missing most of the shape — only 13% of the outline came through. Detail that only shows in one view is usually lost this way.
+[object] subject match sealed -> C:/archetypes/artifacts/quality-lab/bundles/transparent_fixed\subject_match.json
+[chronos-stage] id=bundle pct=97 state=begin msg=Writing your artifact bundle
+
+=== Undeniable Artifact Run I ===
+  bundle:            C:/archetypes/artifacts/quality-lab/bundles/transparent_fixed
+  render dispatched: true
+  drift blocked:     YES (CBIG)
+  chain valid:       true
+  comfy material:    applied
+  artifact png:      1c92cf29e270d46c0eb9ac43616dfda1ab822f0eb66df2dcb7801f95e411f587
+  events sealed:     15
+[chronos-stage] id=bundle pct=97 state=done msg=Writing your artifact bundle
+[chronos-stage] id=complete pct=100 state=done msg=Finished
+[spin] background spin job started for C:/archetypes/artifacts/quality-lab/bundles/transparent_fixed

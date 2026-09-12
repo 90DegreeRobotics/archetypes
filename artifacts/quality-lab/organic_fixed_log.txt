@@ -26,3 +26,24 @@
 [chronos-stage] id=blender_connect pct=64 state=done msg=Connecting to Blender
 [chronos-stage] id=render pct=68 state=begin msg=Building and rendering in Blender
 [governed-artifact] triposr_object: dispatching authorized render through the governed gate…
+[chronos-stage] id=render pct=68 state=done msg=Building and rendering in Blender
+[chronos-stage] id=redteam pct=88 state=begin msg=Governance check - proving the refusal path works
+[governed-artifact] red-team: attempting an unauthorized command (must be refused)…
+[chronos-stage] id=redteam pct=88 state=done msg=Governance check - proving the refusal path works
+[chronos-stage] id=seal pct=92 state=begin msg=Sealing the provenance record
+[chronos-stage] id=seal pct=92 state=done msg=Sealing the provenance record
+[chronos-decision] kind=guard id=subject_match verdict=chosen msg=The built object is missing most of the shape — only 40% of the outline came through. Detail that only shows in one view is usually lost this way.
+[object] subject match sealed -> C:/archetypes/artifacts/quality-lab/bundles/organic_fixed\subject_match.json
+[chronos-stage] id=bundle pct=97 state=begin msg=Writing your artifact bundle
+
+=== Undeniable Artifact Run I ===
+  bundle:            C:/archetypes/artifacts/quality-lab/bundles/organic_fixed
+  render dispatched: true
+  drift blocked:     YES (CBIG)
+  chain valid:       true
+  comfy material:    applied
+  artifact png:      e8b5d76a235021b61dc33c3003f581490327f48c62a45f33d0a9ed14896a7e03
+  events sealed:     15
+[chronos-stage] id=bundle pct=97 state=done msg=Writing your artifact bundle
+[chronos-stage] id=complete pct=100 state=done msg=Finished
+[spin] background spin job started for C:/archetypes/artifacts/quality-lab/bundles/organic_fixed
