@@ -24,10 +24,26 @@ use super::InnerChambersState;
 pub const ALTAR_INTERACTION_RANGE: f32 = 3.2;
 pub const WORKSHOP_INTERACTION_RANGE: f32 = 3.0;
 
+/// How close the player must be to pick a placed object back up.
+///
+/// Measured in 3D from the eye, like every other range here, so the vertical climb has to be
+/// paid for out of the same budget: an object resting on the floor sits about 2.15m below a
+/// standing eye even after the anchor below lifts it. At 2.6 the vertical alone exhausted the
+/// range and nothing could ever be picked up. 3.0 leaves roughly 2.1m of horizontal reach.
+pub const OBJECT_PICKUP_RANGE: f32 = 3.0;
+
+/// A placed object is reached for at its middle, not at the floor it stands on.
+///
+/// The same correction the altar needed: its transform sits on the ground, and reaching for the
+/// ground spends the whole range going downwards.
+pub const OBJECT_GRAB_HEIGHT: f32 = 0.7;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InteractionTarget {
     ManifestationAltar,
     ArchitectWorkshop,
+    /// An object the player placed, identified by the entity standing there.
+    PlacedObject(Entity),
     Archetype(ArchetypeEmbodiment),
 }
 
@@ -39,8 +55,13 @@ impl InteractionTarget {
     /// step.
     fn priority(&self) -> u8 {
         match self {
-            InteractionTarget::ManifestationAltar | InteractionTarget::ArchitectWorkshop => 0,
-            InteractionTarget::Archetype(_) => 1,
+            // A thing the player is standing over and could pick up outranks even a device.
+            // Objects get placed on and around the altar - that is the point of being able to
+            // place them - and when one is at your feet, `E` should mean "take this", not
+            // "reopen the prompt you used to make it".
+            InteractionTarget::PlacedObject(_) => 0,
+            InteractionTarget::ManifestationAltar | InteractionTarget::ArchitectWorkshop => 1,
+            InteractionTarget::Archetype(_) => 2,
         }
     }
 }
@@ -138,6 +159,7 @@ fn resolve_focus(
     camera: Query<&Transform, With<PlayerCamera>>,
     embodiments: Query<(&Transform, &ArchetypeEmbodiment)>,
     workshop_table: Query<&Transform, With<ArchitectWorkshopTable>>,
+    placed: Query<(Entity, &GlobalTransform), With<super::objects::PlacedObject>>,
     mut focus: ResMut<InteractionFocus>,
 ) {
     let Ok(camera) = camera.single() else {
@@ -148,11 +170,19 @@ fn resolve_focus(
         .iter()
         .map(|(transform, embodiment)| (transform.translation, *embodiment))
         .collect();
+    let placed_objects: Vec<(Vec3, Entity)> = placed
+        .iter()
+        .map(|(entity, global)| {
+            (global.translation() + Vec3::Y * OBJECT_GRAB_HEIGHT, entity)
+        })
+        .collect();
+
     focus.0 = pick_target(
         camera.translation,
         altar_interaction_anchor(),
         workshop_table.iter().next().map(|transform| transform.translation),
         &embodiments,
+        &placed_objects,
     );
 }
 
@@ -162,8 +192,17 @@ pub(super) fn pick_target(
     altar: Vec3,
     workshop_table: Option<Vec3>,
     embodiments: &[(Vec3, ArchetypeEmbodiment)],
+    placed_objects: &[(Vec3, Entity)],
 ) -> Option<InteractionTarget> {
     let mut candidates: Vec<(u8, f32, InteractionTarget)> = Vec::new();
+
+    for (position, entity) in placed_objects {
+        let distance = player.distance(*position);
+        if distance <= OBJECT_PICKUP_RANGE {
+            let target = InteractionTarget::PlacedObject(*entity);
+            candidates.push((target.priority(), distance, target));
+        }
+    }
 
     let altar_distance = player.distance(altar);
     if altar_distance <= ALTAR_INTERACTION_RANGE {
@@ -239,7 +278,7 @@ mod tests {
         assert!(player.distance(BENCH_ANCHOR) <= WORKSHOP_INTERACTION_RANGE);
         assert!(player.distance(FIGURE) <= ENCOUNTER_RANGE);
         assert_eq!(
-            pick_target(player, FAR_ALTAR, Some(BENCH_ANCHOR), &[(FIGURE, ARCHITECT)]),
+            pick_target(player, FAR_ALTAR, Some(BENCH_ANCHOR), &[(FIGURE, ARCHITECT)], &[]),
             Some(InteractionTarget::ArchitectWorkshop)
         );
     }
@@ -254,7 +293,7 @@ mod tests {
         assert!(player.distance(crowding_figure) < player.distance(BENCH_ANCHOR));
         assert!(player.distance(crowding_figure) <= ENCOUNTER_RANGE);
         assert_eq!(
-            pick_target(player, FAR_ALTAR, Some(BENCH_ANCHOR), &[(crowding_figure, ARCHITECT)]),
+            pick_target(player, FAR_ALTAR, Some(BENCH_ANCHOR), &[(crowding_figure, ARCHITECT)], &[]),
             Some(InteractionTarget::ArchitectWorkshop)
         );
     }
@@ -265,7 +304,7 @@ mod tests {
         assert!(player.distance(BENCH_ANCHOR) > WORKSHOP_INTERACTION_RANGE);
         assert!(player.distance(FIGURE) <= ENCOUNTER_RANGE);
         assert_eq!(
-            pick_target(player, FAR_ALTAR, Some(BENCH_ANCHOR), &[(FIGURE, ARCHITECT)]),
+            pick_target(player, FAR_ALTAR, Some(BENCH_ANCHOR), &[(FIGURE, ARCHITECT)], &[]),
             Some(InteractionTarget::Archetype(ARCHITECT))
         );
     }
@@ -273,7 +312,7 @@ mod tests {
     #[test]
     fn nothing_in_range_yields_no_target() {
         let player = Vec3::new(0.0, 3.25, -60.0);
-        assert_eq!(pick_target(player, FAR_ALTAR, Some(BENCH_ANCHOR), &[(FIGURE, ARCHITECT)]), None);
+        assert_eq!(pick_target(player, FAR_ALTAR, Some(BENCH_ANCHOR), &[(FIGURE, ARCHITECT)], &[]), None);
     }
 
     #[test]
@@ -283,7 +322,61 @@ mod tests {
         assert!(player.distance(FAR_ALTAR) <= ALTAR_INTERACTION_RANGE);
         assert!(player.distance(bystander) < player.distance(FAR_ALTAR));
         assert_eq!(
-            pick_target(player, FAR_ALTAR, None, &[(bystander, ARCHITECT)]),
+            pick_target(player, FAR_ALTAR, None, &[(bystander, ARCHITECT)], &[]),
+            Some(InteractionTarget::ManifestationAltar)
+        );
+    }
+
+    /// An object standing at the player's feet outranks the altar it is standing on. Placing
+    /// things on and around the altar is the point of being able to place things; if `E` still
+    /// meant "open the prompt" there, the object could never be picked back up.
+    #[test]
+    fn an_object_underfoot_outranks_the_altar_it_stands_on() {
+        let player = Vec3::new(0.0, 3.25, 1.2);
+        let altar = Vec3::new(0.0, 2.02, 0.0);
+        let object = Vec3::new(0.0, 0.9, 1.1);
+        let entity = Entity::from_raw_u32(7).expect("valid test entity");
+
+        assert!(player.distance(altar) <= ALTAR_INTERACTION_RANGE);
+        assert!(player.distance(object) <= OBJECT_PICKUP_RANGE);
+        assert_eq!(
+            pick_target(player, altar, None, &[], &[(object, entity)]),
+            Some(InteractionTarget::PlacedObject(entity))
+        );
+    }
+
+    /// A player standing in front of an object on the floor must actually be able to reach it.
+    /// Ranges here are 3D from a 3.25m eye, so a floor-level target spends most of the budget
+    /// going downwards - which is exactly why 2.6m reached nothing at all.
+    #[test]
+    fn a_player_standing_at_an_object_can_reach_it() {
+        let floor = 0.4_f32;
+        let eye = Vec3::new(0.0, floor + 2.85, 1.5);
+        let object = Vec3::new(0.0, floor, 0.0) + Vec3::Y * OBJECT_GRAB_HEIGHT;
+        let entity = Entity::from_raw_u32(9).expect("valid test entity");
+
+        assert!(
+            eye.distance(object) <= OBJECT_PICKUP_RANGE,
+            "standing 1.5m away the eye is {:.2}m from the object, beyond the {OBJECT_PICKUP_RANGE}m reach",
+            eye.distance(object)
+        );
+        assert_eq!(
+            pick_target(eye, Vec3::new(0.0, 99.0, 99.0), None, &[], &[(object, entity)]),
+            Some(InteractionTarget::PlacedObject(entity))
+        );
+    }
+
+    /// Step away from the object and the altar comes back, rather than `E` going dead.
+    #[test]
+    fn stepping_off_an_object_returns_focus_to_the_altar() {
+        let player = Vec3::new(0.0, 3.25, 2.4);
+        let altar = Vec3::new(0.0, 2.02, 0.0);
+        let object = Vec3::new(0.0, 0.9, -1.6);
+        let entity = Entity::from_raw_u32(8).expect("valid test entity");
+
+        assert!(player.distance(object) > OBJECT_PICKUP_RANGE);
+        assert_eq!(
+            pick_target(player, altar, None, &[], &[(object, entity)]),
             Some(InteractionTarget::ManifestationAltar)
         );
     }

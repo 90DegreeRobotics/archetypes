@@ -137,6 +137,12 @@ pub enum ManifestationEvent {
     Success {
         prompt: String,
         detail: String,
+        /// Which artifact this run produced.
+        ///
+        /// Every manifestation is its own file now, so the reveal has to be told *which* one to
+        /// spawn. When this is `None` the run staged nothing new and the reveal falls back to
+        /// the legacy shared path - that is the staging-only capture lane, not a live run.
+        artifact_id: Option<String>,
     },
     Failure {
         prompt: String,
@@ -164,6 +170,8 @@ pub struct ManifestationState {
     pub current_stage_msg: String,
     pub error_message: String,
     pub active_artifact: Option<Entity>,
+    /// Which artifact is standing on the cushion, so `E` can take *that* one into the hand.
+    pub active_artifact_id: Option<String>,
     pub active_reference_panel: Option<Entity>,
     pub floating_symbol_entity: Option<Entity>,
     pub pedestal_charge: f32,
@@ -238,6 +246,7 @@ fn setup_manifestation_pedestal(
     state.current_stage_msg.clear();
     state.error_message.clear();
     state.active_artifact = None;
+    state.active_artifact_id = None;
     state.active_reference_panel = None;
     state.floating_symbol_entity = None;
     state.pedestal_charge = 0.0;
@@ -806,6 +815,7 @@ fn animate_pedestal_symbols(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_manifestation_input(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -862,6 +872,13 @@ fn handle_manifestation_input(
     match state.phase {
         ManifestationPhase::Idle | ManifestationPhase::Completed | ManifestationPhase::Failed => {
             if is_near && !encounter_state.is_open() && interaction_focus.0 == Some(InteractionTarget::ManifestationAltar) && actions.interact {
+                // While something is standing on the cushion, `E` means "take it", and
+                // `objects::take_from_altar` owns that. Opening the prompt here as well would
+                // make one press do two things - the exact bug the interaction arbiter exists to
+                // prevent - and would leave the altar as the only place a creation can ever be.
+                if state.active_artifact.is_some() {
+                    return;
+                }
                 state.phase = ManifestationPhase::Prompting;
                 state.prompt_buffer.clear();
                 if let Ok(mut cursor) = cursor_options.single_mut() {
@@ -1011,6 +1028,17 @@ fn find_import_script() -> Option<PathBuf> {
         return Some(fallback);
     }
     None
+}
+
+/// Scene path for a manifested artifact.
+///
+/// Per-artifact when the run staged its own file, and the legacy shared path only when it did
+/// not - which today means the staging-only capture lane replaying the last real run.
+fn artifact_scene_path(artifact_id: Option<&str>) -> String {
+    match artifact_id {
+        Some(id) => format!("{}#Scene0", crate::services::artifacts::asset_path_for(id)),
+        None => "scenes/manifested_artifact.glb#Scene0".to_string(),
+    }
 }
 
 fn target_glb_paths() -> Vec<PathBuf> {
@@ -1312,6 +1340,35 @@ fn dispatch_manifestation_worker(
                     let _ = std::fs::copy(&primary_output, other);
                 }
 
+                // The object's own file. Until now every manifestation overwrote one shared
+                // path, and Bevy caches by path - so two creations in the world were two views
+                // of whatever was made last, and a third silently changed both. Nothing could be
+                // carried, placed or duplicated until each one was its own asset.
+                let artifact_id = bundle
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "artifact".to_string());
+                let mut staged_id = None;
+                if let Some(dir) = crate::services::artifacts::manifested_assets_dir() {
+                    let own = dir.join(format!("{artifact_id}.glb"));
+                    if std::fs::create_dir_all(&dir).is_ok()
+                        && std::fs::copy(&primary_output, &own).is_ok()
+                    {
+                        match crate::services::artifacts::record_artifact(&artifact_id, &prompt) {
+                            Ok(_) => staged_id = Some(artifact_id.clone()),
+                            Err(error) => {
+                                // Reported, not swallowed. The object exists either way; what is
+                                // lost is its place in the library across restarts.
+                                eprintln!(
+                                    "[ManifestationSystem] staged {artifact_id}.glb but the \
+                                     library write failed: {error}"
+                                );
+                                staged_id = Some(artifact_id.clone());
+                            }
+                        }
+                    }
+                }
+
                 // Stage the exact 2D reference the mesh was reconstructed from,
                 // for the floor panel at the pedestal's foot. Best-effort: the
                 // object itself already succeeded, so a missing reference image
@@ -1337,6 +1394,7 @@ fn dispatch_manifestation_worker(
                 let _ = sender.send(ManifestationEvent::Success {
                     prompt,
                     detail: "Manifestation completed successfully".into(),
+                    artifact_id: staged_id,
                 });
             }
             Ok(out) => {
@@ -1418,7 +1476,11 @@ fn poll_manifestation_results(
                 state.current_stage_msg = message;
                 state.pedestal_charge = (pct as f32 / 100.0).clamp(0.0, 1.0);
             }
-            ManifestationEvent::Success { prompt, detail: _ } => {
+            ManifestationEvent::Success {
+                prompt,
+                detail: _,
+                artifact_id,
+            } => {
                 // SUCCESS: Despawn the phasing hourglass
                 if let Some(symbol) = state.floating_symbol_entity.take() {
                     commands.entity(symbol).despawn();
@@ -1497,7 +1559,7 @@ fn poll_manifestation_results(
                 // Spawn newly summoned object atop the velvet cushion (validated import)
                 let artifact_entity = commands
                     .spawn((
-                        SceneRoot(asset_server.load("scenes/manifested_artifact.glb#Scene0")),
+                        SceneRoot(asset_server.load(artifact_scene_path(artifact_id.as_deref()))),
                         Transform::from_xyz(p.x, cushion_y + MANIFESTATION_OBJECT_LIFT, p.z)
                             .with_scale(Vec3::splat(MANIFESTATION_OBJECT_SCALE)),
                         // One revolution in about eleven seconds: slow enough
@@ -1509,6 +1571,7 @@ fn poll_manifestation_results(
                     .id();
 
                 state.active_artifact = Some(artifact_entity);
+                state.active_artifact_id = artifact_id.clone();
 
                 // The same painting Chronos2 generated and fed to TripoSR, laid flat on the
                 // cushion **underneath** the object it became. The player reads the sequence
@@ -1686,6 +1749,7 @@ fn teardown_manifestation(
         commands.entity(entity).despawn();
     }
     state.active_artifact = None;
+    state.active_artifact_id = None;
     state.active_reference_panel = None;
     state.floating_symbol_entity = None;
     state.phase = ManifestationPhase::Idle;

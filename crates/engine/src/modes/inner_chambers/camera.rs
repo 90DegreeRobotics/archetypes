@@ -88,10 +88,14 @@ impl CameraController {
     pub fn locomotion_hud_text(&self) -> String {
         match self.mode {
             LocomotionMode::Walking => {
-                "INNER CASTLE  •  [STATUS: GROUND WALKING]\nWASD/L-Stick: Move & Strafe  •  Space/A: Jump (Double-Tap: Fly)  •  Mouse/R-Stick: Look  •  Esc/B: Menu".to_string()
+                "INNER CASTLE  -  [STATUS: GROUND WALKING]
+WASD/L-Stick: Move & Strafe  -  Space/A: Jump (Double-Tap: Fly)  -  Mouse/R-Stick: Look
+[E] Take  -  [F] Set down  -  [R] Duplicate  -  Esc/B: Menu".to_string()
             }
             LocomotionMode::Flying => {
-                "INNER CASTLE  •  [STATUS: FREE FLIGHT]\nWASD/L-Stick: Fly  •  Space/RT: Ascend  •  Shift/LT: Descend  •  3x Space/A: Land  •  Esc/B: Menu".to_string()
+                "INNER CASTLE  -  [STATUS: FREE FLIGHT]
+WASD/L-Stick: Fly  -  Space/RT: Ascend  -  Shift/LT: Descend  -  3x Space/A: Land
+[E] Take  -  [F] Set down  -  [R] Duplicate  -  Esc/B: Menu".to_string()
             }
         }
     }

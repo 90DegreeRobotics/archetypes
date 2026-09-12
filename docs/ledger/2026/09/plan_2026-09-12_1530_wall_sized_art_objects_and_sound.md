@@ -1,7 +1,9 @@
 # Plan: Wall-Sized Art, Player-Owned Objects, and Sound — 2026-09-12 15:30
 
 ## Status
-IN PROGRESS
+COMPLETED — 2026-09-12. All three decisions built: wall-sized per-work frames, authored sound
+effects with a real bus, and the object library with carry / place / duplicate. The swing is
+built as motion only; the Smash Room stays retired.
 
 ## Operator directive
 

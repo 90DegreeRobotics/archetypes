@@ -15,6 +15,7 @@ pub mod interaction;
 pub mod manifest_capture;
 pub mod manifestation;
 pub mod museum;
+pub mod objects;
 pub mod music;
 pub mod seed;
 pub mod settings_menu;
@@ -54,6 +55,7 @@ impl Plugin for InnerChambersPlugin {
                 interaction::InteractionPlugin,
                 manifestation::ManifestationPlugin,
                 museum::MuseumPlugin,
+                objects::ObjectsPlugin,
                 music::InnerCastleMusicPlugin,
                 settings_menu::SettingsMenuPlugin,
                 workshop::WorkshopPlugin,

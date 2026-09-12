@@ -185,6 +185,9 @@ pub(crate) fn drive_manifest_capture(
             let _ = channels.sender.send(ManifestationEvent::Success {
                 prompt: "staging geometry check (no live pipeline)".to_string(),
                 detail: "reveal replayed from the assets the last real run staged".to_string(),
+                // No id: this lane replays the legacy shared asset on purpose, because it is
+                // photographing presentation rather than exercising the pipeline.
+                artifact_id: None,
             });
             run.staged_at = Some(now);
             run.manifesting_seen = true;

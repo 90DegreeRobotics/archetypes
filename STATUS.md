@@ -5,6 +5,35 @@
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Objects the player owns: taken, carried, placed, duplicated (2026-09-12):** The blocker was
+  never hands. Manifestation wrote one fixed path and overwrote it every run, and Bevy caches by
+  asset path — so two creations in the world were two views of whatever was made last, and a
+  third silently changed both. `services/artifacts.rs` gives each manifestation its own file
+  (`assets/manifested/<id>.glb`) plus an append-only library and placement ledger, the third
+  instance of the pattern `build_intent.rs` and `encounter_memory.rs` already use: folded from
+  disk on read, and a pick-up recorded as a **withdrawal** rather than by deleting the row.
+  `modes/inner_chambers/objects.rs` adds carry (a held anchor parented to the camera, no arm
+  mesh), place (`F`), and duplicate (`R`, which keeps the object in hand so a room can be
+  filled by pressing one key). Placement needs no physics: `castle_surface_y` already answers
+  the floor height anywhere in the building and `clamp_inside_wall` answers whether something
+  may be there, so an object cannot be put anywhere the player could not have walked.
+  `E` at the altar now takes whatever is standing on the cushion — the altar's own handler
+  returns early while something is there, so one press cannot both take the object and reopen
+  the prompt. Three defects found by walking it: the pick-up range was measured in 3D from a
+  2.85m eye to a floor-level object, so the vertical alone exhausted it and nothing could ever
+  be picked up; the seeding tool mirrored `NeuroCognica/Archetypes` while `app_data_root()` ends
+  in `data`, so it wrote a ledger the game never read; and all three duplicates landed at one
+  offset, stacked inside each other. Evidence:
+  `artifacts/visual-proof/objects-2026-09-12/`, whose report records
+  `focus=PlacedObject` -> `carrying=yes` -> `objects_standing=4` from one pick-up and three
+  copies, on a real walk.
+- **Authored sound effects and a real SFX bus (2026-09-12):** Fifteen cues synthesised from
+  noise, decaying partials and filtered transients by `scripts/author_sound_effects.py` — no
+  sample pack, no licence, deterministic. `services/sfx.rs` mixes them at `master * sfx` times a
+  per-cue trim, and the settings menu's "(no SFX bus yet)" qualifier is gone. Footsteps are
+  spaced by ground actually covered *after* collision, not by a timer, so they stop when the
+  player is pressed against a wall. `SfxTally` is written into the walk report because a sound
+  that does not fire is indistinguishable from one that fires silently.
 - **Sixty Chronos2 works hang in the chambers with provenance placards (2026-09-12):**
   `scripts/stage_museum_art.py` copies selected works into `assets/museum/` at author time —
   **nothing reads `C:\chronos2` at runtime**, because the launcher already treats Chronos as

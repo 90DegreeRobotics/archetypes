@@ -1,4 +1,5 @@
 pub mod archetype_conversation;
+pub mod artifacts;
 pub mod build_intent;
 pub mod chronos;
 pub mod encounter_memory;

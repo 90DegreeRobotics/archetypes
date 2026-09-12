@@ -132,7 +132,25 @@ impl WalkCaptureRun {
             (29.0, Beat::Shot("09_standing_inside_the_chamber")),
             (29.4, Beat::Aim(0.10)),
             (30.2, Beat::Shot("10_chamber_vault")),
-            (30.8, Beat::Finish),
+            // Objects: walk up to one standing in the hall, take it, copy it three times, then
+            // set the original down. Every press is a real key through the real interaction
+            // arbiter, and the report counts the objects actually standing afterwards.
+            (31.0, Beat::Place(object_approach(), object_facing_yaw())),
+            (31.6, Beat::Aim(-0.30)),
+            (32.2, Beat::Shot("11_object_standing_in_the_hall")),
+            (32.6, Beat::Tap(KeyCode::KeyE)),
+            (33.4, Beat::Shot("12_object_in_hand")),
+            (34.0, Beat::Tap(KeyCode::KeyR)),
+            (34.6, Beat::Tap(KeyCode::KeyR)),
+            (35.2, Beat::Tap(KeyCode::KeyR)),
+            (35.8, Beat::Tap(KeyCode::KeyF)),
+            // Step back and look down: the copies are on the floor 2.2m ahead, and a shallow
+            // aim photographs the far wall over the top of them.
+            (36.2, Beat::Hold(&[KeyCode::KeyS])),
+            (36.45, Beat::Hold(&[])),
+            (36.8, Beat::Aim(-0.55)),
+            (37.6, Beat::Shot("13_duplicated_and_placed")),
+            (38.2, Beat::Finish),
         ];
 
         Some(Self {
@@ -165,6 +183,8 @@ pub(crate) fn drive_walk_capture(
     menu: Res<super::settings_menu::SettingsMenuState>,
     settings: Res<crate::services::settings::GameSettings>,
     sfx_tally: Res<crate::services::sfx::SfxTally>,
+    carried: Res<super::objects::Carried>,
+    placed_objects: Query<(), With<super::objects::PlacedObject>>,
     mut player: Query<(&mut Transform, &mut CameraController), With<PlayerCamera>>,
 ) {
     let now = time.elapsed_secs();
@@ -255,7 +275,7 @@ pub(crate) fn drive_walk_capture(
                 // The menu state and the selected row go in the report because a photograph
                 // of a menu does not say which menu it is, nor whether the keys reached it.
                 let line = format!(
-                    "{name}  pos=({:.2}, {:.2}, {:.2})  mode={:?}  focus={}  bench={}  plans={}                       mode_state={:?}  settings={}  row={}  music_volume={:.2}                       sfx_played={}  footsteps={}",
+                    "{name}  pos=({:.2}, {:.2}, {:.2})  mode={:?}  focus={}  bench={}  plans={}  mode_state={:?}  settings={}  row={}  music_volume={:.2}  sfx_played={}  footsteps={}  carrying={}  objects_standing={}",
                     transform.translation.x,
                     transform.translation.y,
                     transform.translation.z,
@@ -269,6 +289,8 @@ pub(crate) fn drive_walk_capture(
                     settings.volume_music,
                     sfx_tally.played,
                     sfx_tally.footsteps,
+                    if carried.is_carrying() { "yes" } else { "no" },
+                    placed_objects.iter().count(),
                 );
                 run.report.push(line);
             }
@@ -292,6 +314,7 @@ fn describe_focus(focus: &InteractionFocus) -> String {
     match focus.0 {
         Some(InteractionTarget::ArchitectWorkshop) => "ArchitectWorkshop".to_owned(),
         Some(InteractionTarget::ManifestationAltar) => "ManifestationAltar".to_owned(),
+        Some(InteractionTarget::PlacedObject(entity)) => format!("PlacedObject({entity})"),
         Some(InteractionTarget::Archetype(embodiment)) => {
             format!("Archetype({})", embodiment.archetype.theme().name)
         }
@@ -300,6 +323,16 @@ fn describe_focus(focus: &InteractionFocus) -> String {
 }
 
 /// Standing spot just short of the first tread, out on the ground promenade.
+/// Standing a short walk from the object `scripts/seed_object_demo.py` puts on the Council
+/// floor at (0, 0.4, 6.5), facing it down -Z.
+fn object_approach() -> Vec3 {
+    Vec3::new(0.0, castle::GROUND_Y + 2.85, 8.0)
+}
+
+fn object_facing_yaw() -> f32 {
+    0.0
+}
+
 /// Standing on the gallery deck a few metres in front of one museum arch, on foot.
 fn museum_threshold() -> Vec3 {
     let bearing = castle::museum_bay_bearing(0);
