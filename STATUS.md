@@ -5,6 +5,29 @@
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **The table is gone; the vortex lies in the floor (2026-09-12):** Operator directive was
+  "the table goes away. only the animated spinning disk gets put on the floor. the manifester
+  sits on the floor in the middle of the spinning disk. there is no table." The 2026-09-12
+  00:08 unit had read the earlier handoff as *restore the table* and put the altar on a
+  tabletop at y=3.17; that reading was wrong and is now corrected. A new Blender module
+  `scripts/author_portal_disc.py` exports `assets/scenes/portal_disc.glb` carrying exactly one
+  node, `Stargate_Portal` (142 tris, 7.2m across, flat, UV'd) — authored standalone rather than
+  spawning `table.glb` and hiding its other meshes, so nothing ships as an invisible mesh.
+  `chamber/portal.rs` is unmodified and still finds it by name. The disc lies at
+  `GROUND_Y + 0.008` (the 8mm clears the paving; coplanar would z-fight) and the altar stands
+  at `(0, GROUND_Y, 0)` in the middle of it. Collision dropped from the old 2.65m table
+  silhouette to a 1.45m altar footprint, and the altar's interaction anchor moved to its cushion
+  — measuring 3D distance from a 3.25m eye down to a floor-level base would have spent almost
+  the whole 3.2m range climbing. Also fixed here: the Council paving carried *both* defects the
+  gallery decks were fixed for on 2026-09-11 and had never been checked — its joint was an
+  angle (0.055 rad = a **1.32m hole** at the 24m radius, which is the radial spoke pattern in
+  the operator's screenshot) and its stones sat 0.062m proud of the collision surface. Tests:
+  **204 passing** (180 engine, 19 launcher, 5 windows identity), up from 201. Evidence:
+  `artifacts/visual-proof/portal-disc-2026-09-12/` and
+  `artifacts/visual-proof/portal-disc-walk-2026-09-12/`, whose `walk_report.txt` records a real
+  walking approach stopping at 1.57m with `focus=ManifestationAltar`, and a frame taken from
+  3.23m — on the disc — looking down at the altar. Geometry and reachability proof; not
+  aesthetic approval.
 - **Rotunda heart restored (2026-09-12):** The live Seed-of-Life castle now spawns the authored
   `table.glb` at the Council centre instead of the procedural inlay stand-in. Its real child
   `Stargate_Portal` is again found and animated by the already-registered `PortalPlugin`. The

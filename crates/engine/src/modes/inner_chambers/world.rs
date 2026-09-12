@@ -13,15 +13,17 @@ use bevy::render::render_resource::{Extent3d, PrimitiveTopology, TextureDimensio
 /// still travels through Bevy's normal-map lighting path.
 const FLOOR_TEXTURE_SIZE: usize = 256;
 
-/// The authored `table.glb` has feet at local z=-0.766 and its Stargate disc at local z=0.300.
-/// glTF's z-up asset becomes Bevy's y-up scene, so these values place the table on the current
-/// Council floor and make the disc the physical foundation for the manifestation altar.
-const COUNCIL_TABLE_SCALE: f32 = 2.6;
-const COUNCIL_TABLE_FOOT_LOCAL_Z: f32 = -0.766;
-const COUNCIL_TABLE_PORTAL_LOCAL_Z: f32 = 0.300;
-const COUNCIL_TABLE_ROOT_Y: f32 = GROUND_Y - COUNCIL_TABLE_FOOT_LOCAL_Z * COUNCIL_TABLE_SCALE;
-const COUNCIL_TABLE_PORTAL_Y: f32 =
-    COUNCIL_TABLE_ROOT_Y + COUNCIL_TABLE_PORTAL_LOCAL_Z * COUNCIL_TABLE_SCALE;
+/// Operator directive, 2026-09-12: there is no table. The spinning vortex lies on the Council
+/// floor and the manifestation altar stands on the floor in the middle of it.
+///
+/// `portal_disc.glb` (`scripts/author_portal_disc.py`) carries exactly one node, `Stargate_Portal`,
+/// which `chamber/portal.rs` finds by name and spins. The disc is authored flat with its origin
+/// at its own centre, so it is seated by translation alone.
+///
+/// The 8mm lift clears the flagstone paving, whose top face is `GROUND_Y` exactly; laid at the
+/// same height the two coplanar surfaces would z-fight across the whole disc.
+pub(super) const COUNCIL_PORTAL_DISC_RADIUS: f32 = 3.6;
+const COUNCIL_PORTAL_DISC_Y: f32 = GROUND_Y + 0.008;
 
 /// Archetype niche bay geometry — shared by every figure's chamber so the five bays
 /// read as one coherent architectural language, distinguished only by stone tint,
@@ -267,26 +269,33 @@ fn setup_inner_world(
         Name::new("UnderCastle_AbyssGlow"),
     ));
 
-    // Center Council circle: the authored Council table is the actual centrepiece. Its child
-    // `Stargate_Portal` is bound and animated by `PortalPlugin`; do not replace it with a
-    // procedural stand-in or the real vortex disappears from the live castle again.
+    // Center Council circle: the vortex disc lies in the floor and the manifestation altar
+    // stands on the floor at its centre. `Stargate_Portal` is bound and animated by
+    // `PortalPlugin`; do not replace it with a procedural stand-in or the real vortex
+    // disappears from the live castle again, which is exactly what happened once before.
     spawn_castle_platform(&mut commands, &mut meshes, stone.clone(), trim.clone(), Vec3::ZERO, COUNCIL_RADIUS, "Council");
     commands.spawn((
-        SceneRoot(asset_server.load("scenes/table.glb#Scene0")),
-        Transform::from_xyz(0.0, COUNCIL_TABLE_ROOT_Y, 0.0)
-            .with_scale(Vec3::splat(COUNCIL_TABLE_SCALE)),
+        SceneRoot(asset_server.load("scenes/portal_disc.glb#Scene0")),
+        Transform::from_xyz(0.0, COUNCIL_PORTAL_DISC_Y, 0.0),
         InnerWorldElement,
-        Name::new("RotundaCouncilTable"),
+        Name::new("CouncilFloorPortalDisc"),
     ));
+    // Low and close: the vortex now lies in the floor rather than at chest height, so a light
+    // seated where the tabletop used to be would leave the disc itself unlit.
     commands.spawn((
         PointLight { intensity: 75_000.0, range: 12.0, color: Color::srgb(0.25, 0.70, 1.0), shadows_enabled: false, ..default() },
-        Transform::from_xyz(0.0, COUNCIL_TABLE_PORTAL_Y + 0.6, 0.0),
+        Transform::from_xyz(0.0, COUNCIL_PORTAL_DISC_Y + 1.4, 0.0),
         InnerWorldElement,
         Name::new("CouncilPortalLight"),
     ));
     debug_assert!(
-        (MANIFESTATION_PEDESTAL_POS.y - COUNCIL_TABLE_PORTAL_Y).abs() < 0.01,
-        "the manifestation altar must stand on the Council table's real portal disc"
+        (MANIFESTATION_PEDESTAL_POS.y - GROUND_Y).abs() < 0.01,
+        "the manifestation altar must stand on the Council floor, not on furniture"
+    );
+    debug_assert!(
+        Vec2::new(MANIFESTATION_PEDESTAL_POS.x, MANIFESTATION_PEDESTAL_POS.z).length()
+            < COUNCIL_PORTAL_DISC_RADIUS,
+        "the altar must stand inside the vortex disc, not beside it"
     );
     // Operator decision (2026-09-11): Hide satellite rooms, furniture, and all character
     // figures except the Jester for now. The rooms may be relocated into arcade archways.
@@ -358,7 +367,16 @@ fn spawn_castle_platform(commands: &mut Commands, meshes: &mut Assets<Mesh>, sto
     commands.spawn((Mesh3d(meshes.add(Cylinder::new(radius, 0.8))), MeshMaterial3d(stone.clone()), Transform::from_translation(center), InnerWorldElement, Name::new(format!("{name}_StoneSlabPlatform"))));
     // Broad, individually separated flagstones make the walking surface read as
     // masonry, not as a single GPU-smooth disc.
-    commands.spawn((Mesh3d(meshes.add(build_radial_flagstone_mesh(0.58, radius - 0.58, 0.052, 16, 0.055))), MeshMaterial3d(stone.clone()), Transform::from_translation(center + Vec3::Y * 0.41), InnerWorldElement, Name::new(format!("{name}_LargeStoneFloorSlabs"))));
+    //
+    // Two defects fixed here, both diagnosed in the 2026-09-11 handoff and neither acted on:
+    //
+    // 1. The gap argument is an *angle*. At 0.055 rad and the Council's 24m radius that was a
+    //    1.32m hole between stones — the radial spoke pattern visible in the operator's
+    //    screenshot, not a mortar line. `joint_angle` states the joint in metres instead.
+    // 2. The mesh raises its stones above its own origin, so placed at 0.41 with a 0.052m
+    //    thickness the stone tops stood at 0.462 while collision put the player's feet on
+    //    `GROUND_Y` (0.4) — the same "buried to the shin" bug the gallery decks had.
+    commands.spawn((Mesh3d(meshes.add(build_radial_flagstone_mesh(0.58, radius - 0.58, FLAGSTONE_THICKNESS, 16, joint_angle(0.05, radius)))), MeshMaterial3d(stone.clone()), Transform::from_translation(center + Vec3::Y * (GROUND_Y - FLAGSTONE_THICKNESS)), InnerWorldElement, Name::new(format!("{name}_LargeStoneFloorSlabs"))));
     // The perimeter is a course of separate brick blocks.  The torus remains as
     // its shadowed bedding joint, while the blocks give it a visible hand-laid edge.
     commands.spawn((Mesh3d(meshes.add(Torus::new(radius - 0.34, radius + 0.18))), MeshMaterial3d(trim.clone()), Transform::from_translation(center + Vec3::Y * 0.42), InnerWorldElement, Name::new(format!("{name}_BrickEdgeBedding"))));
@@ -560,6 +578,10 @@ fn spawn_architect_workshop(
 fn joint_angle(metres: f32, radius: f32) -> f32 {
     metres / radius
 }
+
+/// Paving thickness, shared so a floor's stone tops and the height collision puts the player's
+/// feet on cannot drift apart again.
+pub(super) const FLAGSTONE_THICKNESS: f32 = 0.052;
 
 fn spawn_castle_ascent(
     commands: &mut Commands,
@@ -1989,18 +2011,53 @@ mod tests {
         assert_eq!(normal.texture_descriptor.format, TextureFormat::Rgba8Unorm);
     }
 
+    /// Operator directive, 2026-09-12: the table goes away, the spinning disc lies on the
+    /// floor, and the altar stands on the floor in the middle of it. The previous unit read
+    /// the same ask as "restore the table" and put the altar on a tabletop at y=3.17; this
+    /// pins the arrangement that was actually wanted.
     #[test]
-    fn manifestation_altar_stands_on_the_measured_council_table_portal() {
+    fn manifestation_altar_stands_on_the_floor_at_the_centre_of_the_vortex_disc() {
         assert!(
-            (MANIFESTATION_PEDESTAL_POS.y - COUNCIL_TABLE_PORTAL_Y).abs() < 0.01,
-            "altar y={} must match table portal y={}",
-            MANIFESTATION_PEDESTAL_POS.y,
-            COUNCIL_TABLE_PORTAL_Y
+            (MANIFESTATION_PEDESTAL_POS.y - GROUND_Y).abs() < 0.01,
+            "altar y={} must rest on the Council floor at y={GROUND_Y}",
+            MANIFESTATION_PEDESTAL_POS.y
         );
         assert_eq!(MANIFESTATION_PEDESTAL_POS.xz(), Vec2::ZERO);
         assert!(
-            COUNCIL_TABLE_ROOT_Y > GROUND_Y,
-            "the table root must be raised so its authored feet rest on the Council floor"
+            COUNCIL_PORTAL_DISC_Y > GROUND_Y,
+            "the disc must clear the paving it lies on, or the two coplanar surfaces z-fight"
+        );
+        assert!(
+            COUNCIL_PORTAL_DISC_Y - GROUND_Y < 0.05,
+            "the disc is floor inlay; lifting it {}m would read as a step, not a floor",
+            COUNCIL_PORTAL_DISC_Y - GROUND_Y
+        );
+        assert!(
+            COUNCIL_PORTAL_DISC_RADIUS > 1.20,
+            "the disc must be wider than the altar's 1.20m base or the altar covers the vortex              instead of standing in the middle of it"
+        );
+    }
+
+    /// The Council paving had both of the defects the gallery decks were fixed for on
+    /// 2026-09-11 and was never checked. The joint is specified as an angle by the mesh
+    /// builder, so at 24m the old 0.055 rad gap was a 1.32m hole, and the stones sat proud of
+    /// the height collision uses.
+    #[test]
+    fn council_paving_joints_are_mortar_lines_and_its_top_face_is_the_walking_surface() {
+        let joint_metres = joint_angle(0.05, COUNCIL_RADIUS) * COUNCIL_RADIUS;
+        assert!(
+            (joint_metres - 0.05).abs() < 1e-4,
+            "joint came out {joint_metres}m at the Council radius, not the 0.05m specified"
+        );
+        // What the old literal produced at this radius, kept as the thing being ruled out.
+        assert!(
+            0.055 * COUNCIL_RADIUS > 1.3,
+            "sanity: the angle-valued joint really was over a metre wide here"
+        );
+        let paving_origin_y = GROUND_Y - FLAGSTONE_THICKNESS;
+        assert!(
+            ((paving_origin_y + FLAGSTONE_THICKNESS) - GROUND_Y).abs() < 1e-6,
+            "stone tops must land exactly on GROUND_Y or the player wades through the paving"
         );
     }
 

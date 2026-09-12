@@ -14,7 +14,9 @@ use crate::services::gamepad_input;
 
 use super::camera::PlayerCamera;
 use super::encounters::{ArchetypeEmbodiment, EncounterState, ENCOUNTER_RANGE};
-use super::manifestation::{ManifestationPhase, ManifestationState, MANIFESTATION_PEDESTAL_POS};
+use super::manifestation::{
+    altar_interaction_anchor, ManifestationPhase, ManifestationState,
+};
 use super::workshop::WorkshopState;
 use super::world::ArchitectWorkshopTable;
 use super::InnerChambersState;
@@ -145,7 +147,7 @@ fn resolve_focus(
         .collect();
     focus.0 = pick_target(
         camera.translation,
-        MANIFESTATION_PEDESTAL_POS,
+        altar_interaction_anchor(),
         workshop_table.iter().next().map(|transform| transform.translation),
         &embodiments,
     );

@@ -10,7 +10,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 pub struct CameraPlugin;
 
 use super::castle;
-use super::manifestation::MANIFESTATION_PEDESTAL_POS;
+use super::manifestation::{MANIFESTATION_ALTAR_COLLISION_RADIUS, MANIFESTATION_PEDESTAL_POS};
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
@@ -187,11 +187,10 @@ fn character_obstacles() -> [(Vec2, f32); 2] {
         (Vec2::new(10.2, 6.2), 1.5), // Jester Council host
         (
             Vec2::new(MANIFESTATION_PEDESTAL_POS.x, MANIFESTATION_PEDESTAL_POS.z),
-            // The altar base is only 1.20m across, but it stands on the 2.56m-radius Council
-            // table. Colliding with the full furniture silhouette stops a walking player from
-            // clipping through the tabletop just to reach an otherwise-valid altar interaction.
-            2.65,
-        ), // Active table/altar centre; derived from its shared world position.
+            // The altar's own footprint. There is no table around it any more, so this is the
+            // only solid thing at the centre; the vortex disc is floor inlay and is walked on.
+            MANIFESTATION_ALTAR_COLLISION_RADIUS,
+        ), // Altar centre; both position and radius derived from the shared constants.
     ]
 }
 
@@ -492,9 +491,44 @@ mod tests {
             obstacle,
             Vec2::new(MANIFESTATION_PEDESTAL_POS.x, MANIFESTATION_PEDESTAL_POS.z)
         );
+    }
+
+    /// The operator asked to stand in the middle of the spinning disc. A collision radius
+    /// sized to the old table would have fenced the player off almost all of it, so this pins
+    /// the altar's footprint between the stone it has to stop them hitting and the disc it
+    /// must not swallow.
+    #[test]
+    fn altar_collision_clears_its_base_without_fencing_off_the_vortex_disc() {
+        let radius = character_obstacles()[1].1;
+        assert_eq!(radius, MANIFESTATION_ALTAR_COLLISION_RADIUS);
         assert!(
-            character_obstacles()[1].1 >= 2.6,
-            "the collision radius must cover the 2.6m-scale Council table, not only the altar base"
+            radius > 1.20,
+            "collision must clear the 1.20m base plinth or the player walks into the stone"
+        );
+        assert!(
+            radius < super::super::world::COUNCIL_PORTAL_DISC_RADIUS,
+            "a radius at or beyond the {}m disc would stop the player standing on the vortex at all",
+            super::super::world::COUNCIL_PORTAL_DISC_RADIUS
+        );
+    }
+
+    /// Walking up to the altar has to actually reach it. `pick_target` measures a real 3D
+    /// distance from the eye, so the vertical climb from the cushion to a 3.25m standing eye
+    /// height eats into the same budget the horizontal approach needs.
+    #[test]
+    fn a_player_stopped_by_altar_collision_is_still_inside_interaction_range() {
+        let radius = character_obstacles()[1].1;
+        let eye = Vec3::new(
+            MANIFESTATION_PEDESTAL_POS.x,
+            castle::GROUND_Y + 2.85,
+            MANIFESTATION_PEDESTAL_POS.z + radius,
+        );
+        let anchor = super::super::manifestation::altar_interaction_anchor();
+        assert!(
+            eye.distance(anchor) <= super::super::interaction::ALTAR_INTERACTION_RANGE,
+            "stopped at {radius}m the eye is {:.3}m from the cushion, beyond the {}m reach",
+            eye.distance(anchor),
+            super::super::interaction::ALTAR_INTERACTION_RANGE
         );
     }
 }

@@ -31,12 +31,31 @@ use std::time::Duration;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// The pedestal stands at the Council-table centre, directly on its real animated Stargate disc.
-/// See the matching measured table transform in `world.rs`: local disc z=0.300, feet z=-0.766,
-/// 2.6x table scale, current floor top y=0.4.
-pub const MANIFESTATION_PEDESTAL_POS: Vec3 = Vec3::new(0.0, 3.1716, 0.0);
+/// The altar stands on the Council floor at the exact centre of the spinning vortex disc, which
+/// lies in the floor around it. `castle::GROUND_Y` is the floor top, and the base plinth's own
+/// geometry starts at this y, so the altar rests on the stone rather than floating over it.
+///
+/// Operator directive, 2026-09-12: "there is no table."
+pub const MANIFESTATION_PEDESTAL_POS: Vec3 = Vec3::new(0.0, super::castle::GROUND_Y, 0.0);
 pub const MANIFESTATION_CUSHION_HEIGHT: f32 = 1.62;
 pub const MANIFESTATION_HOVER_Y: f32 = 2.40;
+
+/// The altar's collision footprint: the 1.20m base plinth plus enough clearance that a walking
+/// player stops with their body clear of the stone rather than intersecting its rim.
+///
+/// It used to be 2.65m, sized to the whole Council table's silhouette. With the table gone that
+/// radius would reserve a ring of empty floor the player could not enter — and the vortex the
+/// operator asked to stand in the middle of is 3.6m across, so a 2.65m wall would have kept them
+/// off almost all of it.
+pub const MANIFESTATION_ALTAR_COLLISION_RADIUS: f32 = 1.45;
+
+/// What the player actually interacts with is the cushion on top of the altar, not the floor
+/// under it. `pick_target` measures a true 3D distance, so anchoring at the base would spend
+/// almost the whole 3.2m budget climbing from the floor to a 3.25m eye height and leave barely
+/// a metre of reach. The Architect's bench already anchors at its worktop for the same reason.
+pub fn altar_interaction_anchor() -> Vec3 {
+    MANIFESTATION_PEDESTAL_POS + Vec3::Y * MANIFESTATION_CUSHION_HEIGHT
+}
 
 pub struct ManifestationPlugin;
 

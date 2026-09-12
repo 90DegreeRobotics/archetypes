@@ -37,6 +37,11 @@ enum Beat {
     Tap(KeyCode),
     /// Reposition and re-aim, to start a second on-foot leg somewhere else in the castle.
     Place(Vec3, f32),
+    /// Re-pitch in place, without moving the player. The centrepiece now lies on the floor
+    /// rather than standing at chest height, so a level-aimed frame photographs the far wall
+    /// and proves nothing about what the player just walked up to. This changes where the
+    /// camera looks, never where the player is, so the walk stays a real walk.
+    Aim(f32),
     Shot(&'static str),
     Finish,
 }
@@ -74,23 +79,32 @@ impl WalkCaptureRun {
             (4.6, Beat::Hold(&[KeyCode::KeyW])),
             (6.2, Beat::Hold(&[])),
             (6.8, Beat::Shot("01_approaching_center_portal")),
+            // Back off a couple of steps, still walking, and look down at the floor the player
+            // is standing on: the vortex disc with the altar in the middle of it.
+            // Walk speed is ~6.4 m/s, and the disc is only 3.6m in radius, so this step back
+            // is deliberately short: hold any longer and the frame is taken from off the disc,
+            // which is not what its filename would then be claiming.
+            (7.2, Beat::Hold(&[KeyCode::KeyS])),
+            (7.45, Beat::Hold(&[])),
+            (7.9, Beat::Aim(-0.52)),
+            (8.5, Beat::Shot("01b_standing_on_the_vortex_disc")),
             // Turn toward the Jester Council host at (10.2, 0.42, 6.2)
-            (7.5, Beat::Place(Vec3::new(6.0, 3.25, 9.0), -0.85)),
-            (8.3, Beat::Shot("02_facing_jester_council_host")),
+            (9.5, Beat::Place(Vec3::new(6.0, 3.25, 9.0), -0.85)),
+            (10.3, Beat::Shot("02_facing_jester_council_host")),
             // Walk up to the Jester
-            (8.8, Beat::Hold(&[KeyCode::KeyW])),
-            (10.5, Beat::Hold(&[])),
-            (11.2, Beat::Shot("03_standing_before_jester")),
+            (10.8, Beat::Hold(&[KeyCode::KeyW])),
+            (12.5, Beat::Hold(&[])),
+            (13.2, Beat::Shot("03_standing_before_jester")),
             // Second leg: climb the first flight of the perimeter ascent on foot. The flight
             // sweeps 14.6°, whose chord deviates only ~0.9m from the arc across an 8m wide
             // stair, so a straight heading keeps the player on the treads for a whole storey.
             // Everything here is the real locomotion system on real steps.
-            (12.0, Beat::Place(stair_approach(), stair_chord_yaw())),
-            (13.0, Beat::Shot("04_foot_of_the_ascent")),
-            (13.5, Beat::Hold(&[KeyCode::KeyW])),
-            (18.5, Beat::Hold(&[])),
-            (19.2, Beat::Shot("05_one_storey_climbed")),
-            (19.8, Beat::Finish),
+            (14.0, Beat::Place(stair_approach(), stair_chord_yaw())),
+            (15.0, Beat::Shot("04_foot_of_the_ascent")),
+            (15.5, Beat::Hold(&[KeyCode::KeyW])),
+            (20.5, Beat::Hold(&[])),
+            (21.2, Beat::Shot("05_one_storey_climbed")),
+            (21.8, Beat::Finish),
         ];
 
         Some(Self {
@@ -196,6 +210,11 @@ pub(crate) fn drive_walk_capture(
                 controller.pitch = -0.05;
                 controller.is_grounded = true;
                 controller.velocity_y = 0.0;
+                transform.rotation = Quat::from_axis_angle(Vec3::Y, controller.yaw)
+                    * Quat::from_axis_angle(Vec3::X, controller.pitch);
+            }
+            Beat::Aim(pitch) => {
+                controller.pitch = pitch;
                 transform.rotation = Quat::from_axis_angle(Vec3::Y, controller.yaw)
                     * Quat::from_axis_angle(Vec3::X, controller.pitch);
             }
