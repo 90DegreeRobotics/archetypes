@@ -1,0 +1,13 @@
+start  pos=Vec3(0.0, 3.25, 12.0) mode=Walking
+00_council_entrance_standing  pos=(0.00, 3.25, 12.00)  mode=Walking  focus=none  bench=Closed  plans=0                       mode_state=Navigating  settings=closed  row=Mouse look sensitivity  music_volume=1.00
+01_approaching_center_portal  pos=(0.00, 3.25, 1.48)  mode=Walking  focus=ManifestationAltar  bench=Closed  plans=0                       mode_state=Navigating  settings=closed  row=Mouse look sensitivity  music_volume=1.00
+01b_standing_on_the_vortex_disc  pos=(0.00, 3.25, 3.12)  mode=Walking  focus=none  bench=Closed  plans=0                       mode_state=Navigating  settings=closed  row=Mouse look sensitivity  music_volume=1.00
+02_facing_jester_council_host  pos=(6.00, 3.25, 9.00)  mode=Walking  focus=none  bench=Closed  plans=0                       mode_state=Navigating  settings=closed  row=Mouse look sensitivity  music_volume=1.00
+03_standing_before_jester  pos=(13.21, 3.25, 1.56)  mode=Walking  focus=none  bench=Closed  plans=0                       mode_state=Navigating  settings=closed  row=Mouse look sensitivity  music_volume=1.00
+04_foot_of_the_ascent  pos=(-3.24, 3.35, -107.95)  mode=Walking  focus=none  bench=Closed  plans=0                       mode_state=Navigating  settings=closed  row=Mouse look sensitivity  music_volume=1.00
+05_one_storey_climbed  pos=(29.06, 15.35, -103.80)  mode=Walking  focus=none  bench=Closed  plans=0                       mode_state=Navigating  settings=closed  row=Mouse look sensitivity  music_volume=1.00
+06_settings_menu_open  pos=(29.06, 15.35, -103.80)  mode=Walking  focus=none  bench=Closed  plans=0                       mode_state=Navigating  settings=open  row=Mouse look sensitivity  music_volume=1.00
+07_settings_menu_slider_moved  pos=(29.06, 15.35, -103.80)  mode=Walking  focus=none  bench=Closed  plans=0                       mode_state=Navigating  settings=open  row=Ambient music volume  music_volume=1.00
+08_museum_arch_from_the_gallery  pos=(108.00, 15.35, 0.00)  mode=Walking  focus=none  bench=Closed  plans=0                       mode_state=Navigating  settings=closed  row=Ambient music volume  music_volume=1.00
+09_standing_inside_the_chamber  pos=(113.20, 15.35, 0.00)  mode=Walking  focus=none  bench=Closed  plans=0                       mode_state=Navigating  settings=closed  row=Ambient music volume  music_volume=1.00
+10_chamber_vault  pos=(113.20, 15.35, 0.00)  mode=Walking  focus=none  bench=Closed  plans=0                       mode_state=Navigating  settings=closed  row=Ambient music volume  music_volume=1.00

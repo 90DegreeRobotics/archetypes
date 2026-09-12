@@ -1,7 +1,20 @@
 # Plan: Walkable Museum Arches — 2026-09-11 21:30
 
 ## Status
-PENDING
+COMPLETED — 2026-09-12
+
+Phases 1-4 shipped. Twelve chambers, sixty works hung with provenance placards, chamber
+lighting in place. What this plan proposed and what was built differ in two places, both
+recorded here rather than quietly:
+
+- The chamber is 9.0m deep as planned, but its hanging positions are **computed in `castle.rs`**
+  rather than authored into the GLB, because `castle.rs` is the only place dimensions live in
+  this repo and a transform baked into an asset would be a second source of truth that could
+  drift from the collision that has to agree with it.
+- The vista exclusion is read from `manifest.json`'s `render_context.vista`, not from
+  `scene.inspection.json` as Chronos2's own code does: in this library that file carries no
+  `vista` key at all, so reading only the documented location would have excluded nothing while
+  appearing to work.
 
 ## Goal
 

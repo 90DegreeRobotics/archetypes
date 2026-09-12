@@ -245,7 +245,11 @@ pub fn museum_hanging_positions(chamber: usize) -> [(Vec3, f32); HANGINGS_PER_CH
     // kit modules use.
     let left_yaw = wall_module_yaw(bearing) + FRAC_PI_2;
     let right_yaw = wall_module_yaw(bearing) - FRAC_PI_2;
-    let back_yaw = wall_module_yaw(bearing) + PI;
+    // No offset. `wall_module_yaw` already sends local +Z to the wall's *inward* normal, which
+    // for the back wall is -radial — exactly where a picture on it should face. Adding PI, as
+    // the side walls' +/-90 degrees might suggest, turns it to face into the masonry, and the
+    // picture is then backface-culled and the frame shows its own backing board.
+    let back_yaw = wall_module_yaw(bearing);
 
     [
         (radial * near + tangent * -lateral + centre, left_yaw),
@@ -673,6 +677,57 @@ mod tests {
         // Evenly spaced around the circle.
         let step = museum_bay_bearing(1) - museum_bay_bearing(0);
         assert!((step - TAU / 12.0).abs() < 1e-5, "chambers are {step} rad apart");
+    }
+
+    /// Every hung work has to face into the room it hangs in. A frame facing the masonry is
+    /// backface-culled, so the painting is invisible and the frame shows its backing board —
+    /// which is exactly what the back wall did until its yaw was corrected.
+    #[test]
+    fn every_hanging_faces_into_its_own_chamber() {
+        for chamber in 0..total_museum_chambers() {
+            let bearing = museum_bay_bearing(chamber);
+            let radial = Vec3::new(bearing.cos(), 0.0, bearing.sin());
+            let centre = radial * (castle_inner_face() + MUSEUM_CHAMBER_DEPTH * 0.5)
+                + Vec3::Y * (museum_chamber_floor_y() + HANGING_CENTRE_HEIGHT);
+
+            for (index, (position, yaw)) in
+                museum_hanging_positions(chamber).into_iter().enumerate()
+            {
+                // `Quat::from_rotation_y(yaw)` sends local +Z to (sin yaw, 0, cos yaw), and the
+                // frame module is authored facing its own local +Z.
+                let facing = Vec3::new(yaw.sin(), 0.0, yaw.cos());
+                let toward_room = (centre - position).normalize();
+                assert!(
+                    facing.dot(toward_room) > 0.5,
+                    "chamber {chamber} hanging {index} faces away from the room                      (dot {:.3})",
+                    facing.dot(toward_room)
+                );
+            }
+        }
+    }
+
+    /// A work hung outside its own chamber would float in the masonry.
+    #[test]
+    fn every_hanging_sits_inside_the_chamber_it_belongs_to() {
+        for chamber in 0..total_museum_chambers() {
+            for (index, (position, _)) in museum_hanging_positions(chamber).into_iter().enumerate()
+            {
+                let flat = Vec2::new(position.x, position.z);
+                assert!(
+                    inside_museum_chamber(flat),
+                    "chamber {chamber} hanging {index} is at {:.1}m, outside its own chamber",
+                    flat.length()
+                );
+                assert!(
+                    position.y > museum_chamber_floor_y(),
+                    "chamber {chamber} hanging {index} is below its own floor"
+                );
+            }
+        }
+        assert_eq!(
+            all_hanging_positions().len(),
+            total_museum_chambers() * HANGINGS_PER_CHAMBER
+        );
     }
 
     /// The whole point: a player walking at a museum bearing passes the wall face, and one

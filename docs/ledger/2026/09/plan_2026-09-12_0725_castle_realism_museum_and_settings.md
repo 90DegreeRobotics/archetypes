@@ -1,7 +1,9 @@
 # Plan: Castle Realism, Museum Arches, and the Settings Menu — 2026-09-12 07:25
 
 ## Status
-IN PROGRESS
+IN PROGRESS — Phases A, B, C, D, E and F shipped 2026-09-12. Remaining: operator verdict on the
+stone progression, and the live in-game manifestation run (the CLI pipeline completes in ~5
+minutes standalone; driven from inside the running game it produced no stage output in 25).
 
 ## Operator directive (verbatim intent, 2026-09-12 morning)
 

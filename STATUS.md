@@ -5,6 +5,26 @@
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Sixty Chronos2 works hang in the chambers with provenance placards (2026-09-12):**
+  `scripts/stage_museum_art.py` copies selected works into `assets/museum/` at author time —
+  **nothing reads `C:\chronos2` at runtime**, because the launcher already treats Chronos as
+  optional and a buyer's machine has no such directory. Of 147 run directories: 14 have no
+  usable image, 7 are blank or all-black renders (a mechanical variation test, not a judgement
+  about subject), 126 eligible, 60 staged — one per hanging position. Chronos2's own
+  `title_from_prompt` and its `museum_wall` exclusion are carried across rather than
+  rediscovered; note the exclusion had to read `manifest.json`'s `render_context.vista`, since
+  `scene.inspection.json` carries no `vista` key in this library and reading only the documented
+  location would have excluded nothing while appearing to work. Placards are rendered to images
+  at author time and state only what the bundle recorded — 58 of 60 carry a provenance hash and
+  the other 2 omit that line rather than inventing one. `scripts/author_art_frame.py` is the
+  fifth kit module (652 tris): gilt moulding, backing board, a 4:3 canvas and a placard plate,
+  with the canvas and placard deliberately **excluded** from the kit's world-scaled unwrap so
+  their 0..1 UVs map an image onto them once. Two defects its own export check caught: the
+  canvas came out 1.6x1.0 instead of 4:3 because the plane's unused Z axis was being scaled
+  instead of its Y, and both image planes faced *into* the wall — `R_x(-90)` sends the normal to
+  +Y, so every painting was backface-culled and each frame showed its own backing board. A third
+  was caught by a new test: the back-wall hanging's yaw had `+ PI` added to it, facing it into
+  the masonry. Evidence: `artifacts/visual-proof/museum-art-2026-09-12/`.
 - **Twelve arches are now doorways into walkable chambers (2026-09-12):** Per
   `docs/ledger/2026/09/plan_2026-09-11_2130_museum_arches.md`, 12 of the ground gallery's 72
   bays (every 6th, 30 degrees apart) open into rooms cut 9m into the 12m wall, leaving 3m of

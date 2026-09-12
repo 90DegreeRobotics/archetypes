@@ -182,6 +182,7 @@ fn setup_inner_world(
     mut clear: ResMut<ClearColor>,
     mut next_state: ResMut<NextState<InnerChambersState>>,
     asset_server: Res<AssetServer>,
+    museum: Option<Res<super::museum::Museum>>,
 ) {
     clear.0 = Color::srgb(0.012, 0.014, 0.020);
     // A hall 240m across and 126m to the vault cannot be lit the way a single room was: the
@@ -332,7 +333,7 @@ fn setup_inner_world(
         }
     }
 
-    spawn_castle_ascent(&mut commands, &mut meshes, &mut materials, &asset_server, pale_stone.clone(), pale_trim.clone());
+    spawn_castle_ascent(&mut commands, &mut meshes, &mut materials, &asset_server, museum.as_deref(), pale_stone.clone(), pale_trim.clone());
 
     // One enclosing wall contains the castle without restoring a flat arena floor.
     commands.spawn((
@@ -631,6 +632,7 @@ fn spawn_castle_ascent(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     asset_server: &AssetServer,
+    museum: Option<&super::museum::Museum>,
     stone: Handle<StandardMaterial>,
     trim: Handle<StandardMaterial>,
 ) {
@@ -774,6 +776,9 @@ fn spawn_castle_ascent(
 
         if level == MUSEUM_LEVEL {
             spawn_museum_chambers(commands, asset_server);
+            if let Some(museum) = museum {
+                super::museum::spawn_hung_works(commands, asset_server, museum);
+            }
         }
 
         spawn_ascent_flight(commands, asset_server, level);
