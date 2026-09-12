@@ -5,6 +5,27 @@
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **The settings menu exists (2026-09-12):** Specified in full in
+  `GAMEPAD_AND_SETTINGS_GUIDE.md` and never built; two prior units left it. `Esc` (or `B`, or
+  `Start`) now opens it — the HUD had been advertising "Esc/B: Menu" the whole time `Esc`
+  actually ejected the player out of the castle, so the label was lying and a mis-hit dumped
+  you out of the world. Leaving is now an explicit `Leave the Inner Castle` row, and
+  `extraction.rs` watches that request rather than the key, so the key that opens the menu can
+  never also close the mode in the same frame. Ten rows: seven sliders, reset, resume, leave;
+  keyboard and gamepad; every slider's range pinned by test against `GameSettings::clamped` so
+  a value the menu allows cannot be silently clamped away on the next load. **Two of the four
+  volume sliders now reach real audio**: music was a hard-coded 0.22 that ignored the setting
+  and is now `master x music` against that reference mix, applied live rather than on next
+  launch; Council voices likewise. There is no sound-effects bus in the castle at all, so that
+  row is labelled `Sound effects volume (no SFX bus yet)` in game rather than pretending — a
+  test holds the qualifier until a bus exists. Also fixed: the menu was first drawn with block
+  and arrow glyphs the bundled font does not carry, which render as empty boxes (the same
+  defect is visible in the HUD's own decorative marks in every screenshot this project has
+  taken); every string it renders is now ASCII and pinned by test. Evidence:
+  `artifacts/visual-proof/settings-menu-2026-09-12/`, whose walk report shows `Esc` opening the
+  menu with `mode_state=Navigating` (so it did not eject), four Down presses landing on
+  `Ambient music volume`, and the value moving 0.80 -> 1.00 and **coming back at 1.00 on the
+  next run**, which is the persistence proving itself end to end.
 - **Authored stone across the kit, world-scaled (2026-09-12):** The castle was UV'd but flat
   colour everywhere, which is the whole of the "looks fake" complaint. Two prerequisites, both
   now done. (1) **World-scaled UVs**: `author_arcade_bay.py` and `author_stair_flight.py` now

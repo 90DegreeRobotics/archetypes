@@ -16,6 +16,7 @@ pub mod manifest_capture;
 pub mod manifestation;
 pub mod music;
 pub mod seed;
+pub mod settings_menu;
 pub mod stone;
 pub mod walk_capture;
 pub mod workshop;
@@ -52,6 +53,7 @@ impl Plugin for InnerChambersPlugin {
                 interaction::InteractionPlugin,
                 manifestation::ManifestationPlugin,
                 music::InnerCastleMusicPlugin,
+                settings_menu::SettingsMenuPlugin,
                 workshop::WorkshopPlugin,
             ));
 

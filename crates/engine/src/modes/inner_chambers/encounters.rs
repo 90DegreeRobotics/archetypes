@@ -15,6 +15,7 @@ use crate::services::archetype_conversation::{request_reply, ArchetypeChatRecord
 use crate::services::encounter_memory::{self, RetentionState};
 use crate::services::ledger::append_to_ledger;
 use crate::services::paths::app_data_root;
+use crate::services::settings::GameSettings;
 use crate::services::text_entry;
 use crate::theme::Archetype;
 
@@ -161,11 +162,19 @@ fn type_or_close_encounter(
     });
 }
 
-fn poll_reply(mut commands: Commands, mut state: ResMut<EncounterState>, mut bridge: ResMut<EncounterBridge>, mut audio_assets: ResMut<Assets<AudioSource>>, playing: Query<Entity, With<EncounterVoice>>) {
+/// Council voice gain from the player's settings: master multiplied by voice.
+///
+/// Replies used to play at whatever level the TTS produced, ignoring the persisted setting, so
+/// the settings menu's voice slider would have been a control that changed nothing.
+pub fn voice_gain(settings: &GameSettings) -> f32 {
+    settings.volume_master * settings.volume_voice
+}
+
+fn poll_reply(mut commands: Commands, mut state: ResMut<EncounterState>, mut bridge: ResMut<EncounterBridge>, mut audio_assets: ResMut<Assets<AudioSource>>, settings: Res<GameSettings>, playing: Query<Entity, With<EncounterVoice>>) {
     if !bridge.waiting { return; }
     let reply = bridge.receiver.lock().expect("encounter receiver lock").as_ref().and_then(|receiver| receiver.try_recv().ok());
     let Some(reply) = reply else { return; }; bridge.waiting = false;
-    match reply { Ok(reply) => { let role = state.active.map(|a| a.archetype.theme().name.to_owned()).unwrap_or_else(|| "Archetype".into()); if let Some(active) = state.active { if let Err(error) = append_encounter_record(active, &role, &reply.text) { state.status = format!("Reply received but could not persist local transcript ({error})."); return; } } for entity in &playing { commands.entity(entity).despawn(); } let bytes: std::sync::Arc<[u8]> = reply.wav.into(); let handle = audio_assets.add(AudioSource { bytes }); commands.spawn((AudioPlayer::new(handle), PlaybackSettings::DESPAWN, EncounterVoice, Name::new("InnerCastleArchetypeVoice")));
+    match reply { Ok(reply) => { let role = state.active.map(|a| a.archetype.theme().name.to_owned()).unwrap_or_else(|| "Archetype".into()); if let Some(active) = state.active { if let Err(error) = append_encounter_record(active, &role, &reply.text) { state.status = format!("Reply received but could not persist local transcript ({error})."); return; } } for entity in &playing { commands.entity(entity).despawn(); } let bytes: std::sync::Arc<[u8]> = reply.wav.into(); let handle = audio_assets.add(AudioSource { bytes }); commands.spawn((AudioPlayer::new(handle), PlaybackSettings::DESPAWN.with_volume(bevy::audio::Volume::Linear(voice_gain(&settings))), EncounterVoice, Name::new("InnerCastleArchetypeVoice")));
             let player_turn = state.transcript.last().map(|turn| turn.content.clone()).unwrap_or_default();
             state.transcript.push(ArchetypeChatRecord { role: role.clone(), content: reply.text.clone() });
             match encounter_memory::record_turn(&role, INNER_CASTLE_ENCOUNTER_CAPABILITY, &player_turn, &reply.text) {

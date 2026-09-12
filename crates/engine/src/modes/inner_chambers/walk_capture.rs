@@ -104,7 +104,20 @@ impl WalkCaptureRun {
             (15.5, Beat::Hold(&[KeyCode::KeyW])),
             (20.5, Beat::Hold(&[])),
             (21.2, Beat::Shot("05_one_storey_climbed")),
-            (21.8, Beat::Finish),
+            // Open the settings menu with the real Esc key, move down to a volume slider and
+            // push it, so the frame proves the menu takes input rather than merely drawing.
+            // Esc used to eject the player out of the castle here; if that regressed, the
+            // remaining beats would photograph the main menu instead.
+            (22.0, Beat::Tap(KeyCode::Escape)),
+            (22.8, Beat::Shot("06_settings_menu_open")),
+            (23.2, Beat::Tap(KeyCode::ArrowDown)),
+            (23.5, Beat::Tap(KeyCode::ArrowDown)),
+            (23.8, Beat::Tap(KeyCode::ArrowDown)),
+            (24.1, Beat::Tap(KeyCode::ArrowDown)),
+            (24.4, Beat::Tap(KeyCode::ArrowRight)),
+            (24.7, Beat::Tap(KeyCode::ArrowRight)),
+            (25.4, Beat::Shot("07_settings_menu_slider_moved")),
+            (26.0, Beat::Finish),
         ];
 
         Some(Self {
@@ -134,6 +147,8 @@ pub(crate) fn drive_walk_capture(
     mut keyboard: ResMut<ButtonInput<KeyCode>>,
     focus: Res<InteractionFocus>,
     workshop: Res<super::workshop::WorkshopState>,
+    menu: Res<super::settings_menu::SettingsMenuState>,
+    settings: Res<crate::services::settings::GameSettings>,
     mut player: Query<(&mut Transform, &mut CameraController), With<PlayerCamera>>,
 ) {
     let now = time.elapsed_secs();
@@ -221,8 +236,10 @@ pub(crate) fn drive_walk_capture(
             Beat::Shot(name) => {
                 let path = run.dir.join(format!("{name}.png"));
                 commands.spawn(Screenshot::primary_window()).observe(save_to_disk(path));
+                // The menu state and the selected row go in the report because a photograph
+                // of a menu does not say which menu it is, nor whether the keys reached it.
                 let line = format!(
-                    "{name}  pos=({:.2}, {:.2}, {:.2})  mode={:?}  focus={}  bench={}  plans={}  mode_state={:?}",
+                    "{name}  pos=({:.2}, {:.2}, {:.2})  mode={:?}  focus={}  bench={}  plans={}                       mode_state={:?}  settings={}  row={}  music_volume={:.2}",
                     transform.translation.x,
                     transform.translation.y,
                     transform.translation.z,
@@ -231,6 +248,9 @@ pub(crate) fn drive_walk_capture(
                     workshop.screen_label(),
                     workshop.plan_count(),
                     inner_state.get(),
+                    if menu.open { "open" } else { "closed" },
+                    menu.selected().label(),
+                    settings.volume_music,
                 );
                 run.report.push(line);
             }

@@ -65,11 +65,12 @@ pub struct InnerModalState {
     pub encounter: bool,
     pub manifestation: bool,
     pub workshop: bool,
+    pub settings: bool,
 }
 
 impl InnerModalState {
     pub fn any(&self) -> bool {
-        self.encounter || self.manifestation || self.workshop
+        self.encounter || self.manifestation || self.workshop || self.settings
     }
 }
 
@@ -112,6 +113,7 @@ fn resolve_modal_state(
     encounter: Option<Res<EncounterState>>,
     manifestation: Option<Res<ManifestationState>>,
     workshop: Option<Res<WorkshopState>>,
+    settings_menu: Option<Res<super::settings_menu::SettingsMenuState>>,
     mut modal: ResMut<InnerModalState>,
 ) {
     // `Manifesting` counts as owning input even though it is not a typing surface: `Esc` during
@@ -128,6 +130,7 @@ fn resolve_modal_state(
         encounter: encounter.map(|state| state.is_open()).unwrap_or(false),
         manifestation,
         workshop: workshop.map(|state| state.is_open()).unwrap_or(false),
+        settings: settings_menu.map(|menu| menu.open).unwrap_or(false),
     };
 }
 

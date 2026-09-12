@@ -35,17 +35,21 @@ impl Plugin for ExtractionPlugin {
     }
 }
 
-/// The only binding that leaves the castle. It stands down whenever a modal owns input, so
-/// cancelling a conversation, a manifestation, or a plan edit can never also eject the player
-/// out of the mode in the same frame.
+/// The only way out of the castle, and it is now a deliberate choice rather than a keystroke.
+///
+/// `Esc` used to eject the player directly. The HUD has advertised "Esc/B: Menu" the whole
+/// time, so the key was lying about what it did, and a mis-hit dumped the player out of the
+/// world. `Esc` now opens the settings menu, which carries a `Leave the Inner Castle` row; this
+/// watches that request rather than the key, so the key that opens the menu can never also
+/// close the mode in the same frame.
 fn leave_inner_chambers(
-    actions: Res<InnerActions>,
-    modal: Res<InnerModalState>,
+    mut menu: ResMut<super::settings_menu::SettingsMenuState>,
     mut next_state: ResMut<NextState<InnerChambersState>>,
 ) {
-    if modal.any() || !actions.cancel {
+    if !menu.leave_requested {
         return;
     }
+    menu.leave_requested = false;
     next_state.set(InnerChambersState::Exiting);
 }
 
