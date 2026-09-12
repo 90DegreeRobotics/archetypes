@@ -148,6 +148,38 @@ pub fn wall_module_yaw(bearing: f32) -> f32 {
     -(bearing + FRAC_PI_2)
 }
 
+/// Flights per storey. The stair kit module is one flight plus the landing at its head, so two
+/// of them make a storey: 36 risers, landing, 36 risers, landing.
+pub const FLIGHTS_PER_LEVEL: usize = 2;
+
+/// Run of one flight module: its going plus the landing at its head.
+pub fn stair_flight_run() -> f32 {
+    STAIR_FLIGHT_RISERS as f32 * STAIR_TREAD + STAIR_LANDING_LENGTH
+}
+
+/// Radians one flight module consumes.
+pub fn stair_flight_sweep() -> f32 {
+    stair_flight_run() / STAIR_CENTRE_RADIUS
+}
+
+/// Height one flight module climbs.
+pub fn stair_flight_rise() -> f32 {
+    STAIR_FLIGHT_RISERS as f32 * riser_height(0)
+}
+
+/// Bearing at the foot of a given flight.
+pub fn stair_flight_bearing(level: usize, flight: usize) -> f32 {
+    stair_start_bearing(level) + flight as f32 * stair_flight_sweep()
+}
+
+/// Where a flight module's origin sits: on the stair centreline, at the height its first tread
+/// rises from.
+pub fn stair_flight_position(level: usize, flight: usize) -> Vec3 {
+    let bearing = stair_flight_bearing(level, flight);
+    Vec3::new(bearing.cos(), 0.0, bearing.sin()) * STAIR_CENTRE_RADIUS
+        + Vec3::Y * (flight_base_y(level) + flight as f32 * stair_flight_rise())
+}
+
 /// Where a bay module's origin sits: on the wall face, at the level's deck.
 pub fn arcade_bay_position(level: usize, index: usize) -> Vec3 {
     let bearing = arcade_bay_bearing(index);
@@ -169,8 +201,16 @@ pub fn room_centres() -> [Vec2; 6] {
     ROOM_ANGLES.map(room_centre)
 }
 
+/// Deck height of a gallery, measured from the promenade rather than from an independent
+/// constant.
+///
+/// This is what makes one stair module serve the whole building. Anchoring the first gallery at
+/// a fixed 12.0m while the promenade sits at 0.5 left the ground flight climbing 11.5m in the
+/// same 72 risers every other flight uses 12.0m for — a 159.7mm riser downstairs and a 166.7mm
+/// riser everywhere above it. Two different stairs, and therefore two different modules, for no
+/// reason anyone could see. Measured from the promenade, every flight rises exactly 12.0m.
 pub fn gallery_y(level: usize) -> f32 {
-    FIRST_GALLERY_Y + level as f32 * GALLERY_RISE
+    PROMENADE_Y + (level + 1) as f32 * GALLERY_RISE
 }
 
 /// Height the flight for `level` starts from: the promenade for the first, else the gallery
@@ -550,6 +590,64 @@ mod tests {
         assert!(
             (width - 9.9452).abs() < 0.001,
             "bay chord is now {width}; re-run scripts/author_arcade_bay.py"
+        );
+    }
+
+    #[test]
+    fn one_stair_module_can_serve_every_storey() {
+        // The whole point of measuring galleries from the promenade. If any storey climbed a
+        // different height, its flight would need a different riser and the kit would need a
+        // second stair module for the ground floor alone.
+        let riser = riser_height(0);
+        for level in 0..GALLERY_LEVELS {
+            assert!(
+                (riser_height(level) - riser).abs() < 1e-6,
+                "level {level} riser {} differs from {riser}",
+                riser_height(level)
+            );
+            assert!((flight_top_y(level) - flight_base_y(level) - GALLERY_RISE).abs() < 1e-4);
+        }
+        // And that riser is the one the Blender module is built to.
+        assert!((riser - 12.0 / 72.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn two_flight_modules_exactly_make_a_storey() {
+        assert_eq!(FLIGHTS_PER_LEVEL, 2);
+        let covered = stair_flight_run() * FLIGHTS_PER_LEVEL as f32;
+        assert!(
+            (covered - stair_run_length()).abs() < 1e-4,
+            "two flights run {covered}m against a storey's {}m",
+            stair_run_length()
+        );
+        let climbed = stair_flight_rise() * FLIGHTS_PER_LEVEL as f32;
+        assert!((climbed - GALLERY_RISE).abs() < 1e-4, "two flights climb {climbed}m");
+    }
+
+    #[test]
+    fn each_flight_module_is_seated_on_the_stair_centreline() {
+        for level in 0..GALLERY_LEVELS {
+            for flight in 0..FLIGHTS_PER_LEVEL {
+                let position = stair_flight_position(level, flight);
+                let radius = Vec2::new(position.x, position.z).length();
+                assert!((radius - STAIR_CENTRE_RADIUS).abs() < 0.001);
+                let expected = flight_base_y(level) + flight as f32 * stair_flight_rise();
+                assert!((position.y - expected).abs() < 0.001);
+            }
+        }
+        // The second flight starts where the first one's landing left off, in both bearing
+        // and height, so the two modules butt rather than overlap or gap.
+        let first = stair_flight_bearing(0, 0);
+        let second = stair_flight_bearing(0, 1);
+        assert!((second - first - stair_flight_sweep()).abs() < 1e-6);
+        // A module's origin is the level its first tread rises *from*, so the second flight is
+        // seated on the first one's landing. Sampling the walking profile at exactly the join
+        // returns the tread above that landing instead, one riser higher — which is correct for
+        // a player standing there, and the wrong thing to compare a module origin against.
+        let on_the_landing = stair_profile_y(0, stair_flight_run() - 0.01);
+        assert!((stair_flight_position(0, 1).y - on_the_landing).abs() < 0.01);
+        assert!(
+            (stair_profile_y(0, stair_flight_run()) - on_the_landing - riser_height(0)).abs() < 1e-4
         );
     }
 

@@ -546,6 +546,16 @@ fn spawn_architect_workshop(
 /// a 12m storey climbed by 72 risers of 167mm on 300mm treads is a 29° stair and needs 27.6m
 /// of run, which wraps only 14.6° around a 108m radius. So the stairs climb and the galleries
 /// circle — each storey's flight starts 60° further around the building than the one below it.
+/// A flagstone joint of a fixed width in metres, expressed as the angle the mesh builder wants.
+///
+/// `build_radial_flagstone_mesh` takes its gap as an *angle*, so a value tuned at one radius
+/// becomes a different physical joint at another. At the rescaled 102m gallery radius the old
+/// 0.010 rad gap was a 1.02m hole between every flagstone, and the decks read as gratings with
+/// the void showing through them.
+fn joint_angle(metres: f32, radius: f32) -> f32 {
+    metres / radius
+}
+
 fn spawn_castle_ascent(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -567,10 +577,13 @@ fn spawn_castle_ascent(
             GALLERY_OUTER_RADIUS,
             0.16,
             160,
-            0.008,
+            joint_angle(0.06, PROMENADE_INNER_RADIUS),
         ))),
         MeshMaterial3d(stone.clone()),
-        Transform::from_xyz(0.0, PROMENADE_Y - 0.1, 0.0),
+        // `build_radial_flagstone_mesh` raises its stones this far above its own origin, so the
+        // origin has to sit a stone's thickness below the walking height or the player wades
+        // through the paving at shin level.
+        Transform::from_xyz(0.0, PROMENADE_Y - 0.16, 0.0),
         InnerWorldElement,
         Name::new("Perimeter_GroundPromenade"),
     ));
@@ -585,10 +598,14 @@ fn spawn_castle_ascent(
                 GALLERY_OUTER_RADIUS,
                 0.55,
                 128,
-                0.010,
+                joint_angle(0.06, GALLERY_INNER_RADIUS),
             ))),
             MeshMaterial3d(stone.clone()),
-            Transform::from_xyz(0.0, floor_y, 0.0),
+            // Dropped by the stone thickness so the paving's top face lands exactly on the
+            // deck height collision uses. Placed at `floor_y` the stones stood 0.55m proud of
+            // the walkable surface, and a player crossing a gallery was buried to the shin in
+            // their own floor, sighting along it between the joints.
+            Transform::from_xyz(0.0, floor_y - 0.55, 0.0),
             InnerWorldElement,
             Name::new(format!("Gallery_{:02}_Deck", level + 1)),
         ));
@@ -670,7 +687,7 @@ fn spawn_castle_ascent(
             ));
         }
 
-        spawn_ascent_flight(commands, meshes, stone.clone(), trim.clone(), level);
+        spawn_ascent_flight(commands, asset_server, level);
     }
 
     // Wall head cornice and the vault above it.
@@ -694,85 +711,24 @@ fn spawn_castle_ascent(
     ));
 }
 
-/// One storey's stair: two flights of 36 treads with a landing between them, wrapped onto the
-/// inner wall. Each tread is a real box the player stands on.
+/// One storey's stair: two instances of the Blender flight module.
+///
+/// This replaced 36 loose `Cuboid` treads per flight plus one-sided balusters. A tread cannot
+/// carry a stringer, a parapet or a handrail, because all three run continuously along a flight
+/// and a box only knows about itself — so the flight, not the tread, is the repeat unit.
 fn spawn_ascent_flight(
     commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    stone: Handle<StandardMaterial>,
-    trim: Handle<StandardMaterial>,
+    asset_server: &AssetServer,
     level: usize,
 ) {
-    let base_bearing = stair_start_bearing(level);
-    let riser = riser_height(level);
-    let tread_depth = STAIR_TREAD * 1.25; // overlap, so no seam opens at the outer edge
-    let flight_going = STAIR_FLIGHT_RISERS as f32 * STAIR_TREAD;
-
-    for step in 0..STAIR_RISERS_PER_LEVEL {
-        // Run distance to the middle of this tread, skipping the mid-flight landing.
-        let run = if step < STAIR_FLIGHT_RISERS {
-            step as f32 * STAIR_TREAD + STAIR_TREAD * 0.5
-        } else {
-            flight_going
-                + STAIR_LANDING_LENGTH
-                + (step - STAIR_FLIGHT_RISERS) as f32 * STAIR_TREAD
-                + STAIR_TREAD * 0.5
-        };
-        let theta = base_bearing + run / STAIR_CENTRE_RADIUS;
-        let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
-        let top = flight_base_y(level) + (step + 1) as f32 * riser;
-
-        // Each tread is a 2m deep block hung below its own top face, so the flight reads as a
-        // solid mass of masonry rather than a ladder of floating slabs.
+    for flight in 0..FLIGHTS_PER_LEVEL {
+        let bearing = stair_flight_bearing(level, flight);
         commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(STAIR_WIDTH, 2.0, tread_depth))),
-            MeshMaterial3d(stone.clone()),
-            Transform::from_translation(radial * STAIR_CENTRE_RADIUS + Vec3::Y * (top - 1.0))
-                .with_rotation(Quat::from_rotation_y(-theta)),
+            SceneRoot(asset_server.load("scenes/stair_flight.glb#Scene0")),
+            Transform::from_translation(stair_flight_position(level, flight))
+                .with_rotation(Quat::from_rotation_y(wall_module_yaw(bearing))),
             InnerWorldElement,
-            Name::new(format!("Ascent_L{:02}_Tread_{step:02}", level + 1)),
-        ));
-
-        if step % 6 == 0 {
-            // Handrail on the open inner side of the flight.
-            commands.spawn((
-                Mesh3d(meshes.add(Cuboid::new(0.24, 1.3, 0.24))),
-                MeshMaterial3d(trim.clone()),
-                Transform::from_translation(
-                    radial * (STAIR_CENTRE_RADIUS - STAIR_WIDTH * 0.5 + 0.3) + Vec3::Y * (top + 0.65),
-                )
-                .with_rotation(Quat::from_rotation_y(-theta)),
-                InnerWorldElement,
-                Name::new(format!("Ascent_L{:02}_Baluster_{step:02}", level + 1)),
-            ));
-        }
-    }
-
-    // The two landings, built as real platforms.
-    for (index, (run_start, run_length, y)) in [
-        (
-            flight_going,
-            STAIR_LANDING_LENGTH,
-            flight_base_y(level) + STAIR_FLIGHT_RISERS as f32 * riser,
-        ),
-        (
-            flight_going + STAIR_LANDING_LENGTH + flight_going,
-            STAIR_LANDING_LENGTH,
-            flight_top_y(level),
-        ),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let theta = base_bearing + (run_start + run_length * 0.5) / STAIR_CENTRE_RADIUS;
-        let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
-        commands.spawn((
-            Mesh3d(meshes.add(Cuboid::new(STAIR_WIDTH, 2.0, run_length))),
-            MeshMaterial3d(stone.clone()),
-            Transform::from_translation(radial * STAIR_CENTRE_RADIUS + Vec3::Y * (y - 1.0))
-                .with_rotation(Quat::from_rotation_y(-theta)),
-            InnerWorldElement,
-            Name::new(format!("Ascent_L{:02}_Landing_{index}", level + 1)),
+            Name::new(format!("Ascent_L{:02}_Flight_{flight}", level + 1)),
         ));
     }
 }

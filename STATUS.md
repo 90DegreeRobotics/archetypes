@@ -1,10 +1,30 @@
 # Archetypes Status
 
-**Last Updated: 2026-09-11 (Perimeter Stone Repair, Museum Arches Planned)**
+**Last Updated: 2026-09-11 (Stair Kit Module, Deck Seating Fix)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Stair flight kit module (2026-09-11):** The perimeter ascent is now a Blender module, two
+  instances per storey. `scripts/author_stair_flight.py` builds a real flight — stepped treads
+  with a nosing, a solid raked soffit under them, a parapet **on both sides** with a coping
+  rail, and the landing at its head — genuinely curved at the 108m radius rather than modelled
+  straight. 380 triangles, 25KB. The ascent dropped from ~602 entities to 14. A tread cannot
+  carry a stringer, a parapet or a handrail, because all three run continuously along a flight
+  and a box only knows about itself, which is why the flight is the repeat unit.
+  To let one module serve every storey, `gallery_y` is now measured from the promenade
+  (`PROMENADE_Y + (level+1) * GALLERY_RISE`): anchoring the first gallery at a fixed 12.0m while
+  the promenade sat at 0.5 left the ground flight climbing 11.5m in the same 72 risers every
+  other flight used 12.0m for — 159.7mm downstairs, 166.7mm above. Every flight now rises
+  exactly 12.0m, and the top bay lands exactly on the wall head at 96.0m.
+- **Gallery paving was floating 0.55m above its own collision surface (2026-09-11):**
+  `build_radial_flagstone_mesh` raises its stones above the mesh origin, and the decks were
+  placed with that origin *at* the walking height. Players crossed every gallery buried to the
+  shin in their own floor, sighting along it through the joints — which is what the dark banding
+  in the operator's screenshots was. Decks and the promenade are now dropped by the stone
+  thickness. Separately, the mesh takes its joint width as an *angle*, so the rescale had turned
+  a mortar line into a 1.02m hole between every flagstone; joints are now specified in metres
+  via `joint_angle`.
 - **Perimeter stone repair + black arch interiors (2026-09-11):** The gallery decks, ground
   promenade and every stair tread were sharing the dark basalt floor material (base 0.34) while
   the Blender arcade standing on them is pale limestone (0.62) — roughly double the value — so
