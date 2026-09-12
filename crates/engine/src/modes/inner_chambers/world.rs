@@ -777,7 +777,13 @@ fn spawn_castle_ascent(
         if level == MUSEUM_LEVEL {
             spawn_museum_chambers(commands, asset_server);
             if let Some(museum) = museum {
-                super::museum::spawn_hung_works(commands, asset_server, museum);
+                super::museum::spawn_hung_works(
+                    commands,
+                    asset_server,
+                    meshes,
+                    materials,
+                    museum,
+                );
             }
         }
 

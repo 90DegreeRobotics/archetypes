@@ -37,20 +37,15 @@ from PIL import Image, ImageDraw, ImageFont
 SOURCE = Path(r"C:\chronos2\out\first_light")
 OUT_DIR = Path("assets/museum")
 
-# Twelve chambers, five hangings each. `castle.rs` is the authority; this constant is checked
+# Twelve chambers, three hangings each. Three rather than five because a wall-sized work is up
+# to 5m across, and two of those do not fit on a 9m side wall 3.6m apart.
+# `castle.rs` is the authority; this constant is checked
 # against it by an engine test so the two cannot drift.
-DEFAULT_LIMIT = 60
+DEFAULT_LIMIT = 36
 
 # A hung work is about 1.6m wide and the player can stand a metre from it, so more than this is
 # texture memory spent on detail nobody can resolve. Sixty of them at 768px is the budget.
 WORK_MAX_PIXELS = 768
-
-# Every work is mounted onto the same 4:3 plate, the way a framer mats a print. The library's
-# works are a mix of 16:9 and 4:3, and a single frame mesh showing both would either stretch
-# some of them or need a frame per aspect ratio. Matting is what a gallery actually does, and
-# it costs one fill instead of a second asset.
-MOUNT_ASPECT = (4, 3)
-MOUNT_COLOUR = (24, 23, 21)
 
 PLACARD_SIZE = (512, 168)
 PLACARD_PLATE = (28, 26, 24)
@@ -76,6 +71,8 @@ class Exhibit:
     created: str
     image: str
     placard: str
+    width: int
+    height: int
     prompt: str
     integrity_hash: str | None
 
@@ -290,24 +287,20 @@ def has_visible_content(image: Image.Image) -> bool:
 
 
 def stage_work(source: Path, out: Path) -> tuple[int, int]:
-    """Mount one work onto the common 4:3 plate and write it at the wall-panel size."""
+    """Write one work at the wall-panel size, keeping its own aspect ratio.
+
+    No mat, no fixed plate. Chronos2's gallery reads each image's real dimensions and builds a
+    frame around whatever it gets — `ar = aw/ah`, then `AW = AH*ar` — so the frame follows the
+    art. Forcing every work onto a common 4:3 plate to suit one fixed frame asset is that rule
+    backwards, and it is what made the paintings small.
+    """
     with Image.open(source) as opened:
         image = trim_to_content(opened.convert("RGB"))
 
-    width = WORK_MAX_PIXELS
-    height = width * MOUNT_ASPECT[1] // MOUNT_ASPECT[0]
-
-    # Contain, never cover: cropping a work to fit a frame is an editorial act on someone
-    # else's picture. The unused plate reads as a mat.
-    fitted = image.copy()
-    fitted.thumbnail((width - 36, height - 36), Image.LANCZOS)
-
-    plate = Image.new("RGB", (width, height), MOUNT_COLOUR)
-    plate.paste(fitted, ((width - fitted.width) // 2, (height - fitted.height) // 2))
-
+    image.thumbnail((WORK_MAX_PIXELS, WORK_MAX_PIXELS), Image.LANCZOS)
     out.parent.mkdir(parents=True, exist_ok=True)
-    plate.save(out)
-    return plate.size
+    image.save(out)
+    return image.size
 
 
 def parse_args() -> argparse.Namespace:
@@ -381,7 +374,7 @@ def main() -> None:
 
         work_path = out_dir / "works" / f"{bundle.name}.png"
         placard_path = out_dir / "placards" / f"{bundle.name}.png"
-        size = stage_work(image_source, work_path)
+        width, height = stage_work(image_source, work_path)
         hash_value = integrity_hash(bundle)
         render_placard(title, created_date(bundle.name), hash_value, placard_path)
 
@@ -392,15 +385,16 @@ def main() -> None:
                 created=created_date(bundle.name),
                 image=f"works/{bundle.name}.png",
                 placard=f"placards/{bundle.name}.png",
+                width=width,
+                height=height,
                 prompt=prompt,
                 integrity_hash=hash_value,
             )
         )
-        log(f"  staged {bundle.name} '{title}' {size[0]}x{size[1]}")
+        log(f"  staged {bundle.name} '{title}' {width}x{height} ar={width / height:.3f}")
 
     manifest = {
         "schema": "archetypes.museum.v1",
-        "mount_aspect": list(MOUNT_ASPECT),
         "source": str(source_root),
         "staged_at_author_time": True,
         "note": (
@@ -417,6 +411,11 @@ def main() -> None:
                 "created": e.created,
                 "image": e.image,
                 "placard": e.placard,
+                # The engine sizes each frame from these, exactly as chronos2's gallery sizes
+                # its own from the loaded image. Recorded here so the frame can be built before
+                # the texture has finished loading.
+                "width": e.width,
+                "height": e.height,
                 "prompt": e.prompt,
                 **({"integrity_hash": e.integrity_hash} if e.integrity_hash else {}),
             }

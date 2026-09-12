@@ -14,7 +14,7 @@ use bevy::prelude::*;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-use super::castle::{all_hanging_positions, HANGINGS_PER_CHAMBER};
+use super::castle::{all_hanging_positions, hanging_size, HANGINGS_PER_CHAMBER};
 use super::world::InnerWorldElement;
 
 /// One staged work, exactly as the manifest records it.
@@ -26,12 +26,30 @@ pub struct Exhibit {
     /// Path relative to `assets/museum/`.
     pub image: String,
     pub placard: String,
+    /// Staged pixel dimensions. The frame is sized from these, so it can be built before the
+    /// texture has finished loading.
+    #[serde(default)]
+    pub width: u32,
+    #[serde(default)]
+    pub height: u32,
     #[serde(default)]
     pub prompt: String,
     /// Absent for bundles that never recorded one. The placard omits the line rather than
     /// filling it in.
     #[serde(default)]
     pub integrity_hash: Option<String>,
+}
+
+impl Exhibit {
+    /// The work's own aspect ratio, as `gallery_exhibit.rs` computes it: `ar = aw/ah`, with the
+    /// same 1.46 fallback when an image reports no height.
+    pub fn aspect(&self) -> f32 {
+        if self.height == 0 {
+            1.46
+        } else {
+            self.width as f32 / self.height as f32
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -100,17 +118,24 @@ pub fn load_manifest_from(root: &Path) -> MuseumManifest {
     }
 }
 
-/// Marks a hung frame so its canvas and placard can be dressed once its scene has loaded.
+/// Marks a hung work, for finding and inspecting it later.
 #[derive(Component)]
 pub struct HungWork {
     pub exhibit: usize,
-    pub image: Handle<Image>,
-    pub placard: Handle<Image>,
-    pub bound: bool,
 }
 
-const CANVAS_NODE: &str = "Frame_Canvas";
-const PLACARD_NODE: &str = "Frame_Placard";
+/// Moulding section, from `gallery_exhibit.rs`'s `fr.dimensions = (AW+0.06, 0.055, AH+0.06)`
+/// scaled to a chamber-sized frame.
+const MOULDING: f32 = 0.11;
+const MOULDING_DEPTH: f32 = 0.14;
+/// How far the picture plane stands off the wall.
+const CANVAS_STANDOFF: f32 = 0.05;
+
+/// Placard plate, proportioned to the 512x168 placard image.
+const PLACARD_WIDTH: f32 = 1.10;
+const PLACARD_HEIGHT: f32 = PLACARD_WIDTH * 168.0 / 512.0;
+/// Below the frame's lower edge, to the placard's centre.
+const PLACARD_DROP: f32 = 0.30;
 
 pub struct MuseumPlugin;
 
@@ -118,124 +143,172 @@ impl Plugin for MuseumPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Museum {
             manifest: load_manifest(),
-        })
-        .add_systems(
-            Update,
-            bind_hung_works.run_if(
-                in_state(super::InnerChambersState::Loading)
-                    .or(in_state(super::InnerChambersState::Navigating)),
-            ),
-        );
+        });
     }
 }
 
 /// Hangs every staged work at its position in the circuit.
 ///
 /// Exhibits map onto hanging positions in the manifest's own order, which is chronological by
-/// run. Chamber 0 holds the five oldest works, chamber 1 the next five, and so on — so walking
-/// the circuit walks the library in the order it was made.
+/// run, so walking the circuit walks the library in the order it was made.
+///
+/// **Each frame is built here, per work, sized from that work's own aspect ratio.** That is what
+/// `gallery_exhibit.rs::build_gallery_hall_script` does: it loads the image, takes `ar = aw/ah`,
+/// fixes a height and derives the width, then builds the moulding around the result. A single
+/// fixed-size frame asset cannot do that, and trying to make one fit is what forced every work
+/// onto a 4:3 mat and made the paintings small.
 pub fn spawn_hung_works(
     commands: &mut Commands,
     asset_server: &AssetServer,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
     museum: &Museum,
 ) -> usize {
     let positions = all_hanging_positions();
     let mut hung = 0;
 
+    // Ported from `gallery_exhibit.rs`: a near-black frame and a pale placard plate. The gilt
+    // moulding in the first pass was invented.
+    let moulding = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.02, 0.02, 0.022),
+        perceptual_roughness: 0.45,
+        metallic: 0.0,
+        ..default()
+    });
+    let plate = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.90, 0.89, 0.86),
+        perceptual_roughness: 0.75,
+        ..default()
+    });
+
     for (index, exhibit) in museum.manifest.exhibits.iter().enumerate() {
         let Some((position, yaw)) = positions.get(index).copied() else {
-            // More staged works than walls to hang them on. Not an error: the staging script
-            // can be run with a larger limit, and the extras simply wait for more chambers.
+            // More staged works than walls to hang them on. Not an error: the staging script can
+            // be run with a larger limit, and the extras wait for more chambers.
             break;
         };
 
-        let image = asset_server.load(format!("museum/{}", exhibit.image));
-        let placard = asset_server.load(format!("museum/{}", exhibit.placard));
+        let size = hanging_size(exhibit.aspect());
+        let half_w = size.x * 0.5;
+        let half_h = size.y * 0.5;
+        let rotation = Quat::from_rotation_y(yaw);
 
+        // Every part below is a child of the frame root, so its transform is **local**: +X
+        // across the wall, +Y up, +Z out into the room. Handing a child a world position and a
+        // world rotation double-applies the parent's transform and flings the whole frame out
+        // of the room, which is exactly what happened on the first attempt.
+        let local = |dx: f32, dy: f32, dz: f32| Transform::from_xyz(dx, dy, dz);
+
+        let root = commands
+            .spawn((
+                Transform::from_translation(position).with_rotation(rotation),
+                Visibility::default(),
+                HungWork { exhibit: index },
+                InnerWorldElement,
+                Name::new(format!("Exhibit_{index:02}_{}", exhibit.run)),
+            ))
+            .id();
+
+        // Four moulding bars rather than one ring, so the mitres read and each run catches its
+        // own highlight.
+        for (name, offset_x, offset_y, dim_x, dim_y) in [
+            ("Top", 0.0, half_h + MOULDING * 0.5, size.x + MOULDING * 2.0, MOULDING),
+            ("Bottom", 0.0, -(half_h + MOULDING * 0.5), size.x + MOULDING * 2.0, MOULDING),
+            ("Left", -(half_w + MOULDING * 0.5), 0.0, MOULDING, size.y),
+            ("Right", half_w + MOULDING * 0.5, 0.0, MOULDING, size.y),
+        ] {
+            commands.spawn((
+                Mesh3d(meshes.add(Cuboid::new(dim_x, dim_y, MOULDING_DEPTH))),
+                MeshMaterial3d(moulding.clone()),
+                local(offset_x, offset_y, MOULDING_DEPTH * 0.5 - 0.01),
+                InnerWorldElement,
+                ChildOf(root),
+                Name::new(format!("Exhibit_{index:02}_Moulding{name}")),
+            ));
+        }
+
+        // The picture. `gallery_exhibit.rs` shades its canvases with an emission shader at
+        // strength 1.0 - a work in a dim hall has to carry some of its own light or it is a grey
+        // rectangle. Its own spot and the chamber's warm source do the rest.
+        let artwork: Handle<Image> = asset_server.load(format!("museum/{}", exhibit.image));
+        let canvas = materials.add(StandardMaterial {
+            base_color: Color::WHITE,
+            base_color_texture: Some(artwork.clone()),
+            emissive_texture: Some(artwork),
+            emissive: LinearRgba::rgb(0.85, 0.85, 0.85),
+            perceptual_roughness: 0.68,
+            metallic: 0.0,
+            ..default()
+        });
         commands.spawn((
-            SceneRoot(asset_server.load("scenes/art_frame.glb#Scene0")),
-            Transform::from_translation(position).with_rotation(Quat::from_rotation_y(yaw)),
-            HungWork {
-                exhibit: index,
-                image,
-                placard,
-                bound: false,
-            },
+            Mesh3d(meshes.add(Rectangle::new(size.x, size.y))),
+            MeshMaterial3d(canvas),
+            local(0.0, 0.0, CANVAS_STANDOFF),
             InnerWorldElement,
-            Name::new(format!(
-                "Exhibit_{index:02}_{}",
-                exhibit.run
-            )),
+            ChildOf(root),
+            Name::new(format!("Exhibit_{index:02}_Canvas")),
         ));
+
+        let placard_y = -(half_h + MOULDING + PLACARD_DROP);
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(
+                PLACARD_WIDTH + 0.05,
+                PLACARD_HEIGHT + 0.05,
+                0.05,
+            ))),
+            MeshMaterial3d(plate.clone()),
+            local(0.0, placard_y, 0.025),
+            InnerWorldElement,
+            ChildOf(root),
+            Name::new(format!("Exhibit_{index:02}_PlacardPlate")),
+        ));
+        let placard_image: Handle<Image> =
+            asset_server.load(format!("museum/{}", exhibit.placard));
+        let placard = materials.add(StandardMaterial {
+            base_color: Color::WHITE,
+            base_color_texture: Some(placard_image.clone()),
+            emissive_texture: Some(placard_image),
+            emissive: LinearRgba::rgb(0.55, 0.55, 0.55),
+            perceptual_roughness: 0.58,
+            ..default()
+        });
+        commands.spawn((
+            Mesh3d(meshes.add(Rectangle::new(PLACARD_WIDTH, PLACARD_HEIGHT))),
+            MeshMaterial3d(placard),
+            local(0.0, placard_y, 0.055),
+            InnerWorldElement,
+            ChildOf(root),
+            Name::new(format!("Exhibit_{index:02}_Placard")),
+        ));
+
+        // One warm spot per work, as the gallery hall gives each of its five.
+        commands.spawn((
+            SpotLight {
+                intensity: 260_000.0,
+                range: 14.0,
+                color: Color::srgb(1.0, 0.90, 0.74),
+                outer_angle: 0.62,
+                inner_angle: 0.30,
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_xyz(0.0, half_h + 1.5, 2.6)
+                .looking_at(Vec3::new(0.0, 0.0, CANVAS_STANDOFF), Vec3::Y),
+            InnerWorldElement,
+            ChildOf(root),
+            Name::new(format!("Exhibit_{index:02}_Spot")),
+        ));
+
         hung += 1;
     }
 
     info!(
-        "museum: hung {hung} works across {} chambers ({} positions available, {} eligible runs \
-         in the staged library)",
+        "museum: hung {hung} works across {} chambers ({} positions, {} eligible runs staged)",
         positions.len() / HANGINGS_PER_CHAMBER,
         positions.len(),
         museum.manifest.eligible_runs
     );
     hung
-}
-
-/// Applies each work's own image and placard once the frame scene's children exist.
-fn bind_hung_works(
-    mut commands: Commands,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut frames: Query<(Entity, &mut HungWork)>,
-    children: Query<&Children>,
-    names: Query<&Name>,
-    meshes: Query<(), With<Mesh3d>>,
-) {
-    for (root, mut frame) in &mut frames {
-        if frame.bound {
-            continue;
-        }
-        let mut bound_any = false;
-
-        for descendant in children.iter_descendants(root) {
-            let Ok(name) = names.get(descendant) else {
-                continue;
-            };
-            let texture = match name.as_str() {
-                CANVAS_NODE => frame.image.clone(),
-                PLACARD_NODE => frame.placard.clone(),
-                _ => continue,
-            };
-
-            // Unlit would be simpler and would be wrong: an artwork that ignores the room's
-            // light is a lightbox on a wall, not a picture in a gallery. The chamber's own warm
-            // source is what reveals it.
-            let material = materials.add(StandardMaterial {
-                base_color: Color::WHITE,
-                base_color_texture: Some(texture),
-                perceptual_roughness: 0.68,
-                metallic: 0.0,
-                ..default()
-            });
-
-            if meshes.get(descendant).is_ok() {
-                commands
-                    .entity(descendant)
-                    .insert(MeshMaterial3d(material.clone()));
-                bound_any = true;
-            }
-            for inner in children.iter_descendants(descendant) {
-                if meshes.get(inner).is_ok() {
-                    commands
-                        .entity(inner)
-                        .insert(MeshMaterial3d(material.clone()));
-                    bound_any = true;
-                }
-            }
-        }
-
-        if bound_any {
-            frame.bound = true;
-        }
-    }
 }
 
 #[cfg(test)]

@@ -204,18 +204,57 @@ pub fn museum_chamber_floor_y() -> f32 {
     gallery_y(MUSEUM_LEVEL)
 }
 
-/// Hanging positions per chamber: two on each side wall, one on the back wall.
+/// Hanging positions per chamber: one centred on each side wall, one on the back wall.
 ///
-/// Five works per chamber across twelve chambers is sixty hangings against the 151 first-light
-/// bundles that exist, which leaves real choice rather than forcing repeats.
-pub const HANGINGS_PER_CHAMBER: usize = 5;
+/// It was five — two per side wall plus the back — and that was wrong, because it was chosen to
+/// suit a small fixed-size frame. A wall-sized work is up to 5m across and two of those cannot
+/// sit on a 9m side wall 3.6m apart. Three big works read as a room you walk into; five small
+/// ones read as postage stamps on a 7.7m by 9.4m wall.
+pub const HANGINGS_PER_CHAMBER: usize = 3;
 
-/// Height of a hung work's centre above the chamber deck. Eye height in this game is 2.85m
-/// above the floor, which is tall; hanging at a real gallery's 1.5m centre line would put every
-/// painting at the player's chest. This is a compromise between the two.
-pub const HANGING_CENTRE_HEIGHT: f32 = 2.4;
+/// The box a hung work is fitted inside, width by height, in metres.
+///
+/// Ported from `gallery_exhibit.rs::build_gallery_hall_script`, which fixes a height and takes
+/// the width from the artwork's own aspect (`AH = 0.92; AW = AH*ar`), scaled from its 4.6m
+/// studio wall to this chamber's 4.2m of usable wall between the plinth and the springing line.
+/// The width clamp is what stops a 21:9 work running past the end of the wall.
+pub const HANGING_MAX_WIDTH: f32 = 5.0;
+pub const HANGING_MAX_HEIGHT: f32 = 2.9;
 
-/// How far a hung work stands off the wall it hangs on, clearing the plinth course below it.
+/// Fits one work's own aspect into that box: height first, width clamped.
+pub fn hanging_size(aspect: f32) -> Vec2 {
+    let aspect = if aspect.is_finite() && aspect > 0.01 {
+        aspect
+    } else {
+        // `gallery_exhibit.rs` falls back to 1.46 when an image reports no height. Same here,
+        // rather than dividing by zero or hanging a degenerate rectangle.
+        1.46
+    };
+    let mut height = HANGING_MAX_HEIGHT;
+    let mut width = height * aspect;
+    if width > HANGING_MAX_WIDTH {
+        width = HANGING_MAX_WIDTH;
+        height = width / aspect;
+    }
+    Vec2::new(width, height)
+}
+
+/// Height of a hung work's centre above the chamber deck.
+///
+/// The chamber's plinth course tops out at 1.1m and its vault springs at 5.5m, so the usable
+/// wall is 1.1m to 5.3m. A 2.9m work centred here spans 1.45m to 4.35m: clear of the plinth,
+/// clear of the springing, and its centre a little above a 2.85m eye — which is where a gallery
+/// hangs work for a standing viewer.
+pub const HANGING_CENTRE_HEIGHT: f32 = 3.2;
+
+/// Top of the chamber's plinth course, which the placard has to clear.
+///
+/// The plinth projects 0.27m into the room, and a placard hung on the wall sits only 0.055m
+/// off it — so a placard below this height is not merely low, it is *behind* the stone. That is
+/// what the first wall-sized pass did: the titles were there and buried.
+pub const CHAMBER_PLINTH_TOP: f32 = 1.10;
+
+/// How far a hung work stands off the wall it hangs on.
 const HANGING_WALL_OFFSET: f32 = 0.18;
 
 /// Where the works hang in one chamber, in world space.
@@ -235,10 +274,9 @@ pub fn museum_hanging_positions(chamber: usize) -> [(Vec3, f32); HANGINGS_PER_CH
     let floor = museum_chamber_floor_y();
     let centre = Vec3::Y * (floor + HANGING_CENTRE_HEIGHT);
 
-    // Two depths down each side wall, spaced so a walker meets them one at a time rather than
-    // seeing all four at once from the threshold.
-    let near = face + MUSEUM_CHAMBER_DEPTH * 0.32;
-    let far = face + MUSEUM_CHAMBER_DEPTH * 0.72;
+    // Centred down each side wall. One work per wall, because a wall-sized one is up to 5m
+    // across and the wall is 9m long.
+    let mid = face + MUSEUM_CHAMBER_DEPTH * 0.5;
     let lateral = half - HANGING_WALL_OFFSET;
 
     // A wall's yaw is the bearing of its own inward normal, seated by the same convention the
@@ -252,10 +290,8 @@ pub fn museum_hanging_positions(chamber: usize) -> [(Vec3, f32); HANGINGS_PER_CH
     let back_yaw = wall_module_yaw(bearing);
 
     [
-        (radial * near + tangent * -lateral + centre, left_yaw),
-        (radial * far + tangent * -lateral + centre, left_yaw),
-        (radial * near + tangent * lateral + centre, right_yaw),
-        (radial * far + tangent * lateral + centre, right_yaw),
+        (radial * mid + tangent * -lateral + centre, left_yaw),
+        (radial * mid + tangent * lateral + centre, right_yaw),
         (
             radial * (museum_chamber_back() - HANGING_WALL_OFFSET) + centre,
             back_yaw,
@@ -677,6 +713,63 @@ mod tests {
         // Evenly spaced around the circle.
         let step = museum_bay_bearing(1) - museum_bay_bearing(0);
         assert!((step - TAU / 12.0).abs() < 1e-5, "chambers are {step} rad apart");
+    }
+
+    /// A work fitted to the chamber wall, sized from its own aspect, as
+    /// `gallery_exhibit.rs` does. The first pass matted everything to 4:3 to suit one fixed
+    /// frame asset, which is the rule backwards and is what made the paintings small.
+    #[test]
+    fn a_work_is_fitted_to_the_wall_and_keeps_its_own_aspect() {
+        for aspect in [1.0_f32, 4.0 / 3.0, 16.0 / 9.0, 2.39, 0.75] {
+            let size = hanging_size(aspect);
+            assert!(
+                (size.x / size.y - aspect).abs() < 1e-3,
+                "aspect {aspect} came out {:.3}",
+                size.x / size.y
+            );
+            assert!(size.x <= HANGING_MAX_WIDTH + 1e-4, "{aspect} is {:.2}m wide", size.x);
+            assert!(size.y <= HANGING_MAX_HEIGHT + 1e-4);
+            // Wall-sized means wall-sized: the smallest fitted work still has to dominate a
+            // 7.7m by 9.4m chamber wall rather than sit on it like a postcard.
+            assert!(
+                size.y >= 1.9,
+                "a {aspect} work came out only {:.2}m tall",
+                size.y
+            );
+        }
+        // A degenerate aspect falls back rather than producing a sliver, matching
+        // `gallery_exhibit.rs`'s own 1.46 fallback.
+        let fallback = hanging_size(0.0);
+        assert!((fallback.x / fallback.y - 1.46).abs() < 1e-3);
+    }
+
+    /// The work must clear the plinth below it and the vault springing above it, and its
+    /// placard must clear the plinth too — a placard hung into the stone is invisible.
+    #[test]
+    fn a_hung_work_and_its_placard_clear_the_stone_around_them() {
+        const MOULDING: f32 = 0.11;
+        const PLACARD_DROP: f32 = 0.30;
+        const PLACARD_HALF_HEIGHT: f32 = 1.10 * 168.0 / 512.0 * 0.5;
+
+        for aspect in [1.0_f32, 4.0 / 3.0, 16.0 / 9.0, 2.39] {
+            let size = hanging_size(aspect);
+            let top = HANGING_CENTRE_HEIGHT + size.y * 0.5 + MOULDING;
+            let bottom = HANGING_CENTRE_HEIGHT - size.y * 0.5 - MOULDING;
+            assert!(
+                top < 5.5,
+                "a {aspect} work tops out at {top:.2}m, into the 5.5m springing line"
+            );
+            assert!(
+                bottom > CHAMBER_PLINTH_TOP,
+                "a {aspect} work reaches down to {bottom:.2}m, into the plinth"
+            );
+
+            let placard_bottom = bottom - PLACARD_DROP - PLACARD_HALF_HEIGHT;
+            assert!(
+                placard_bottom > CHAMBER_PLINTH_TOP,
+                "a {aspect} work's placard bottoms at {placard_bottom:.2}m, behind the plinth"
+            );
+        }
     }
 
     /// Every hung work has to face into the room it hangs in. A frame facing the masonry is

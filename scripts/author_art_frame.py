@@ -1,4 +1,12 @@
-"""Author the picture frame hung in every museum chamber.
+"""RETIRED 2026-09-12 — superseded by per-work frames built in `museum.rs`.
+
+A frame cannot be one fixed asset, because every work has a different aspect ratio.
+`gallery_exhibit.rs` sizes each frame from its own image (`ar = aw/ah`, then `AW = AH*ar`) and
+builds the moulding around the result; this module forced the opposite, matting every work onto
+a 4:3 plate so one asset would fit them all, which is what made the paintings small. Kept for
+the record, not built or loaded.
+
+Author the picture frame hung in every museum chamber.
 
 One module, instanced once per hanging position. The artwork and the placard are applied as
 textures at runtime from `assets/museum/manifest.json`, so sixty hangings cost one 4:3 frame
