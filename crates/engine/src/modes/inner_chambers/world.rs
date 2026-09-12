@@ -42,6 +42,7 @@ pub(super) const NICHE_DOOR_WIDTH: f32 = 1.05; // ~60 degrees, wide enough to wa
 // the geometry built here and the geometry the player collides against in `camera.rs` cannot
 // drift apart.
 use super::castle::*;
+use super::stone::{bind_kit_stone, build_palette, KitStone, STONE_TILE_METRES};
 
 /// The five archetype figure positions, duplicated here (rather than shared with the
 /// spawn-time literals in `setup_inner_world`) so collision code has a plain data
@@ -72,6 +73,16 @@ impl Plugin for WorldPlugin {
             .add_systems(
                 Update,
                 rotate_chronos_exhibits.run_if(in_state(InnerChambersState::Navigating)),
+            )
+            // Not gated on `Navigating`: 504 arcade bay scenes finish loading over many frames
+            // and the first of them land while the mode is still `Loading`. Gating this the way
+            // the other systems are gated would leave the lowest storeys untextured.
+            .add_systems(
+                Update,
+                bind_kit_stone.run_if(
+                    in_state(InnerChambersState::Loading)
+                        .or(in_state(InnerChambersState::Navigating)),
+                ),
             )
             .add_systems(Update, render_hint.in_set(InnerHintSet::Render))
             .add_systems(OnEnter(InnerChambersState::Exiting), teardown_inner_world);
@@ -168,7 +179,6 @@ fn setup_inner_world(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut images: ResMut<Assets<Image>>,
     mut clear: ResMut<ClearColor>,
     mut next_state: ResMut<NextState<InnerChambersState>>,
     asset_server: Res<AssetServer>,
@@ -195,16 +205,12 @@ fn setup_inner_world(
         InnerWorldElement,
         Name::new("Castle_VaultKeyLight"),
     ));
-    let (floor_albedo, floor_normal) = chamber_floor_textures();
-    let floor_normal = images.add(floor_normal);
-    let stone = materials.add(StandardMaterial {
-        base_color_texture: Some(images.add(floor_albedo)),
-        normal_map_texture: Some(floor_normal),
-        base_color: Color::srgb(0.34, 0.32, 0.29),
-        perceptual_roughness: 0.86,
-        metallic: 0.02,
-        ..default()
-    });
+    // Authored seamless stone, world-scaled to the same tile the Blender kit's UVs use.
+    // `scripts/author_stone_tiles.py` writes albedo, normal and roughness for each stone; the
+    // normal map is the part that matters most, because nothing in this hall casts a shadow and
+    // surface normals are therefore the only thing carrying relief.
+    let palette = build_palette(&asset_server, &mut materials);
+    let stone = palette.floor.clone();
     let masonry = materials.add(StandardMaterial {
         base_color: Color::srgb(0.13, 0.12, 0.12),
         perceptual_roughness: 0.94,
@@ -220,18 +226,13 @@ fn setup_inner_world(
     // The decks, promenade and stairs were sharing the dark basalt floor material at 0.34, which
     // is roughly half the value of the arcade standing on them — so from any gallery the walkway
     // read as a black slab hung under a pale building.
-    let pale_stone = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.60, 0.57, 0.50),
-        perceptual_roughness: 0.88,
-        ..default()
-    });
+    let pale_stone = palette.floor.clone();
     // Cornices and rails are stone, not metal. At 0.25 metallic and a brown base they read as
     // copper pipework threaded through the hall.
-    let pale_trim = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.50, 0.46, 0.40),
-        perceptual_roughness: 0.74,
-        ..default()
-    });
+    let pale_trim = palette.floor_trim.clone();
+    // Handed to the world so `bind_kit_stone` can dress each module as its scene finishes
+    // loading; the palette owns every material the kit can wear.
+    commands.insert_resource(palette);
     let abyss = materials.add(StandardMaterial {
         base_color: Color::srgb(0.008, 0.011, 0.019),
         perceptual_roughness: 1.0,
@@ -677,6 +678,10 @@ fn spawn_castle_ascent(
                 SceneRoot(asset_server.load("scenes/arcade_bay.glb#Scene0")),
                 Transform::from_translation(arcade_bay_position(level, index))
                     .with_rotation(Quat::from_rotation_y(wall_module_yaw(bearing))),
+                // One bay GLB serves every storey; the stone is swapped per level once the
+                // scene's children exist. Exporting a bay per stone would multiply a 151KB
+                // asset by seven and fork the module.
+                KitStone::at(level),
                 InnerWorldElement,
                 Name::new(format!("Gallery_{:02}_ArcadeBay_{index:02}", level + 1)),
             ));
@@ -754,6 +759,9 @@ fn spawn_ascent_flight(
             SceneRoot(asset_server.load("scenes/stair_flight.glb#Scene0")),
             Transform::from_translation(stair_flight_position(level, flight))
                 .with_rotation(Quat::from_rotation_y(wall_module_yaw(bearing))),
+            // The flight takes the stone of the storey it climbs to, so the ascent reads as
+            // part of the wall beside it rather than as a separate object bolted on.
+            KitStone::at(level),
             InnerWorldElement,
             Name::new(format!("Ascent_L{:02}_Flight_{flight}", level + 1)),
         ));
@@ -1724,9 +1732,13 @@ fn build_radial_flagstone_mesh(
         norm.push([n.x, n.y, n.z]);
         norm.push([n.x, n.y, n.z]);
         norm.push([n.x, n.y, n.z]);
-        uv.push([p0.x * 0.1, p0.z * 0.1]);
-        uv.push([p1.x * 0.1, p1.z * 0.1]);
-        uv.push([p2.x * 0.1, p2.z * 0.1]);
+        // World-scaled to the shared stone tile, so paving reads at the same block size as the
+        // walls standing on it. The old flat 0.1 was 10m per tile, which is a different masonry
+        // scale from the kit's 4m and made the floor look like a different building.
+        let tile = 1.0 / STONE_TILE_METRES;
+        uv.push([p0.x * tile, p0.z * tile]);
+        uv.push([p1.x * tile, p1.z * tile]);
+        uv.push([p2.x * tile, p2.z * tile]);
 
         // Triangle 2: p0, p2, p3
         pos.push([p0.x, p0.y, p0.z]);
@@ -1735,9 +1747,9 @@ fn build_radial_flagstone_mesh(
         norm.push([n.x, n.y, n.z]);
         norm.push([n.x, n.y, n.z]);
         norm.push([n.x, n.y, n.z]);
-        uv.push([p0.x * 0.1, p0.z * 0.1]);
-        uv.push([p2.x * 0.1, p2.z * 0.1]);
-        uv.push([p3.x * 0.1, p3.z * 0.1]);
+        uv.push([p0.x * tile, p0.z * tile]);
+        uv.push([p2.x * tile, p2.z * tile]);
+        uv.push([p3.x * tile, p3.z * tile]);
     };
 
     let two_pi = std::f32::consts::PI * 2.0;

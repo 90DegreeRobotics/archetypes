@@ -61,6 +61,10 @@ RECESS_DEPTH = 0.9          # the blind panel sits well back, so the arch ring r
 CORNICE_BASE = 10.6
 TRIANGLE_LIMIT = 8000
 
+# Must match `TILE_METRES` in `scripts/author_stone_tiles.py`. One tile of stone covers this
+# much wall, and the UVs below are scaled so that holds on every face of every kit module.
+STONE_TILE_METRES = 4.0
+
 OPENING_WIDTH = BAY_WIDTH - PIER_WIDTH
 ARCH_RADIUS = OPENING_WIDTH * 0.5
 ARCH_CROWN = SPRING_LINE + ARCH_RADIUS + ARCH_THICKNESS + 0.35
@@ -175,7 +179,17 @@ def bevel_and_unwrap(obj: bpy.types.Object, width: float = 0.05) -> None:
     obj.select_set(True)
     bpy.ops.object.mode_set(mode="EDIT")
     bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.uv.smart_project(angle_limit=math.radians(66.0), island_margin=0.02)
+    # World-scaled UVs, not `smart_project`.
+    #
+    # `smart_project` packs every island into the unit square *per object*, so it has no
+    # physical scale: the same stone tile would come out one size on a 5.5m pier shaft and a
+    # completely different size on a 0.35m corona, and the wall would read as a collage. A cube
+    # projection sized in metres gives `u = metres / STONE_TILE_METRES` on every face of every
+    # module, so one block is one size everywhere in the building.
+    #
+    # The bay is authored in real metres in its own local frame, so object space is world
+    # scale and `cube_size` is directly the tile's physical size.
+    bpy.ops.uv.cube_project(cube_size=STONE_TILE_METRES)
     bpy.ops.object.mode_set(mode="OBJECT")
     obj.select_set(False)
 
@@ -371,6 +385,24 @@ def verify_export(path: Path) -> None:
         raise RuntimeError(f"bay height {z_high - z_low:.3f} exceeds the {STOREY_HEIGHT}m storey")
     if z_low < -0.05:
         raise RuntimeError(f"bay dips below its own deck at z={z_low:.3f}")
+
+    # UV scale contract. The whole point of the cube projection is that UV distance is world
+    # distance divided by the tile size, so a stone reads the same on every module. The corona
+    # is the check because it is a plain axis-aligned box of known width: its U span must come
+    # out as its own width in tiles. If someone swaps the unwrap back to `smart_project` this
+    # fails immediately rather than shipping a wall of mismatched masonry.
+    corona = named("Bay_Corona")
+    if not corona:
+        raise RuntimeError("Bay_Corona missing; cannot verify UV scale")
+    us = [uv.uv.x for obj in corona for uv in obj.data.uv_layers[0].data]
+    u_span = max(us) - min(us)
+    expected = BAY_WIDTH / STONE_TILE_METRES
+    log("verify", f"corona_u_span={u_span:.4f}", f"expected_tiles={expected:.4f}")
+    if abs(u_span - expected) > expected * 0.10:
+        raise RuntimeError(
+            f"corona UV span {u_span:.4f} is not its {expected:.4f}-tile width: UVs are not "
+            f"world-scaled at {STONE_TILE_METRES}m per tile"
+        )
 
 
 def main() -> None:

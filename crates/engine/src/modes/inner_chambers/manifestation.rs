@@ -37,8 +37,44 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 ///
 /// Operator directive, 2026-09-12: "there is no table."
 pub const MANIFESTATION_PEDESTAL_POS: Vec3 = Vec3::new(0.0, super::castle::GROUND_Y, 0.0);
-pub const MANIFESTATION_CUSHION_HEIGHT: f32 = 1.62;
-pub const MANIFESTATION_HOVER_Y: f32 = 2.40;
+/// Height of the cushion's top face above `MANIFESTATION_PEDESTAL_POS`, summed from the
+/// pedestal parts actually spawned below: base 0.20 + shaft 0.90 + capital 0.15 + gold collar
+/// 0.04 + cushion 0.05. It read 1.62 before, which matched nothing that was built.
+pub const MANIFESTATION_CUSHION_HEIGHT: f32 = 1.34;
+
+/// Where the idle diamond, the waiting hourglass and the failure X float.
+///
+/// This was an absolute world y of 2.40, not an offset — so while the altar stood on a
+/// tabletop at y=3.17 every one of those symbols hovered 2.1m *below* its own cushion, inside
+/// the furniture. Derived from the pedestal now, so moving the altar moves them with it.
+pub const MANIFESTATION_HOVER_Y: f32 =
+    MANIFESTATION_PEDESTAL_POS.y + MANIFESTATION_CUSHION_HEIGHT + 0.66;
+
+/// The manifested object stands this far above the cushion, so the painting it was made from
+/// lies visible underneath it rather than being covered by it.
+pub const MANIFESTATION_OBJECT_LIFT: f32 = 0.58;
+
+/// The painted reference lies flat on the cushion. Square side chosen to fit inside the
+/// cushion's 0.80m radius: a 1.10m square has a 1.556m diagonal against a 1.60m cushion.
+pub const MANIFESTATION_REFERENCE_PANEL_SIZE: f32 = 1.10;
+
+/// The cushion the object stands on, from the pedestal geometry spawned below.
+pub const MANIFESTATION_CUSHION_RADIUS: f32 = 0.80;
+
+/// `scripts/import_chronos_object.py` normalises every TripoSR mesh to this on its longest
+/// axis before export, so the engine knows the authored size of an object it has never seen.
+/// Without that normalisation nothing here could be sized at all — TripoSR output has no
+/// inherent scale.
+pub const MANIFESTATION_AUTHORED_MAX_DIMENSION: f32 = 1.4;
+
+/// Spawn scale for the manifested object.
+///
+/// It was 1.15, which takes a 1.4m authored mesh to 1.61m — fractionally wider than the 1.60m
+/// cushion it stands on, so every manifestation overhung its own altar, and a tall subject
+/// towered past a 3.25m standing eye and hid the painting underneath it. Sized to the plinth
+/// instead: an object may fill the cushion but not overhang it.
+pub const MANIFESTATION_OBJECT_SCALE: f32 =
+    (MANIFESTATION_CUSHION_RADIUS * 2.0) / MANIFESTATION_AUTHORED_MAX_DIMENSION;
 
 /// The altar's collision footprint: the 1.20m base plinth plus enough clearance that a walking
 /// player stops with their body clear of the stone rather than intersecting its rim.
@@ -1460,7 +1496,8 @@ fn poll_manifestation_results(
                 let artifact_entity = commands
                     .spawn((
                         SceneRoot(asset_server.load("scenes/manifested_artifact.glb#Scene0")),
-                        Transform::from_xyz(p.x, cushion_y, p.z).with_scale(Vec3::splat(1.15)),
+                        Transform::from_xyz(p.x, cushion_y + MANIFESTATION_OBJECT_LIFT, p.z)
+                            .with_scale(Vec3::splat(MANIFESTATION_OBJECT_SCALE)),
                         // One revolution in about eleven seconds: slow enough
                         // to inspect, fast enough that motion is unmistakable.
                         ChronosExhibitTurntable { speed: 0.56 },
@@ -1471,17 +1508,23 @@ fn poll_manifestation_results(
 
                 state.active_artifact = Some(artifact_entity);
 
-                // Reference floor panel: the same painting Chronos2 generated
-                // and fed to TripoSR, laid flat on the floor at the pedestal's
-                // foot. Museum-wall-and-object in one place — the player sees
-                // the prompt become a picture, then sees the picture become
-                // the object standing above it. Reuses whatever reference the
-                // worker staged this run (or a prior run's, if this run had
-                // none to copy); absent entirely on the very first launch.
+                // The same painting Chronos2 generated and fed to TripoSR, laid flat on the
+                // cushion **underneath** the object it became. The player reads the sequence
+                // vertically in one glance: their prompt became this picture, and this picture
+                // became the object standing above it.
+                //
+                // It used to sit 2.8m away on the floor, which is beside the object rather than
+                // under it — the commit that added it says "beside" in its own subject line.
+                // Moving the altar to the centre of the Council circle made that placement
+                // actively wrong as well as merely offset: at `p.z - 2.8` the panel now landed
+                // inside the 3.6m vortex disc, lying on top of the spinning portal.
+                //
+                // Reuses whatever reference the worker staged this run (or a prior run's, if
+                // this run had none to copy); absent entirely on the very first launch.
                 if let Some(old_panel) = state.active_reference_panel.take() {
                     commands.entity(old_panel).despawn();
                 }
-                let panel_pos = Vec3::new(p.x, p.y + 0.02, p.z - 2.8);
+                let panel_pos = Vec3::new(p.x, cushion_y + 0.005, p.z);
                 let panel_material = materials.add(StandardMaterial {
                     base_color_texture: Some(
                         asset_server.load("scenes/manifested_reference.png"),
@@ -1492,7 +1535,10 @@ fn poll_manifestation_results(
                 });
                 let panel_entity = commands
                     .spawn((
-                        Mesh3d(meshes.add(Plane3d::default().mesh().size(1.4, 1.4))),
+                        Mesh3d(meshes.add(Plane3d::default().mesh().size(
+                            MANIFESTATION_REFERENCE_PANEL_SIZE,
+                            MANIFESTATION_REFERENCE_PANEL_SIZE,
+                        ))),
                         MeshMaterial3d(panel_material),
                         Transform::from_translation(panel_pos),
                         ManifestationElement,
@@ -1739,6 +1785,91 @@ mod tests {
         assert_eq!(
             MANIFESTATION_REFERENCE_CHECKPOINT,
             "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
+        );
+    }
+
+    /// The altar is meant to make a 3D object and lay the painting it was made from
+    /// underneath it, so the player reads prompt -> painting -> object in one vertical glance.
+    /// The panel used to sit 2.8m away, which is beside the object, not under it.
+    #[test]
+    fn the_painted_reference_lies_directly_under_the_object_it_became() {
+        let p = MANIFESTATION_PEDESTAL_POS;
+        let cushion_y = p.y + MANIFESTATION_CUSHION_HEIGHT;
+        let panel = Vec3::new(p.x, cushion_y + 0.005, p.z);
+        let object = Vec3::new(p.x, cushion_y + MANIFESTATION_OBJECT_LIFT, p.z);
+
+        assert_eq!(
+            Vec2::new(panel.x, panel.z),
+            Vec2::new(object.x, object.z),
+            "the painting must share the object's ground position, not sit beside it"
+        );
+        assert!(
+            panel.y < object.y,
+            "the painting must be underneath the object, not level with or above it"
+        );
+        assert!(
+            object.y - panel.y > 0.25,
+            "the object must clear the painting enough to leave it visible; only {:.3}m of gap",
+            object.y - panel.y
+        );
+    }
+
+    /// A painting wider than the cushion it lies on overhangs into mid-air.
+    #[test]
+    fn the_reference_panel_fits_on_the_cushion_it_lies_on() {
+        let diagonal = MANIFESTATION_REFERENCE_PANEL_SIZE * std::f32::consts::SQRT_2;
+        assert!(
+            diagonal <= MANIFESTATION_CUSHION_RADIUS * 2.0,
+            "a {}m square has a {diagonal:.3}m diagonal and overhangs the {:.2}m cushion",
+            MANIFESTATION_REFERENCE_PANEL_SIZE,
+            MANIFESTATION_CUSHION_RADIUS * 2.0
+        );
+    }
+
+    /// Whatever the player asks for, TripoSR hands back a mesh with no inherent scale; the
+    /// import script normalises it, and the spawn scale has to respect the plinth it lands on.
+    /// At the previous 1.15 a 1.4m authored mesh came out at 1.61m on a 1.60m cushion.
+    #[test]
+    fn the_manifested_object_fits_the_cushion_it_stands_on() {
+        let widest = MANIFESTATION_AUTHORED_MAX_DIMENSION * MANIFESTATION_OBJECT_SCALE;
+        assert!(
+            widest <= MANIFESTATION_CUSHION_RADIUS * 2.0 + 1e-4,
+            "a manifested object {widest:.3}m across overhangs its {:.2}m cushion",
+            MANIFESTATION_CUSHION_RADIUS * 2.0
+        );
+        assert!(
+            widest > MANIFESTATION_CUSHION_RADIUS,
+            "sized down to {widest:.3}m the object would look lost on the altar"
+        );
+    }
+
+    /// The import script is the only thing that gives a TripoSR mesh a size, so the engine's
+    /// assumption about it has to be checked against the script itself.
+    #[test]
+    fn the_engine_agrees_with_the_import_script_on_the_authored_size() {
+        let source = std::fs::read_to_string("../../scripts/import_chronos_object.py")
+            .expect("import script readable");
+        assert!(
+            source.contains("1.4 / max(hi - lo)"),
+            "import_chronos_object.py no longer normalises to              {MANIFESTATION_AUTHORED_MAX_DIMENSION}m, so the spawn scale is guessing"
+        );
+    }
+
+    /// `MANIFESTATION_HOVER_Y` was an absolute world y of 2.40 while the altar stood on a
+    /// tabletop at 3.17, so the idle diamond, the waiting hourglass and the failure X all
+    /// floated 2.1m below their own cushion, inside the furniture. Deriving it from the
+    /// pedestal is what stops that recurring the next time the altar moves.
+    #[test]
+    fn the_floating_status_symbols_hover_above_the_cushion_not_inside_the_pedestal() {
+        let cushion_y = MANIFESTATION_PEDESTAL_POS.y + MANIFESTATION_CUSHION_HEIGHT;
+        assert!(
+            MANIFESTATION_HOVER_Y > cushion_y,
+            "hover y {MANIFESTATION_HOVER_Y} is at or below the cushion at {cushion_y}"
+        );
+        assert!(
+            MANIFESTATION_HOVER_Y - cushion_y < 1.5,
+            "hover y is {:.2}m above the cushion, which reads as unrelated to the altar",
+            MANIFESTATION_HOVER_Y - cushion_y
         );
     }
 }

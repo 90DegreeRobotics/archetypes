@@ -5,6 +5,36 @@
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Authored stone across the kit, world-scaled (2026-09-12):** The castle was UV'd but flat
+  colour everywhere, which is the whole of the "looks fake" complaint. Two prerequisites, both
+  now done. (1) **World-scaled UVs**: `author_arcade_bay.py` and `author_stair_flight.py` now
+  cube-project at 4m per tile instead of `smart_project`, which packs islands into unit space
+  per object and has no physical scale at all — the bay script now fails its own export check
+  if the corona's U span stops matching its width in tiles. (2) **Authored seamless tiles**:
+  `scripts/author_stone_tiles.py` writes eight stones as albedo + normal + roughness, periodic
+  by construction (wrapped value-noise lattice, wrapped Worley deltas, whole numbers of block
+  courses) rather than healed at the edges — every tile's measured seam step came out *below*
+  its own interior step. The operator's reference sheet was correctly diagnosed as unusable as
+  an asset: one 1254px image holding nine stones is ~38 px/m on a 9.9m bay. Normal maps are the
+  part that matters — the hall casts no shadows, so surface normals are the only thing carrying
+  relief. One bay GLB serves all seven storeys; `modes/inner_chambers/stone.rs` swaps the
+  material per level by authored node name, and deliberately leaves `Bay_BlindPanel` near-black
+  so arches keep reading as openings. Floor paving UVs moved from an arbitrary 0.1 to the same
+  4m tile. Tests: **214 passing**. Evidence: `artifacts/visual-proof/stone-2026-09-12/` and
+  `stone-tiles-2026-09-12/`.
+- **The painted image now sits under the object it became (2026-09-12):** Operator: "The
+  manifester is supposed to create a 3d object and place the painted image underneath." It was
+  spawning the panel at `p.z - 2.8` — beside the object, not under it; the commit that added it
+  says "beside" in its own subject line. Centring the altar this morning made that placement
+  actively wrong as well, landing the panel on top of the spinning vortex disc. The panel now
+  lies flat on the cushion with the object directly above it. Three further defects found while
+  proving it: `MANIFESTATION_CUSHION_HEIGHT` was 1.62 against a cushion actually built at 1.34;
+  `MANIFESTATION_HOVER_Y` was an **absolute** world y of 2.40, so while the altar stood on a
+  tabletop at 3.17 the idle diamond, hourglass and failure X all floated 2.1m *below* their own
+  cushion, inside the furniture; and the object spawned at scale 1.15, taking a 1.4m authored
+  mesh to 1.61m on a 1.60m cushion, so every manifestation overhung its own altar. All three are
+  now derived rather than hard-coded. Evidence:
+  `artifacts/visual-proof/manifest-under-2026-09-12/`.
 - **The arcade ring floors were being culled away, not merely dark (2026-09-12):**
   `build_radial_flagstone_mesh` emitted its stone tops and both rim faces with reversed
   winding. Bevy culls by winding, not by the normal attribute, so every stone top in the castle

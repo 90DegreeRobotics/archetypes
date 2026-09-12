@@ -73,6 +73,10 @@ COPING_OVERHANG = 0.07
 NOSING = 0.03               # tread overhang, so each step casts its own edge line
 TRIANGLE_LIMIT = 9000
 
+# Must match `TILE_METRES` in `scripts/author_stone_tiles.py` and `STONE_TILE_METRES` in
+# `scripts/author_arcade_bay.py`. One block of stone is one size everywhere in the castle.
+STONE_TILE_METRES = 4.0
+
 HALF_WIDTH = STAIR_WIDTH * 0.5
 
 
@@ -202,7 +206,10 @@ def unwrap(obj: bpy.types.Object) -> None:
     obj.select_set(True)
     bpy.ops.object.mode_set(mode="EDIT")
     bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.uv.smart_project(angle_limit=math.radians(66.0), island_margin=0.02)
+    # World-scaled, matching `author_arcade_bay.py`. `smart_project` packs islands into unit
+    # space per object and carries no physical scale, so a stone block would come out one size
+    # on a 0.30m tread and another on the 12m parapet run standing right next to it.
+    bpy.ops.uv.cube_project(cube_size=STONE_TILE_METRES)
     bpy.ops.object.mode_set(mode="OBJECT")
     obj.select_set(False)
 

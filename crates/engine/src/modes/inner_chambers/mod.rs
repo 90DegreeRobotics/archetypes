@@ -16,6 +16,7 @@ pub mod manifest_capture;
 pub mod manifestation;
 pub mod music;
 pub mod seed;
+pub mod stone;
 pub mod walk_capture;
 pub mod workshop;
 pub mod world;

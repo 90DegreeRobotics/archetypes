@@ -1,0 +1,64 @@
+{
+  "tile_metres": 4.0,
+  "resolution": 1024,
+  "normal_strength": 1.65,
+  "note": "Authored originals, seamless by construction. UVs must be world-scaled: u = world_metres / tile_metres.",
+  "stones": {
+    "dark_basalt_fortress": {
+      "description": "Dense dark basalt, tight joints, heavy blocks for the base of the wall.",
+      "mortar_metres": 0.028,
+      "albedo": "dark_basalt_fortress_albedo.png",
+      "normal": "dark_basalt_fortress_normal.png",
+      "roughness": "dark_basalt_fortress_roughness.png"
+    },
+    "rough_granite_block": {
+      "description": "Coarse speckled granite, deep pitting, wide blocks.",
+      "mortar_metres": 0.04,
+      "albedo": "rough_granite_block_albedo.png",
+      "normal": "rough_granite_block_normal.png",
+      "roughness": "rough_granite_block_roughness.png"
+    },
+    "old_mortared_fieldstone": {
+      "description": "Irregular field stones swimming in broad mortar beds.",
+      "mortar_metres": 0.085,
+      "albedo": "old_mortared_fieldstone_albedo.png",
+      "normal": "old_mortared_fieldstone_normal.png",
+      "roughness": "old_mortared_fieldstone_roughness.png"
+    },
+    "chipped_rubble_stone": {
+      "description": "Broken rubble coursing, edges knocked off, shallow bedding.",
+      "mortar_metres": 0.055,
+      "albedo": "chipped_rubble_stone_albedo.png",
+      "normal": "chipped_rubble_stone_normal.png",
+      "roughness": "chipped_rubble_stone_roughness.png"
+    },
+    "weathered_limestone_ashlar": {
+      "description": "Fine pale ashlar, close joints \u2014 the storey the arcade was designed in.",
+      "mortar_metres": 0.026,
+      "albedo": "weathered_limestone_ashlar_albedo.png",
+      "normal": "weathered_limestone_ashlar_normal.png",
+      "roughness": "weathered_limestone_ashlar_roughness.png"
+    },
+    "sandstone_block": {
+      "description": "Warm sandstone with visible bedding lines running with the course.",
+      "mortar_metres": 0.032,
+      "albedo": "sandstone_block_albedo.png",
+      "normal": "sandstone_block_normal.png",
+      "roughness": "sandstone_block_roughness.png"
+    },
+    "pale_limestone_light": {
+      "description": "The lightest ashlar, for the top storey where the wall meets the vault.",
+      "mortar_metres": 0.024,
+      "albedo": "pale_limestone_light_albedo.png",
+      "normal": "pale_limestone_light_normal.png",
+      "roughness": "pale_limestone_light_roughness.png"
+    },
+    "worn_courtyard_flagstone": {
+      "description": "Broad worn paving, dished centres, for floors rather than walls.",
+      "mortar_metres": 0.045,
+      "albedo": "worn_courtyard_flagstone_albedo.png",
+      "normal": "worn_courtyard_flagstone_normal.png",
+      "roughness": "worn_courtyard_flagstone_roughness.png"
+    }
+  }
+}
