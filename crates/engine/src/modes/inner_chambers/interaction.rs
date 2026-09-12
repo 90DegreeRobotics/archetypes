@@ -85,13 +85,14 @@ pub struct InnerActions {
 pub struct InnerModalState {
     pub encounter: bool,
     pub manifestation: bool,
+    pub library: bool,
     pub workshop: bool,
     pub settings: bool,
 }
 
 impl InnerModalState {
     pub fn any(&self) -> bool {
-        self.encounter || self.manifestation || self.workshop || self.settings
+        self.encounter || self.manifestation || self.library || self.workshop || self.settings
     }
 }
 
@@ -133,6 +134,7 @@ fn resolve_actions(
 fn resolve_modal_state(
     encounter: Option<Res<EncounterState>>,
     manifestation: Option<Res<ManifestationState>>,
+    library: Option<Res<super::library::LibraryState>>,
     workshop: Option<Res<WorkshopState>>,
     settings_menu: Option<Res<super::settings_menu::SettingsMenuState>>,
     mut modal: ResMut<InnerModalState>,
@@ -150,6 +152,7 @@ fn resolve_modal_state(
     *modal = InnerModalState {
         encounter: encounter.map(|state| state.is_open()).unwrap_or(false),
         manifestation,
+        library: library.map(|state| state.is_open()).unwrap_or(false),
         workshop: workshop.map(|state| state.is_open()).unwrap_or(false),
         settings: settings_menu.map(|menu| menu.open).unwrap_or(false),
     };
@@ -386,6 +389,7 @@ mod tests {
         assert!(!InnerModalState::default().any());
         assert!(InnerModalState { workshop: true, ..Default::default() }.any());
         assert!(InnerModalState { manifestation: true, ..Default::default() }.any());
+        assert!(InnerModalState { library: true, ..Default::default() }.any());
         assert!(InnerModalState { encounter: true, ..Default::default() }.any());
     }
 }

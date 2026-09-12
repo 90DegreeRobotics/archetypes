@@ -312,7 +312,7 @@ fn toggle_settings_menu(
     }
     // Another surface owns input: a conversation, a prompt, the plan workshop. Its own cancel
     // handling runs; this menu stays out of the way.
-    if !menu.open && (modal.encounter || modal.manifestation || modal.workshop) {
+    if !menu.open && (modal.encounter || modal.manifestation || modal.library || modal.workshop) {
         return;
     }
 

@@ -12,6 +12,7 @@ pub mod catalog;
 pub mod extraction;
 pub mod encounters;
 pub mod interaction;
+pub mod library;
 pub mod manifest_capture;
 pub mod manifestation;
 pub mod museum;
@@ -56,6 +57,7 @@ impl Plugin for InnerChambersPlugin {
                 manifestation::ManifestationPlugin,
                 museum::MuseumPlugin,
                 objects::ObjectsPlugin,
+                library::LibraryPlugin,
                 music::InnerCastleMusicPlugin,
                 settings_menu::SettingsMenuPlugin,
                 workshop::WorkshopPlugin,
