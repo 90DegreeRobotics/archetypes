@@ -1,10 +1,22 @@
 # Archetypes Status
 
-**Last Updated: 2026-09-11 (Stair Kit Module, Deck Seating Fix)**
+**Last Updated: 2026-09-11 (HANDOFF: Rotunda Heart and Stone)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **HANDOFF to the next builder (2026-09-11):** The previous builder stood down; the next unit of
+  work is written up in full at
+  `docs/ledger/2026/09/plan_2026-09-11_2200_handoff_rotunda_heart_and_stone.md`. It covers five
+  operator asks — stone textures varied by arcade level, the main floor and rotunda fixed, every
+  character mesh removed except the Jester, the old table's spinning `Stargate_Portal` effect
+  reconnected, and the manifestation altar moved to the centre so the vortex turns beneath it.
+  Two findings worth knowing without reading the plan: the portal effect is **not broken** —
+  `chamber/portal.rs` works and `PortalPlugin` is registered, but `table.glb` is only spawned
+  inside `setup_legacy_rotunda_world`, which is `#[allow(dead_code)]` and never runs, so the disc
+  never enters the live castle. And removing the six room figures removes the only entities
+  carrying `ArchetypeEmbodiment`, which is what the conversation system targets — that needs an
+  operator decision, not a silent deletion.
 - **Stair flight kit module (2026-09-11):** The perimeter ascent is now a Blender module, two
   instances per storey. `scripts/author_stair_flight.py` builds a real flight — stepped treads
   with a nosing, a solid raked soffit under them, a parapet **on both sides** with a coping
