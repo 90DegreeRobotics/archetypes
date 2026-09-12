@@ -1,10 +1,26 @@
 # Archetypes Status
 
-**Last Updated: 2026-09-11 (Blender Kit: Arcade Bay + Vault Fresco)**
+**Last Updated: 2026-09-11 (Perimeter Stone Repair, Museum Arches Planned)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Perimeter stone repair + black arch interiors (2026-09-11):** The gallery decks, ground
+  promenade and every stair tread were sharing the dark basalt floor material (base 0.34) while
+  the Blender arcade standing on them is pale limestone (0.62) — roughly double the value — so
+  from any gallery the walkway read as a black slab hung under a pale building. They now use a
+  matched `pale_stone`, and cornices/rails a non-metallic `pale_trim` (they were 0.25 metallic
+  brown, reading as copper pipework). The arch recess went to near-black so the arcade reads as
+  openings rather than panels; the spandrel above each arch went back to masonry, since only the
+  opening is a hole. Evidence: `artifacts/visual-proof/stone-and-arches/` and
+  `stone-and-arches-walk/`. Still primitives: the stair's open side is a raw stepped silhouette
+  with no stringer, and the room drums are flat-coloured cylinders.
+- **Museum arches planned (2026-09-11):** The building has **504 arches** (72 bays x 7 storeys,
+  `castle::total_arches()`, pinned by test). Plan to make 12 of them walkable exhibition
+  chambers hanging real Chronos2 works with provenance-backed placards:
+  `docs/ledger/2026/09/plan_2026-09-11_2130_museum_arches.md`. Art source verified as 151
+  first-light bundles in `C:\chronos2\outirst_light`, to be staged into the repo rather
+  than read from a sibling product at runtime.
 - **Painted vault fresco (2026-09-11):** The ceiling is now an operator-supplied circular
   painting on a real saucer dome. `scripts/author_vault_fresco.py` builds a spherical cap with a
   114m base and 30m rise (cut from a 231.6m sphere) and maps the image with polar UVs projected

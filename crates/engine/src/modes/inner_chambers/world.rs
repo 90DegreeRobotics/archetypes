@@ -203,6 +203,22 @@ fn setup_inner_world(
         perceptual_roughness: 0.52,
         ..default()
     });
+    // The perimeter architecture is matched to the Blender kit's limestone (0.62, 0.58, 0.51).
+    // The decks, promenade and stairs were sharing the dark basalt floor material at 0.34, which
+    // is roughly half the value of the arcade standing on them — so from any gallery the walkway
+    // read as a black slab hung under a pale building.
+    let pale_stone = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.60, 0.57, 0.50),
+        perceptual_roughness: 0.88,
+        ..default()
+    });
+    // Cornices and rails are stone, not metal. At 0.25 metallic and a brown base they read as
+    // copper pipework threaded through the hall.
+    let pale_trim = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.50, 0.46, 0.40),
+        perceptual_roughness: 0.74,
+        ..default()
+    });
     let abyss = materials.add(StandardMaterial {
         base_color: Color::srgb(0.008, 0.011, 0.019),
         perceptual_roughness: 1.0,
@@ -301,7 +317,7 @@ fn setup_inner_world(
         spawn_seed_room(&mut commands, &mut meshes, &mut materials, &asset_server, stone.clone(), trim.clone(), room);
     }
 
-    spawn_castle_ascent(&mut commands, &mut meshes, &mut materials, &asset_server, stone.clone(), trim.clone());
+    spawn_castle_ascent(&mut commands, &mut meshes, &mut materials, &asset_server, pale_stone.clone(), pale_trim.clone());
 
     // One enclosing wall contains the castle without restoring a flat arena floor.
     commands.spawn((
@@ -579,7 +595,7 @@ fn spawn_castle_ascent(
 
         // Underside cornice, so each storey reads as a built floor from the hall below.
         commands.spawn((
-            Mesh3d(meshes.add(Torus::new(GALLERY_INNER_RADIUS - 0.9, GALLERY_INNER_RADIUS + 0.5))),
+            Mesh3d(meshes.add(Torus::new(GALLERY_INNER_RADIUS - 0.55, GALLERY_INNER_RADIUS + 0.15))),
             MeshMaterial3d(trim.clone()),
             Transform::from_xyz(0.0, floor_y - 0.85, 0.0),
             InnerWorldElement,

@@ -130,6 +130,14 @@ pub fn arcade_bay_bearing(index: usize) -> f32 {
     index as f32 * TAU / ARCADE_BAYS_PER_LEVEL as f32
 }
 
+/// Every arch in the building: one per bay, on every gallery storey.
+///
+/// This is the inventory a museum build has to work against — how many walkable chambers the
+/// wall could ever hold, and therefore how many exhibits could ever be hung.
+pub fn total_arches() -> usize {
+    ARCADE_BAYS_PER_LEVEL * GALLERY_LEVELS
+}
+
 /// Yaw that seats a wall kit module: its local +X along the wall tangent and its local +Z
 /// pointing in toward the hall, with its back face on the wall.
 ///
@@ -543,6 +551,15 @@ mod tests {
             (width - 9.9452).abs() < 0.001,
             "bay chord is now {width}; re-run scripts/author_arcade_bay.py"
         );
+    }
+
+    #[test]
+    fn the_building_has_a_known_number_of_arches() {
+        // 72 bays on each of 7 gallery storeys. Museum planning is sized against this, so it
+        // is stated here rather than recounted by hand each time.
+        assert_eq!(total_arches(), 504);
+        assert_eq!(ARCADE_BAYS_PER_LEVEL, 72);
+        assert_eq!(GALLERY_LEVELS, 7);
     }
 
     #[test]

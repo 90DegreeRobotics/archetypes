@@ -185,7 +185,10 @@ def build_bay() -> None:
     trim = stone_material("ArcadeTrim", (0.47, 0.42, 0.35), 0.78)
     # Nothing in this hall casts shadows, so a recess cannot read by depth alone. The value
     # break has to be in the material or the arcade collapses into flat rectangles.
-    shadowed = stone_material("ArcadeRecess", (0.16, 0.15, 0.14), 0.94)
+    # Near black, not merely dark. The hall carries a strong ambient term, so a mid-dark
+    # recess lifts to grey and the arcade flattens into panels. Black reads as depth — an
+    # opening you could step into — which is also what the walkable bays will actually be.
+    shadowed = stone_material("ArcadeRecess", (0.018, 0.018, 0.022), 0.97)
 
     half = BAY_WIDTH * 0.5
     pier_x = -half  # on the bay's left edge, so arrayed bays share one solid pier
@@ -224,8 +227,10 @@ def build_bay() -> None:
     # Spandrel infill between the arch head and the cornice.
     spandrel_base = SPRING_LINE + ARCH_RADIUS * 0.35
     spandrel_height = CORNICE_BASE - spandrel_base
+    # Masonry, not void: only the arch opening is a hole. A black spandrel puts a band of
+    # nothing across the head of every bay.
     built.append(add_box(
-        "Bay_Spandrel", shadowed,
+        "Bay_Spandrel", limestone,
         (0.0, RECESS_DEPTH * 0.5, spandrel_base + spandrel_height * 0.5),
         (BAY_WIDTH, RECESS_DEPTH, spandrel_height),
     ))
