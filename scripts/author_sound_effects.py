@@ -206,6 +206,24 @@ def duplicate() -> np.ndarray:
     return normalise(first * 0.6 + delayed * 0.6 + shimmer, PEAK * 0.6)
 
 
+def swing() -> np.ndarray:
+    """A held object cutting the air: a band of noise that rises and falls as it passes.
+
+    No impact. Nothing in the castle is breakable, and pretending otherwise with a thud would
+    be a sound effect making a promise the game does not keep.
+    """
+    rng = np.random.default_rng(2006)
+    times = t(0.34)
+    # The band sweeps up and back down, which is what makes a pass read as passing rather than
+    # as a burst of static.
+    centre = 900.0 + 1500.0 * np.sin(np.pi * np.clip(times / 0.30, 0.0, 1.0))
+    air = noise(times, rng)
+    swept = bandpass(air, 380.0, 4200.0)
+    shaped = swept * (centre / centre.max())
+    body = shaped * env_ad(times, 0.020, 0.26, curve=1.7)
+    return normalise(body, PEAK * 0.5)
+
+
 def altar_charge() -> np.ndarray:
     """A rising hum under the manifestation prompt. Long, quiet, and not a musical note."""
     rng = np.random.default_rng(2004)
@@ -281,6 +299,7 @@ CUES: list[Cue] = [
     Cue("pick_up", pick_up, "An object taken into the hand"),
     Cue("place", place, "An object set down on the floor"),
     Cue("duplicate", duplicate, "An object copied: one thing becoming two"),
+    Cue("swing", swing, "A held object cutting the air - motion only, no impact"),
     Cue("altar_charge", altar_charge, "Rising hum while the altar takes a prompt"),
     Cue("manifest_success", manifest_success, "A work arrives on the altar"),
     Cue("manifest_failure", manifest_failure, "The pipeline refused or failed"),

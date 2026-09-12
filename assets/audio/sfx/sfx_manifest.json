@@ -57,6 +57,12 @@
       "seconds": 0.42,
       "peak": 0.516
     },
+    "swing": {
+      "file": "swing.wav",
+      "description": "A held object cutting the air - motion only, no impact",
+      "seconds": 0.34,
+      "peak": 0.43
+    },
     "altar_charge": {
       "file": "altar_charge.wav",
       "description": "Rising hum while the altar takes a prompt",

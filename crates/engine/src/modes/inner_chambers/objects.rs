@@ -59,6 +59,19 @@ const HELD_OFFSET: Vec3 = Vec3::new(0.28, -0.42, -0.78);
 /// from the eye fills the whole screen and the player cannot see where they are walking.
 const HELD_SCALE: f32 = 0.34;
 
+/// How long one swing takes, in seconds.
+///
+/// **Motion, not impact.** The held object arcs through view with a sound and a short camera
+/// kick, and nothing is struck. Striking things is the Smash Room
+/// (`Game Plan_ Archetypes - The Inner Chambers Smash Room.md`), which the operator retired on
+/// 2026-09-11; it needs a physics crate, rigid bodies and breakable props, none of which exist.
+/// A swing that only moves is most of what a swing feels like in the hand, and it promises
+/// nothing the game does not deliver.
+const SWING_SECONDS: f32 = 0.38;
+
+/// How far the camera kicks at the top of a swing, in radians.
+const SWING_CAMERA_KICK: f32 = 0.055;
+
 /// Marks an object standing in the world. `interaction.rs` resolves focus against these.
 #[derive(Component, Debug, Clone)]
 pub struct PlacedObject {
@@ -89,6 +102,25 @@ impl Carried {
     }
 }
 
+/// A swing in progress. `None` between swings.
+#[derive(Resource, Default)]
+pub struct Swing {
+    pub elapsed: Option<f32>,
+}
+
+impl Swing {
+    /// 0 at the start of the swing, 1 at the end.
+    pub fn progress(&self) -> Option<f32> {
+        self.elapsed.map(|elapsed| (elapsed / SWING_SECONDS).clamp(0.0, 1.0))
+    }
+
+    /// A single arc: up and through, then back. Sine rather than a linear ramp, so the object
+    /// accelerates into the swing and settles out of it.
+    pub fn arc(progress: f32) -> f32 {
+        (progress * std::f32::consts::PI).sin()
+    }
+}
+
 /// Counter for minting placement ids within a session, combined with a timestamp so ids stay
 /// unique across sessions too.
 #[derive(Resource, Default)]
@@ -99,6 +131,7 @@ pub struct ObjectsPlugin;
 impl Plugin for ObjectsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Carried>()
+            .init_resource::<Swing>()
             .init_resource::<PlacementCounter>()
             .add_systems(OnEnter(InnerChambersState::Loading), spawn_standing_placements)
             .add_systems(
@@ -108,6 +141,7 @@ impl Plugin for ObjectsPlugin {
                     take_from_altar,
                     place_or_duplicate,
                     hold_carried_object,
+                    swing_held_object,
                 )
                     .chain()
                     .after(super::interaction::InnerInteractionSet::Resolve)
@@ -363,6 +397,10 @@ fn hold_carried_object(
     let showing = !held.is_empty();
 
     match (wanted, showing) {
+        (Some(_), true) => {
+            // Nothing to do: the swing system owns the held transform while a swing runs, and
+            // `swing_held_object` puts it back at rest when one is not.
+        }
         (Some(asset), false) => {
             let Ok(camera) = camera.single() else {
                 return;
@@ -384,6 +422,71 @@ fn hold_carried_object(
     }
 }
 
+/// Swings whatever is in hand: the object arcs through view, a sound plays, and the camera
+/// kicks a little. Nothing is struck.
+fn swing_held_object(
+    time: Res<Time>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    gamepads: Query<&Gamepad>,
+    modal: Res<InnerModalState>,
+    carried: Res<Carried>,
+    mut swing: ResMut<Swing>,
+    mut held: Query<&mut Transform, With<CarriedVisual>>,
+    mut camera: Query<
+        &mut super::camera::CameraController,
+        With<super::camera::PlayerCamera>,
+    >,
+    mut sfx: MessageWriter<PlaySfx>,
+) {
+    if !carried.is_carrying() {
+        // Dropping mid-swing leaves nothing to animate; clear the state rather than letting it
+        // run on and apply to the next thing picked up.
+        swing.elapsed = None;
+        return;
+    }
+
+    let started = !modal.any()
+        && swing.elapsed.is_none()
+        && (mouse.just_pressed(MouseButton::Left)
+            || crate::services::gamepad_input::any_just_pressed(
+                &gamepads,
+                GamepadButton::LeftTrigger,
+            ));
+    if started {
+        swing.elapsed = Some(0.0);
+        sfx.write(PlaySfx::new(Sfx::Swing));
+        if let Ok(mut controller) = camera.single_mut() {
+            controller.pitch = (controller.pitch + SWING_CAMERA_KICK).clamp(-1.54, 1.54);
+        }
+    }
+
+    let Some(elapsed) = swing.elapsed else {
+        // At rest: hold the object at its carry pose. Without this it would stay wherever the
+        // last arc left it.
+        for mut transform in &mut held {
+            transform.translation = HELD_OFFSET;
+            transform.rotation = Quat::IDENTITY;
+        }
+        return;
+    };
+    let elapsed = elapsed + time.delta_secs();
+    if elapsed >= SWING_SECONDS {
+        swing.elapsed = None;
+    } else {
+        swing.elapsed = Some(elapsed);
+    }
+
+    let progress = (elapsed / SWING_SECONDS).clamp(0.0, 1.0);
+    let arc = Swing::arc(progress);
+    for mut transform in &mut held {
+        // Forward, up and rotating: the object leads with its top, which is what a swing looks
+        // like from behind the hands.
+        transform.translation = HELD_OFFSET
+            + Vec3::new(-0.10 * arc, 0.30 * arc, -0.42 * arc);
+        transform.rotation = Quat::from_axis_angle(Vec3::X, -1.5 * arc);
+    }
+}
+
 /// Tells the player what the keys do, through the shared hint arbiter rather than by writing
 /// the hint line directly — three systems racing to own that line was a real shipped bug.
 fn object_hint(
@@ -402,7 +505,7 @@ fn object_hint(
     if carried.is_carrying() {
         hint.request(
             HintPriority::Device,
-            "[F] Set it down    [R] Duplicate".to_string(),
+            "[F] Set it down    [R] Duplicate    [LMB] Swing".to_string(),
         );
     } else if matches!(focus.0, Some(InteractionTarget::PlacedObject(_))) {
         hint.request(HintPriority::Device, "[E] Pick it up".to_string());
@@ -573,6 +676,36 @@ mod tests {
         assert!(held > 0.25, "a held object is only {held:.2}m across and reads as a speck");
         assert!(HELD_OFFSET.z < 0.0, "the held object must be in front of the eye");
         assert!(HELD_OFFSET.y < 0.0, "the held object must be below the centre of view");
+    }
+
+    /// A swing is one arc: it starts and ends at rest, and peaks in the middle. A linear ramp
+    /// would snap back to the carry pose at the end.
+    #[test]
+    fn a_swing_is_one_arc_that_starts_and_ends_at_rest() {
+        assert!(Swing::arc(0.0).abs() < 1e-6);
+        assert!(Swing::arc(1.0).abs() < 1e-6);
+        assert!((Swing::arc(0.5) - 1.0).abs() < 1e-6);
+        for step in 0..=10 {
+            let progress = step as f32 / 10.0;
+            let arc = Swing::arc(progress);
+            // `sin(PI)` in f32 is about -8.7e-8, so the endpoints need a float epsilon rather
+            // than an exact range.
+            assert!(
+                (-1e-6..=1.0 + 1e-6).contains(&arc),
+                "arc left its range at {progress}: {arc}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_swing_reports_progress_only_while_it_runs() {
+        let mut swing = Swing::default();
+        assert_eq!(swing.progress(), None);
+        swing.elapsed = Some(SWING_SECONDS * 0.5);
+        assert!((swing.progress().unwrap() - 0.5).abs() < 1e-6);
+        // Past the end it saturates rather than running on.
+        swing.elapsed = Some(SWING_SECONDS * 4.0);
+        assert_eq!(swing.progress(), Some(1.0));
     }
 
     /// Placement ids must be unique, or two objects share a row and one silently replaces the

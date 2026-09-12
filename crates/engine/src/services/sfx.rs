@@ -27,6 +27,7 @@ pub enum Sfx {
     PickUp,
     Place,
     Duplicate,
+    Swing,
     AltarCharge,
     ManifestSuccess,
     ManifestFailure,
@@ -57,6 +58,7 @@ impl Sfx {
             Sfx::PickUp => "pick_up",
             Sfx::Place => "place",
             Sfx::Duplicate => "duplicate",
+            Sfx::Swing => "swing",
             Sfx::AltarCharge => "altar_charge",
             Sfx::ManifestSuccess => "manifest_success",
             Sfx::ManifestFailure => "manifest_failure",
@@ -78,6 +80,7 @@ impl Sfx {
             Sfx::Land => 0.8,
             Sfx::PickUp | Sfx::Place => 0.85,
             Sfx::Duplicate => 0.8,
+            Sfx::Swing => 0.65,
             Sfx::AltarCharge => 0.7,
             Sfx::ManifestSuccess => 1.0,
             Sfx::ManifestFailure => 0.9,
@@ -168,13 +171,14 @@ fn play_queued_sfx(
 mod tests {
     use super::*;
 
-    const EVERY_CUE: [Sfx; 12] = [
+    const EVERY_CUE: [Sfx; 13] = [
         Sfx::Footstep,
         Sfx::Jump,
         Sfx::Land,
         Sfx::PickUp,
         Sfx::Place,
         Sfx::Duplicate,
+        Sfx::Swing,
         Sfx::AltarCharge,
         Sfx::ManifestSuccess,
         Sfx::ManifestFailure,
