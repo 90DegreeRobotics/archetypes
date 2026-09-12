@@ -19,6 +19,7 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use bevy::winit::{UpdateMode, WinitSettings};
 
+use crate::services::sfx::{PlaySfx, Sfx};
 use crate::services::text_entry;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -1397,6 +1398,7 @@ fn poll_manifestation_results(
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut sfx: MessageWriter<PlaySfx>,
 ) {
     let Ok(receiver) = channels.receiver.lock() else {
         return;
@@ -1547,6 +1549,7 @@ fn poll_manifestation_results(
                     .id();
                 state.active_reference_panel = Some(panel_entity);
 
+                sfx.write(PlaySfx::new(Sfx::ManifestSuccess));
                 println!("[ManifestationSystem] Succeeded: Manifested '{prompt}' atop the altar!");
             }
             ManifestationEvent::Failure {
@@ -1560,6 +1563,7 @@ fn poll_manifestation_results(
                 state.pedestal_charge = 0.0;
 
                 spawn_floating_red_x(&mut commands, &mut meshes, &mut materials, &mut state);
+                sfx.write(PlaySfx::new(Sfx::ManifestFailure));
                 eprintln!("[ManifestationSystem] Manifestation Failed: {detail}");
             }
         }

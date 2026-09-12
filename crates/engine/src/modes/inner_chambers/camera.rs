@@ -1,6 +1,7 @@
 use super::InnerChambersState;
 use crate::services::gamepad_input;
 use crate::services::settings::GameSettings;
+use crate::services::sfx::{PlaySfx, Sfx};
 use bevy::ecs::message::MessageReader;
 use bevy::input::gamepad::{Gamepad, GamepadButton};
 use bevy::input::mouse::MouseMotion;
@@ -72,6 +73,15 @@ pub struct CameraController {
     // Flight disengage timing (triple tap space)
     pub flight_space_press_history: [f32; 3],
     pub flight_space_press_index: usize,
+
+    /// Ground covered since the last footstep, in metres.
+    ///
+    /// Footsteps are spaced by **distance walked**, not by a timer. A timer plays the same
+    /// rhythm whether the player is sprinting or edging forward, which is what makes footfalls
+    /// in a lot of games sound detached from the legs underneath them.
+    pub stride_accumulated: f32,
+    /// Which footstep variant comes next, so a run cycles rather than repeating one sample.
+    pub stride_index: usize,
 }
 
 impl CameraController {
@@ -105,6 +115,8 @@ impl Default for CameraController {
             space_tap_count: 0,
             flight_space_press_history: [0.0; 3],
             flight_space_press_index: 0,
+            stride_accumulated: 0.0,
+            stride_index: 0,
         }
     }
 }
@@ -194,6 +206,13 @@ fn character_obstacles() -> [(Vec2, f32); 2] {
     ]
 }
 
+/// Ground covered between footfalls, in metres.
+///
+/// Walk speed is about 6.4 m/s, so this is a footfall a little over three times a second - a
+/// brisk walk rather than a jog. It is a distance and not an interval on purpose: a timer plays
+/// the same rhythm whether the player is moving or pressed against a wall.
+const STRIDE_LENGTH: f32 = 1.9;
+
 /// Canonical room-figure obstacles, derived from each room's radial embodiment offset.
 /// Pinned by test so that when satellite rooms are re-enabled or relocated, their positions
 /// match the world-builder contract.
@@ -228,6 +247,7 @@ pub(super) fn player_locomotion(
     encounter_state: Option<Res<super::encounters::EncounterState>>,
     workshop_state: Option<Res<super::workshop::WorkshopState>>,
     settings_menu: Option<Res<super::settings_menu::SettingsMenuState>>,
+    mut sfx: MessageWriter<PlaySfx>,
     mut query: Query<(&mut Transform, &mut CameraController), With<PlayerCamera>>,
 ) {
     let Ok((mut transform, mut controller)) = query.single_mut() else {
@@ -326,6 +346,7 @@ pub(super) fn player_locomotion(
                     if controller.is_grounded {
                         controller.velocity_y = controller.jump_impulse;
                         controller.is_grounded = false;
+                        sfx.write(PlaySfx::new(Sfx::Jump));
                     }
                 }
             } else if now - controller.last_space_press_time > 0.45 {
@@ -369,6 +390,7 @@ pub(super) fn player_locomotion(
             let forward = Vec3::new(-controller.yaw.sin(), 0.0, -controller.yaw.cos());
             let right = Vec3::new(controller.yaw.cos(), 0.0, -controller.yaw.sin());
 
+            let walk_origin = Vec2::new(transform.translation.x, transform.translation.z);
             if move_dir != Vec2::ZERO {
                 let norm = move_dir.normalize();
                 let horizontal_vel = (forward * norm.y + right * norm.x) * controller.walk_speed;
@@ -378,11 +400,24 @@ pub(super) fn player_locomotion(
 
             // Center/room embodiment and active manifestation obstacles, then each outer
             // room's cobblestone wall.
+            let before = Vec2::new(transform.translation.x, transform.translation.z);
             let resolved = castle::clamp_inside_wall(castle::resolve_room_walls(
-                resolve_character_obstacles(Vec2::new(transform.translation.x, transform.translation.z)),
+                resolve_character_obstacles(before),
             ));
             transform.translation.x = resolved.x;
             transform.translation.z = resolved.y;
+
+            // Footsteps are spaced by ground actually covered, measured *after* collision has
+            // had its say. Measuring intent instead would keep the boots marching while the
+            // player is pressed against a wall going nowhere.
+            if controller.is_grounded {
+                controller.stride_accumulated += resolved.distance(walk_origin);
+                if controller.stride_accumulated >= STRIDE_LENGTH {
+                    controller.stride_accumulated -= STRIDE_LENGTH;
+                    controller.stride_index = controller.stride_index.wrapping_add(1);
+                    sfx.write(PlaySfx::variant(Sfx::Footstep, controller.stride_index));
+                }
+            }
 
             let current_feet_y = transform.translation.y - controller.eye_height;
             let ground_y = castle::castle_surface_y(Vec2::new(transform.translation.x, transform.translation.z), current_feet_y);
@@ -395,6 +430,14 @@ pub(super) fn player_locomotion(
 
             let current_feet_y = transform.translation.y - controller.eye_height;
             if current_feet_y <= ground_y {
+                // Only a real arrival makes a noise. This branch also runs every frame the
+                // player merely stands still, so landing has to be the *transition* into
+                // grounded, and a gentle settle onto a step is not a landing.
+                if !controller.is_grounded && controller.velocity_y < -2.0 {
+                    sfx.write(PlaySfx::new(Sfx::Land));
+                    // A landing restarts the stride, so the first step after it is a full one.
+                    controller.stride_accumulated = 0.0;
+                }
                 transform.translation.y = ground_y + controller.eye_height;
                 controller.velocity_y = 0.0;
                 controller.is_grounded = true;

@@ -10,4 +10,5 @@ pub mod paths;
 pub mod readiness;
 pub mod sentinel;
 pub mod settings;
+pub mod sfx;
 pub mod text_entry;

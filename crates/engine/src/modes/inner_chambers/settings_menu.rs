@@ -21,6 +21,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::services::gamepad_input;
 use crate::services::settings::GameSettings;
+use crate::services::sfx::{PlaySfx, Sfx};
 
 use super::interaction::{InnerActions, InnerInteractionSet, InnerModalState};
 use super::InnerChambersState;
@@ -61,10 +62,7 @@ impl SettingsRow {
             SettingsRow::GamepadDeadzone => "Gamepad stick deadzone",
             SettingsRow::VolumeMaster => "Master volume",
             SettingsRow::VolumeMusic => "Ambient music volume",
-            // Labelled for what it is. The value persists and is ready for a bus, but nothing
-            // in the castle currently plays a sound effect, and a slider that silently does
-            // nothing is worse than one that says so.
-            SettingsRow::VolumeSfx => "Sound effects volume (no SFX bus yet)",
+            SettingsRow::VolumeSfx => "Sound effects volume",
             SettingsRow::VolumeVoice => "Council voices volume",
             SettingsRow::ResetDefaults => "Reset everything to defaults",
             SettingsRow::Resume => "Resume",
@@ -338,6 +336,7 @@ fn drive_settings_menu(
     gamepads: Query<&Gamepad>,
     mut menu: ResMut<SettingsMenuState>,
     mut settings: ResMut<GameSettings>,
+    mut sfx: MessageWriter<PlaySfx>,
 ) {
     if !menu.open {
         return;
@@ -360,9 +359,11 @@ fn drive_settings_menu(
 
     if up {
         menu.row = (menu.row + SETTINGS_ROWS.len() - 1) % SETTINGS_ROWS.len();
+        sfx.write(PlaySfx::new(Sfx::MenuMove));
     }
     if down {
         menu.row = (menu.row + 1) % SETTINGS_ROWS.len();
+        sfx.write(PlaySfx::new(Sfx::MenuMove));
     }
 
     let row = menu.selected();
@@ -376,10 +377,16 @@ fn drive_settings_menu(
             if right {
                 row.write(&mut settings, current + step);
             }
+            if left || right {
+                // Played at the *new* level, so moving the SFX slider is audible feedback on
+                // the thing being moved. That is the one slider that can demonstrate itself.
+                sfx.write(PlaySfx::new(Sfx::MenuAdjust));
+            }
         }
     }
 
     if confirm {
+        sfx.write(PlaySfx::new(Sfx::MenuConfirm));
         match row {
             SettingsRow::ResetDefaults => *settings = GameSettings::default(),
             SettingsRow::Resume => menu.open = false,
@@ -564,15 +571,18 @@ mod tests {
         assert!(rendered.len() <= 24, "bar renders {} chars", rendered.len());
     }
 
-    /// Two of the four volume sliders reach a real audio path today. The third says so in its
-    /// own label rather than pretending. If an SFX bus is added, this test is the reminder to
-    /// drop the qualifier.
+    /// All four volume sliders now reach a real audio path: music, Council voices, and - since
+    /// `services/sfx.rs` - sound effects. No row needs a qualifier, and none may carry one
+    /// again without a bus behind it.
     #[test]
-    fn a_volume_slider_with_no_bus_says_so_in_its_label() {
-        assert!(SettingsRow::VolumeSfx.label().contains("no SFX bus yet"));
-        assert!(!SettingsRow::VolumeMusic.label().contains("yet"));
-        assert!(!SettingsRow::VolumeVoice.label().contains("yet"));
-        assert!(!SettingsRow::VolumeMaster.label().contains("yet"));
+    fn no_volume_slider_has_to_apologise_for_itself() {
+        for row in SETTINGS_ROWS {
+            assert!(
+                !row.label().contains("yet"),
+                "{} still says it does not work",
+                row.label()
+            );
+        }
     }
 
     #[test]

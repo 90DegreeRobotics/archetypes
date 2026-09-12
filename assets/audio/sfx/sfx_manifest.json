@@ -1,0 +1,97 @@
+{
+  "schema": "archetypes.sfx.v1",
+  "rate": 44100,
+  "note": "Authored from noise, decaying partials and filtered transients. No sample pack, no licence, no attribution. Deterministic: re-running writes identical files.",
+  "cues": {
+    "footstep_stone_1": {
+      "file": "footstep_stone_1.wav",
+      "description": "Boot on dressed stone, variation 1",
+      "seconds": 0.16,
+      "peak": 0.473
+    },
+    "footstep_stone_2": {
+      "file": "footstep_stone_2.wav",
+      "description": "Boot on dressed stone, variation 2",
+      "seconds": 0.16,
+      "peak": 0.473
+    },
+    "footstep_stone_3": {
+      "file": "footstep_stone_3.wav",
+      "description": "Boot on dressed stone, variation 3",
+      "seconds": 0.16,
+      "peak": 0.473
+    },
+    "footstep_stone_4": {
+      "file": "footstep_stone_4.wav",
+      "description": "Boot on dressed stone, variation 4",
+      "seconds": 0.16,
+      "peak": 0.473
+    },
+    "jump": {
+      "file": "jump.wav",
+      "description": "Push off the floor",
+      "seconds": 0.26,
+      "peak": 0.516
+    },
+    "land": {
+      "file": "land.wav",
+      "description": "Landing weight and grit",
+      "seconds": 0.34,
+      "peak": 0.6192
+    },
+    "pick_up": {
+      "file": "pick_up.wav",
+      "description": "An object taken into the hand",
+      "seconds": 0.3,
+      "peak": 0.5332
+    },
+    "place": {
+      "file": "place.wav",
+      "description": "An object set down on the floor",
+      "seconds": 0.32,
+      "peak": 0.5332
+    },
+    "duplicate": {
+      "file": "duplicate.wav",
+      "description": "An object copied: one thing becoming two",
+      "seconds": 0.42,
+      "peak": 0.516
+    },
+    "altar_charge": {
+      "file": "altar_charge.wav",
+      "description": "Rising hum while the altar takes a prompt",
+      "seconds": 1.6,
+      "peak": 0.387
+    },
+    "manifest_success": {
+      "file": "manifest_success.wav",
+      "description": "A work arrives on the altar",
+      "seconds": 1.3,
+      "peak": 0.6708
+    },
+    "manifest_failure": {
+      "file": "manifest_failure.wav",
+      "description": "The pipeline refused or failed",
+      "seconds": 0.85,
+      "peak": 0.5676
+    },
+    "menu_move": {
+      "file": "menu_move.wav",
+      "description": "Menu selection moved",
+      "seconds": 0.075,
+      "peak": 0.344
+    },
+    "menu_adjust": {
+      "file": "menu_adjust.wav",
+      "description": "Slider stepped",
+      "seconds": 0.065,
+      "peak": 0.2924
+    },
+    "menu_confirm": {
+      "file": "menu_confirm.wav",
+      "description": "Menu row confirmed",
+      "seconds": 0.24,
+      "peak": 0.43
+    }
+  }
+}

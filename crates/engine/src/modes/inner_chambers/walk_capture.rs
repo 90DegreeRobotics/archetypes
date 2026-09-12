@@ -164,6 +164,7 @@ pub(crate) fn drive_walk_capture(
     workshop: Res<super::workshop::WorkshopState>,
     menu: Res<super::settings_menu::SettingsMenuState>,
     settings: Res<crate::services::settings::GameSettings>,
+    sfx_tally: Res<crate::services::sfx::SfxTally>,
     mut player: Query<(&mut Transform, &mut CameraController), With<PlayerCamera>>,
 ) {
     let now = time.elapsed_secs();
@@ -254,7 +255,7 @@ pub(crate) fn drive_walk_capture(
                 // The menu state and the selected row go in the report because a photograph
                 // of a menu does not say which menu it is, nor whether the keys reached it.
                 let line = format!(
-                    "{name}  pos=({:.2}, {:.2}, {:.2})  mode={:?}  focus={}  bench={}  plans={}                       mode_state={:?}  settings={}  row={}  music_volume={:.2}",
+                    "{name}  pos=({:.2}, {:.2}, {:.2})  mode={:?}  focus={}  bench={}  plans={}                       mode_state={:?}  settings={}  row={}  music_volume={:.2}                       sfx_played={}  footsteps={}",
                     transform.translation.x,
                     transform.translation.y,
                     transform.translation.z,
@@ -266,6 +267,8 @@ pub(crate) fn drive_walk_capture(
                     if menu.open { "open" } else { "closed" },
                     menu.selected().label(),
                     settings.volume_music,
+                    sfx_tally.played,
+                    sfx_tally.footsteps,
                 );
                 run.report.push(line);
             }
