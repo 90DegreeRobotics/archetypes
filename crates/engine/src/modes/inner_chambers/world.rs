@@ -301,7 +301,7 @@ fn setup_inner_world(
         spawn_seed_room(&mut commands, &mut meshes, &mut materials, &asset_server, stone.clone(), trim.clone(), room);
     }
 
-    spawn_castle_ascent(&mut commands, &mut meshes, &mut materials, stone.clone(), trim.clone());
+    spawn_castle_ascent(&mut commands, &mut meshes, &mut materials, &asset_server, stone.clone(), trim.clone());
 
     // One enclosing wall contains the castle without restoring a flat arena floor.
     commands.spawn((
@@ -534,6 +534,7 @@ fn spawn_castle_ascent(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    asset_server: &AssetServer,
     stone: Handle<StandardMaterial>,
     trim: Handle<StandardMaterial>,
 ) {
@@ -607,23 +608,20 @@ fn spawn_castle_ascent(
             ));
         }
 
-        // Wall articulation: an arcade of engaged piers per storey. Repetition at a human
-        // module is what lets the eye measure the height of the hall.
-        let pier_count = 48;
-        for index in 0..pier_count {
-            let theta = index as f32 * std::f32::consts::TAU / pier_count as f32;
-            let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
+        // Wall articulation is now a Blender kit module rather than a box per pier: an
+        // un-bevelled `Cuboid` catches no highlight, carries no UVs, and cannot be an arch,
+        // which is what an arcade is made of. `castle.rs` still decides where each bay goes.
+        for index in 0..ARCADE_BAYS_PER_LEVEL {
+            let bearing = arcade_bay_bearing(index);
             commands.spawn((
-                Mesh3d(meshes.add(Cuboid::new(1.5, GALLERY_RISE - 1.6, 2.4))),
-                MeshMaterial3d(stone.clone()),
-                Transform::from_translation(
-                    radial * (GALLERY_OUTER_RADIUS - 1.0) + Vec3::Y * (floor_y + GALLERY_RISE * 0.5 - 0.5),
-                )
-                .with_rotation(Quat::from_rotation_y(-theta)),
+                SceneRoot(asset_server.load("scenes/arcade_bay.glb#Scene0")),
+                Transform::from_translation(arcade_bay_position(level, index))
+                    .with_rotation(Quat::from_rotation_y(wall_module_yaw(bearing))),
                 InnerWorldElement,
-                Name::new(format!("Gallery_{:02}_Pier_{index:02}", level + 1)),
+                Name::new(format!("Gallery_{:02}_ArcadeBay_{index:02}", level + 1)),
             ));
-            if index % 4 == 0 {
+            if index % 6 == 0 {
+                let radial = Vec3::new(bearing.cos(), 0.0, bearing.sin());
                 // Emissive sconces rather than point lights: hundreds of real lights would
                 // blow the clustered-forward budget, and the glow is what reads at distance.
                 commands.spawn((

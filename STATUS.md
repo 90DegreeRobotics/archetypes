@@ -1,10 +1,21 @@
 # Archetypes Status
 
-**Last Updated: 2026-09-11 (Architect Workshop, Castle Movement Repair)**
+**Last Updated: 2026-09-11 (Blender Architecture Kit, Castle Scale)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Castle architecture moves to a Blender kit (2026-09-11):** The perimeter arcade is no longer
+  procedural Bevy primitives. `scripts/author_arcade_bay.py` authors one arcade bay headlessly
+  in Blender 4.5 — pier with plinth/shaft/capital, a real semicircular voussoir arch plus
+  archivolt, spandrel, string course and corona — bevelled, UV'd, 2,268 triangles, 151KB, and
+  exported to `assets/scenes/arcade_bay.glb`. The engine instances it 72 times per storey across
+  7 storeys; `castle.rs` remains the placement layer and gained `arcade_bay_width/bearing/
+  position` and `wall_module_yaw`. The script and `castle.rs` both carry the 9.9452m chord and
+  each fails independently if the other drifts. Why: an un-bevelled `Cuboid` catches no
+  highlight, has no UVs for stone texture, and cannot be an arch — which is what an arcade is
+  made of. Evidence: `artifacts/visual-proof/arcade-bay-kit/`. This is the first module; stairs,
+  balustrades, vault severies and room drums are still primitives.
 - **Architect workshop + castle movement repair (2026-09-11):** The Architect's room has a real
   drafting bench (`world.rs`) that opens a plan workshop: create, sequence, complete, stall and
   close player-owned `BuildIntent` artifacts (`services/build_intent.rs`), every write shown

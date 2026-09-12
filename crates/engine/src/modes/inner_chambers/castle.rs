@@ -109,6 +109,44 @@ pub fn castle_inner_face() -> f32 {
     CASTLE_RADIUS - CASTLE_WALL_THICKNESS * 0.5
 }
 
+// ---------------------------------------------------------------------------------------
+// Blender kit placement
+// ---------------------------------------------------------------------------------------
+
+/// Bays of arcade around one gallery storey.
+///
+/// `scripts/author_arcade_bay.py` models the module against this same count and wall radius,
+/// and fails its own export check if the cornice run stops matching the chord — so the asset
+/// and this placement layer cannot drift apart silently.
+pub const ARCADE_BAYS_PER_LEVEL: usize = 72;
+
+/// Chord length of one bay on the inscribed polygon at the wall face. This is the module's
+/// repeat distance, and the width the Blender cornice is modelled to.
+pub fn arcade_bay_width() -> f32 {
+    2.0 * GALLERY_OUTER_RADIUS * (PI / ARCADE_BAYS_PER_LEVEL as f32).sin()
+}
+
+pub fn arcade_bay_bearing(index: usize) -> f32 {
+    index as f32 * TAU / ARCADE_BAYS_PER_LEVEL as f32
+}
+
+/// Yaw that seats a wall kit module: its local +X along the wall tangent and its local +Z
+/// pointing in toward the hall, with its back face on the wall.
+///
+/// `Quat::from_rotation_y(phi)` sends local +Z to `(sin phi, 0, cos phi)`, so seating a module
+/// against the wall needs `phi = -(bearing + 90°)`. Using `-bearing` — the convention some of
+/// the older room furniture uses — leaves modules standing edge-on to the room.
+pub fn wall_module_yaw(bearing: f32) -> f32 {
+    -(bearing + FRAC_PI_2)
+}
+
+/// Where a bay module's origin sits: on the wall face, at the level's deck.
+pub fn arcade_bay_position(level: usize, index: usize) -> Vec3 {
+    let bearing = arcade_bay_bearing(index);
+    Vec3::new(bearing.cos(), 0.0, bearing.sin()) * GALLERY_OUTER_RADIUS
+        + Vec3::Y * gallery_y(level)
+}
+
 /// Ceiling for free flight: just under the wall head, so the top gallery is reachable and the
 /// player cannot leave the building through the vault.
 pub fn flight_ceiling() -> f32 {
@@ -493,6 +531,60 @@ mod tests {
         // is why it read as a field with a fence rather than as a hall.
         assert!(interior_height / interior_diameter > 0.5);
         assert!(interior_height > 120.0);
+    }
+
+    #[test]
+    fn the_arcade_bay_module_matches_the_asset_it_is_modelled_against() {
+        // `scripts/author_arcade_bay.py` bakes 9.9452m as the chord its cornice spans. If the
+        // wall radius or the bay count changes here without re-authoring the module, every
+        // storey opens 72 gaps or overlaps around a 716m circumference.
+        let width = arcade_bay_width();
+        assert!(
+            (width - 9.9452).abs() < 0.001,
+            "bay chord is now {width}; re-run scripts/author_arcade_bay.py"
+        );
+    }
+
+    #[test]
+    fn bays_close_the_ring_exactly() {
+        let total = arcade_bay_width() * ARCADE_BAYS_PER_LEVEL as f32;
+        let polygon = 2.0 * GALLERY_OUTER_RADIUS * (PI / ARCADE_BAYS_PER_LEVEL as f32).sin()
+            * ARCADE_BAYS_PER_LEVEL as f32;
+        assert!((total - polygon).abs() < 0.001);
+        // The inscribed polygon is a little shorter than the true circle, as it must be.
+        assert!(total < TAU * GALLERY_OUTER_RADIUS);
+        assert!(total > TAU * GALLERY_OUTER_RADIUS * 0.999);
+    }
+
+    #[test]
+    fn a_wall_module_faces_into_the_hall() {
+        for index in [0usize, 7, 18, 51] {
+            let bearing = arcade_bay_bearing(index);
+            let yaw = wall_module_yaw(bearing);
+            let rotation = Quat::from_rotation_y(yaw);
+            let inward = rotation * Vec3::Z;
+            let expected = -Vec3::new(bearing.cos(), 0.0, bearing.sin());
+            assert!(
+                (inward - expected).length() < 0.001,
+                "bay {index} local +Z points {inward:?}, expected {expected:?}"
+            );
+            // And its length runs along the wall, not across it.
+            let along = rotation * Vec3::X;
+            let tangent = Vec3::new(-bearing.sin(), 0.0, bearing.cos());
+            assert!((along - tangent).length() < 0.001);
+        }
+    }
+
+    #[test]
+    fn every_bay_is_seated_on_the_wall_face_at_its_own_deck() {
+        for level in 0..GALLERY_LEVELS {
+            for index in [0usize, 30, 71] {
+                let position = arcade_bay_position(level, index);
+                let radius = Vec2::new(position.x, position.z).length();
+                assert!((radius - GALLERY_OUTER_RADIUS).abs() < 0.001);
+                assert!((position.y - gallery_y(level)).abs() < 0.001);
+            }
+        }
     }
 
     #[test]
