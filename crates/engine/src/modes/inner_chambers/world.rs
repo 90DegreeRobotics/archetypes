@@ -1764,39 +1764,47 @@ fn build_radial_flagstone_mesh(
         let b2 = Vec3::new(outer_r * cos1, 0.0, outer_r * sin1);
         let b3 = Vec3::new(inner_r * cos1, 0.0, inner_r * sin1);
 
-        // Top stone surface
+        // Top stone surface.
+        //
+        // Wound p0 -> p3 -> p2 -> p1, against the radial-then-tangential order the corners are
+        // named in. Taken in naming order the cross product comes out -Y: the face would point
+        // at the ground, and since Bevy culls by winding and not by the normal attribute, every
+        // stone top in the castle was invisible from above while still shipping a +Y normal
+        // that said otherwise. On the gallery decks there is nothing underneath, so a player
+        // standing on one saw straight through their own floor to the void, between the two
+        // joint faces that happened to be wound correctly.
         push_quad(
             p0,
-            p1,
-            p2,
             p3,
+            p2,
+            p1,
             Vec3::Y,
             &mut positions,
             &mut normals,
             &mut uvs,
         );
 
-        // Outer rim face (radial outward)
+        // Outer rim face (radial outward) — likewise reversed, or it faces back into the stone.
         let mid_t = (t0 + t1) * 0.5;
         let outer_norm = Vec3::new(mid_t.cos(), 0.0, mid_t.sin());
         push_quad(
-            p1,
-            b1,
-            b2,
             p2,
+            b2,
+            b1,
+            p1,
             outer_norm,
             &mut positions,
             &mut normals,
             &mut uvs,
         );
 
-        // Inner rim face (radial inward)
+        // Inner rim face (radial inward) — likewise.
         let inner_norm = -outer_norm;
         push_quad(
-            p3,
-            b3,
-            b0,
             p0,
+            b0,
+            b3,
+            p3,
             inner_norm,
             &mut positions,
             &mut normals,
@@ -2058,6 +2066,53 @@ mod tests {
         assert!(
             ((paving_origin_y + FLAGSTONE_THICKNESS) - GROUND_Y).abs() < 1e-6,
             "stone tops must land exactly on GROUND_Y or the player wades through the paving"
+        );
+    }
+
+    /// Every triangle's winding must agree with the normal it ships. Bevy culls by winding,
+    /// not by the normal attribute, so a face whose corners are wound the wrong way is invisible
+    /// from the side it claims to face — and the normal attribute lies about it, which is why
+    /// this went unnoticed.
+    ///
+    /// The gallery decks were the visible symptom: their stone tops and rims were culled, so a
+    /// player standing on a gallery saw the void between the only faces that were wound
+    /// correctly, the radial joint faces. The Council floor hid the same defect because it has
+    /// a solid slab cylinder underneath for the culled paving to show through to.
+    #[test]
+    fn every_flagstone_face_is_wound_to_match_the_normal_it_ships() {
+        let mesh = build_radial_flagstone_mesh(102.0, 114.0, 0.55, 128, joint_angle(0.06, 102.0));
+        let positions = mesh
+            .attribute(Mesh::ATTRIBUTE_POSITION)
+            .expect("positions present")
+            .as_float3()
+            .expect("float3 positions");
+        let normals = mesh
+            .attribute(Mesh::ATTRIBUTE_NORMAL)
+            .expect("normals present")
+            .as_float3()
+            .expect("float3 normals");
+
+        let mut backwards = Vec::new();
+        for triangle in 0..positions.len() / 3 {
+            let i = triangle * 3;
+            let a = Vec3::from(positions[i]);
+            let b = Vec3::from(positions[i + 1]);
+            let c = Vec3::from(positions[i + 2]);
+            let wound = (b - a).cross(c - a);
+            let shipped = Vec3::from(normals[i]);
+            if wound.length() < 1e-9 {
+                continue;
+            }
+            if wound.normalize().dot(shipped.normalize()) < 0.0 {
+                backwards.push(triangle);
+            }
+        }
+
+        assert!(
+            backwards.is_empty(),
+            "{} of {} flagstone triangles are wound inside out and will be culled from the              side they claim to face",
+            backwards.len(),
+            positions.len() / 3
         );
     }
 

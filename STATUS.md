@@ -5,6 +5,19 @@
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **The arcade ring floors were being culled away, not merely dark (2026-09-12):**
+  `build_radial_flagstone_mesh` emitted its stone tops and both rim faces with reversed
+  winding. Bevy culls by winding, not by the normal attribute, so every stone top in the castle
+  was invisible from above while still shipping a `+Y` normal claiming otherwise — the normal
+  data lied about the geometry, which is why this survived a stone-colour pass, a height pass
+  and a joint-width pass without being found. Exactly 3 of the 5 quads per stone were affected
+  (768 of 1280 triangles at deck resolution): top, outer rim, inner rim. Only the two radial
+  joint faces were wound correctly, so a player standing on a gallery saw 0.55m joint walls
+  every 5m with the void showing between them. The Council floor concealed the same defect
+  because it has a solid slab cylinder underneath for the culled paving to show through to.
+  Fixed by winding those three faces to match the normals they ship, and pinned by a test that
+  compares every triangle's geometric winding against its own normal attribute rather than
+  trusting either alone. Evidence: `artifacts/visual-proof/gallery-deck-2026-09-12/`.
 - **The table is gone; the vortex lies in the floor (2026-09-12):** Operator directive was
   "the table goes away. only the animated spinning disk gets put on the floor. the manifester
   sits on the floor in the middle of the spinning disk. there is no table." The 2026-09-12
