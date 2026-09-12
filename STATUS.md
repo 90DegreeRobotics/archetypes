@@ -1,10 +1,22 @@
 # Archetypes Status
 
-**Last Updated: 2026-09-11 (HANDOFF: Rotunda Heart and Stone)**
+**Last Updated: 2026-09-11 (Satellite Rooms & Figures Hidden Except Jester)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Satellite rooms and non-Jester figures hidden (2026-09-11):** Per operator directive, the six
+  satellite archetype rooms (platforms, cobblestone walls, doorways, bridges over the abyss, room
+  furniture, drafting bench, and threshold lights) and the central AURA figure are cleanly hidden,
+  preserving the Jester as the active host in the Council circle (`(10.2, 0.42, 6.2)`). All underlying
+  code and assets remain 100% intact (Rule 1: Never delete) for potential future relocation into
+  arcade archways. Character obstacle colliders were adjusted so no phantom collision blocks the
+  open floor, while `canonical_room_figure_obstacles()` preserves the regression contracts.
+  Both `ARCHETYPES_INNER_CAPTURE` and `ARCHETYPES_WALK_CAPTURE` were executed on the installed
+  release build, producing 17 verified 4K frames and a complete walking log confirming smooth ground
+  locomotion, Jester presence, and stair climbing. Evidence:
+  `artifacts/visual-proof/rotunda-clean-2026-09-11/` and `rotunda-walk-2026-09-11/`.
+  Tests: 199 passing; installed Desktop/Taskbar build synced.
 - **HANDOFF to the next builder (2026-09-11):** The previous builder stood down; the next unit of
   work is written up in full at
   `docs/ledger/2026/09/plan_2026-09-11_2200_handoff_rotunda_heart_and_stone.md`. It covers five

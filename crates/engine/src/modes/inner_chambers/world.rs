@@ -290,14 +290,19 @@ fn setup_inner_world(
         InnerWorldElement,
         Name::new("CouncilPortalInlayLight"),
     ));
-    // AURA is the operator-designated temporary central embodiment; Jester stays the
-    // host in the Council circle without being made the sovereign center.
-    commands.spawn((
-        SceneRoot(asset_server.load("scenes/aura.glb#Scene0")),
-        Transform::from_xyz(0.0, 0.42, -8.5).with_rotation(Quat::from_rotation_y(0.0)).with_scale(Vec3::splat(1.85)),
-        InnerWorldElement,
-        Name::new("AURA_CentralEmbodiment"),
-    ));
+    // Operator decision (2026-09-11): Hide satellite rooms, furniture, and all character
+    // figures except the Jester for now. The rooms may be relocated into arcade archways.
+    const SPAWN_AURA: bool = false;
+    const SPAWN_OUTER_ROOMS: bool = false;
+
+    if SPAWN_AURA {
+        commands.spawn((
+            SceneRoot(asset_server.load("scenes/aura.glb#Scene0")),
+            Transform::from_xyz(0.0, 0.42, -8.5).with_rotation(Quat::from_rotation_y(0.0)).with_scale(Vec3::splat(1.85)),
+            InnerWorldElement,
+            Name::new("AURA_CentralEmbodiment"),
+        ));
+    }
     commands.spawn((
         SceneRoot(asset_server.load("scenes/nebula_jester.glb#Scene0")),
         Transform::from_xyz(10.2, 0.42, 6.2).with_rotation(Quat::from_rotation_y(-2.35)).with_scale(Vec3::splat(1.82)),
@@ -305,16 +310,18 @@ fn setup_inner_world(
         Name::new("Jester_CouncilHost"),
     ));
 
-    let rooms = [
-        SeedRoom { name: "Architect", title: "LuminousBlueprint", angle: -std::f32::consts::FRAC_PI_2, stone: Color::srgb(0.27, 0.34, 0.42), light: Color::srgb(0.30, 0.62, 1.0), asset: Some("scenes/architect.glb#Scene0"), furniture: FurnitureKind::Drafting },
-        SeedRoom { name: "Sentinel", title: "NullAegis", angle: -std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.12, 0.15, 0.19), light: Color::srgb(0.35, 0.55, 1.0), asset: Some("scenes/sentinel.glb#Scene0"), furniture: FurnitureKind::Guard },
-        SeedRoom { name: "Explorer", title: "FrontierFlare", angle: std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.22, 0.15, 0.09), light: Color::srgb(1.0, 0.42, 0.08), asset: Some("scenes/explorer.glb#Scene0"), furniture: FurnitureKind::Map },
-        SeedRoom { name: "Empath", title: "LumaResonance", angle: std::f32::consts::FRAC_PI_2, stone: Color::srgb(0.25, 0.13, 0.15), light: Color::srgb(1.0, 0.50, 0.58), asset: Some("scenes/empath.glb#Scene0"), furniture: FurnitureKind::Hearth },
-        SeedRoom { name: "Mentor", title: "AncientResonance", angle: 5.0 * std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.07, 0.20, 0.17), light: Color::srgb(0.08, 0.72, 0.56), asset: Some("scenes/mentor.glb#Scene0"), furniture: FurnitureKind::Library },
-        SeedRoom { name: "Oracle", title: "NoctisVeil", angle: 7.0 * std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.13, 0.09, 0.22), light: Color::srgb(0.48, 0.34, 0.86), asset: Some("scenes/oracle.glb#Scene0"), furniture: FurnitureKind::Observatory },
-    ];
-    for room in rooms {
-        spawn_seed_room(&mut commands, &mut meshes, &mut materials, &asset_server, stone.clone(), trim.clone(), room);
+    if SPAWN_OUTER_ROOMS {
+        let rooms = [
+            SeedRoom { name: "Architect", title: "LuminousBlueprint", angle: -std::f32::consts::FRAC_PI_2, stone: Color::srgb(0.27, 0.34, 0.42), light: Color::srgb(0.30, 0.62, 1.0), asset: Some("scenes/architect.glb#Scene0"), furniture: FurnitureKind::Drafting },
+            SeedRoom { name: "Sentinel", title: "NullAegis", angle: -std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.12, 0.15, 0.19), light: Color::srgb(0.35, 0.55, 1.0), asset: Some("scenes/sentinel.glb#Scene0"), furniture: FurnitureKind::Guard },
+            SeedRoom { name: "Explorer", title: "FrontierFlare", angle: std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.22, 0.15, 0.09), light: Color::srgb(1.0, 0.42, 0.08), asset: Some("scenes/explorer.glb#Scene0"), furniture: FurnitureKind::Map },
+            SeedRoom { name: "Empath", title: "LumaResonance", angle: std::f32::consts::FRAC_PI_2, stone: Color::srgb(0.25, 0.13, 0.15), light: Color::srgb(1.0, 0.50, 0.58), asset: Some("scenes/empath.glb#Scene0"), furniture: FurnitureKind::Hearth },
+            SeedRoom { name: "Mentor", title: "AncientResonance", angle: 5.0 * std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.07, 0.20, 0.17), light: Color::srgb(0.08, 0.72, 0.56), asset: Some("scenes/mentor.glb#Scene0"), furniture: FurnitureKind::Library },
+            SeedRoom { name: "Oracle", title: "NoctisVeil", angle: 7.0 * std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.13, 0.09, 0.22), light: Color::srgb(0.48, 0.34, 0.86), asset: Some("scenes/oracle.glb#Scene0"), furniture: FurnitureKind::Observatory },
+        ];
+        for room in rooms {
+            spawn_seed_room(&mut commands, &mut meshes, &mut materials, &asset_server, stone.clone(), trim.clone(), room);
+        }
     }
 
     spawn_castle_ascent(&mut commands, &mut meshes, &mut materials, &asset_server, pale_stone.clone(), pale_trim.clone());

@@ -178,22 +178,22 @@ fn teardown_camera(
     }
 }
 
-/// Standing obstacles the player cannot walk through: the two Council-circle figures, the
-/// manifestation pedestal, and each outer room's archetype figure.
-///
-/// The six room figures are derived from the same offset `world.rs` spawns them at, because
-/// the previous hand-transcribed table had the Architect and Empath entries mirrored onto the
-/// wrong side of their rooms — a 10m error that put an invisible pillar in each of those
-/// doorways and left both figures uncollidable.
-fn character_obstacles() -> [(Vec2, f32); 9] {
-    let rooms = castle::room_centres()
-        .map(|center| (center + center.normalize() * castle::EMBODIMENT_RADIAL_OFFSET, 1.5));
+/// Standing obstacles currently present in the world: the Jester Council host and the
+/// manifestation pedestal. When AURA and the satellite rooms are hidden, only the entities
+/// actually on the Council floor push the player, preventing invisible phantom collision.
+fn character_obstacles() -> [(Vec2, f32); 2] {
     [
-        (Vec2::new(0.0, -8.5), 1.5), // AURA central embodiment
         (Vec2::new(10.2, 6.2), 1.5), // Jester Council host
         (Vec2::new(0.0, 3.4), 1.25), // Active manifestation pedestal
-        rooms[0], rooms[1], rooms[2], rooms[3], rooms[4], rooms[5],
     ]
+}
+
+/// Canonical room-figure obstacles, derived from each room's radial embodiment offset.
+/// Pinned by test so that when satellite rooms are re-enabled or relocated, their positions
+/// match the world-builder contract.
+pub fn canonical_room_figure_obstacles() -> [(Vec2, f32); 6] {
+    castle::room_centres()
+        .map(|center| (center + center.normalize() * castle::EMBODIMENT_RADIAL_OFFSET, 1.5))
 }
 
 /// Pushes the player out of any standing obstacle they have walked into.
@@ -450,9 +450,9 @@ mod tests {
     fn every_room_figure_is_collidable_where_it_actually_stands() {
         // Two of the six used to be transcribed with a flipped sign, putting an invisible
         // pillar in the Architect and Empath doorways and leaving both figures walk-through.
-        let obstacles = character_obstacles();
+        let obstacles = canonical_room_figure_obstacles();
         for (index, centre) in castle::room_centres().iter().enumerate() {
-            let (obstacle, radius) = obstacles[3 + index];
+            let (obstacle, radius) = obstacles[index];
             let expected = *centre + centre.normalize() * castle::EMBODIMENT_RADIAL_OFFSET;
             assert!((obstacle - expected).length() < 0.001, "room {index} obstacle is misplaced");
             assert!(
@@ -465,14 +465,14 @@ mod tests {
 
     #[test]
     fn the_architect_figure_is_collidable_behind_its_room_centre() {
-        let architect = character_obstacles()[3].0;
+        let architect = canonical_room_figure_obstacles()[0].0;
         let expected = -(castle::OUTER_ROOM_DISTANCE + castle::EMBODIMENT_RADIAL_OFFSET);
         assert!((architect - Vec2::new(0.0, expected)).length() < 0.01);
     }
 
     #[test]
     fn walking_into_a_figure_is_pushed_back_out_to_its_radius() {
-        let figure = character_obstacles()[3].0;
+        let figure = character_obstacles()[0].0;
         let inside = figure + Vec2::new(0.0, 0.4);
         let resolved = resolve_character_obstacles(inside);
         assert!((resolved - figure).length() >= 1.49);

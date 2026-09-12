@@ -24,11 +24,11 @@ use bevy::render::view::window::screenshot::{save_to_disk, Screenshot};
 use std::fs;
 use std::path::PathBuf;
 
-/// Walking lane through the Architect room. The lane is offset from the room's centre line
-/// because the archetype figure is now a real obstacle standing on it — walking straight at
-/// the figure is correctly blocked, so the player goes around it exactly as a person would.
-const WALK_START: Vec3 = Vec3::new(2.4, 3.25, -52.0);
+/// Walking lane across the Council circle, inspecting the center portal, approaching the
+/// Jester Council host on foot, and climbing the first flight of the perimeter ascent.
+const WALK_START: Vec3 = Vec3::new(0.0, 3.25, 12.0);
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 enum Beat {
     Hold(&'static [KeyCode]),
@@ -63,54 +63,34 @@ impl WalkCaptureRun {
         }
         let dir = std::env::var_os("ARCHETYPES_CAPTURE_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("artifacts/visual-proof/architect-workshop-walk"));
+            .unwrap_or_else(|| PathBuf::from("artifacts/visual-proof/rotunda-walk"));
         let _ = fs::create_dir_all(&dir);
 
         // Times are seconds after the mode reaches Navigating. The first frames need real
-        // settle time for the ~200 procedural meshes to finish uploading.
-        // Writes one real plan titled "proof" with the intent "walk", through the same confirm
-        // step a player uses. It lands in the player's own local plan journal, which is the
-        // point: this proves the write path in the installed build, not in a test fixture.
+        // settle time for the procedural meshes to finish uploading.
         let beats = vec![
-            (4.0, Beat::Shot("00_doorway_standing")),
-            // 32.5m of walking from just inside the doorway to the bench, at 6.5 m/s.
+            (4.0, Beat::Shot("00_council_entrance_standing")),
+            // Walk forward on the stone slabs toward the central portal / altar
             (4.6, Beat::Hold(&[KeyCode::KeyW])),
-            // Sidestep clear of the archetype figure, which is a real obstacle on the lane.
-            (9.6, Beat::Hold(&[KeyCode::KeyA])),
-            (9.85, Beat::Hold(&[])),
-            (10.5, Beat::Shot("01_at_the_bench_prompt")),
-            (11.0, Beat::Tap(KeyCode::KeyE)),
-            (11.8, Beat::Shot("02_bench_open")),
-            // Taps are spaced 0.25s apart: an unfocused window runs the reactive-low-power
-            // schedule at ~15fps, and beats closer than one frame apart bunch into a single
-            // frame, which silently desynchronises the typed sequence.
-            (12.3, Beat::Tap(KeyCode::KeyN)),
-            (12.6, Beat::Tap(KeyCode::KeyP)),
-            (12.85, Beat::Tap(KeyCode::KeyR)),
-            (13.1, Beat::Tap(KeyCode::KeyO)),
-            (13.35, Beat::Tap(KeyCode::KeyO)),
-            (13.6, Beat::Tap(KeyCode::KeyF)),
-            (13.95, Beat::Tap(KeyCode::Enter)),
-            (14.3, Beat::Tap(KeyCode::KeyW)),
-            (14.55, Beat::Tap(KeyCode::KeyA)),
-            (14.8, Beat::Tap(KeyCode::KeyL)),
-            (15.05, Beat::Tap(KeyCode::KeyK)),
-            (15.4, Beat::Tap(KeyCode::Enter)),
-            (15.9, Beat::Shot("03_confirm_before_writing")),
-            (16.4, Beat::Tap(KeyCode::Enter)),
-            (17.1, Beat::Shot("04_plan_written")),
-            (17.6, Beat::Tap(KeyCode::Escape)),
-            (18.3, Beat::Shot("05_back_in_the_room")),
+            (6.2, Beat::Hold(&[])),
+            (6.8, Beat::Shot("01_approaching_center_portal")),
+            // Turn toward the Jester Council host at (10.2, 0.42, 6.2)
+            (7.5, Beat::Place(Vec3::new(6.0, 3.25, 9.0), -0.85)),
+            (8.3, Beat::Shot("02_facing_jester_council_host")),
+            // Walk up to the Jester
+            (8.8, Beat::Hold(&[KeyCode::KeyW])),
+            (10.5, Beat::Hold(&[])),
+            (11.2, Beat::Shot("03_standing_before_jester")),
             // Second leg: climb the first flight of the perimeter ascent on foot. The flight
             // sweeps 14.6°, whose chord deviates only ~0.9m from the arc across an 8m wide
             // stair, so a straight heading keeps the player on the treads for a whole storey.
             // Everything here is the real locomotion system on real steps.
-            (18.9, Beat::Place(stair_approach(), stair_chord_yaw())),
-            (19.9, Beat::Shot("06_foot_of_the_ascent")),
-            (20.3, Beat::Hold(&[KeyCode::KeyW])),
-            (25.3, Beat::Hold(&[])),
-            (26.1, Beat::Shot("07_one_storey_climbed")),
-            (26.5, Beat::Finish),
+            (12.0, Beat::Place(stair_approach(), stair_chord_yaw())),
+            (13.0, Beat::Shot("04_foot_of_the_ascent")),
+            (13.5, Beat::Hold(&[KeyCode::KeyW])),
+            (18.5, Beat::Hold(&[])),
+            (19.2, Beat::Shot("05_one_storey_climbed")),
+            (19.8, Beat::Finish),
         ];
 
         Some(Self {

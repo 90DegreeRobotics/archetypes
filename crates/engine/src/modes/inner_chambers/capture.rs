@@ -52,28 +52,43 @@ impl InnerCaptureRun {
         // wrong-looking frame — before concluding that was a geometry bug, this
         // ordering rules out (or confirms) a first-teleport/asset-warmup artifact.
         // Filenames still reflect the intended gallery order, not capture order.
-        let mut shots = vec![CaptureShot {
-            name: "01_council_floor_inlay".to_string(),
-            eye: Vec3::new(0.0, 4.4, 8.5),
-            look_at: Vec3::new(0.0, 1.7, -1.3),
-        }];
-        let rooms = [
-            ("architect", -std::f32::consts::FRAC_PI_2),
-            ("sentinel", -std::f32::consts::FRAC_PI_6),
-            ("explorer", std::f32::consts::FRAC_PI_6),
-            ("empath", std::f32::consts::FRAC_PI_2),
-            ("mentor", 5.0 * std::f32::consts::FRAC_PI_6),
-            ("oracle", 7.0 * std::f32::consts::FRAC_PI_6),
+        let mut shots = vec![
+            CaptureShot {
+                name: "01_council_floor_inlay".to_string(),
+                eye: Vec3::new(0.0, 4.4, 8.5),
+                look_at: Vec3::new(0.0, 1.7, -1.3),
+            },
+            CaptureShot {
+                name: "02_jester_council_host".to_string(),
+                eye: Vec3::new(7.5, 2.8, 9.2),
+                look_at: Vec3::new(10.2, 1.8, 6.2),
+            },
+            CaptureShot {
+                name: "03_manifestation_altar".to_string(),
+                eye: Vec3::new(0.0, 2.6, 7.8),
+                look_at: Vec3::new(0.0, 1.6, 3.4),
+            },
+            CaptureShot {
+                name: "04_council_circle_wide".to_string(),
+                eye: Vec3::new(0.0, 6.5, 22.0),
+                look_at: Vec3::new(0.0, 1.5, 0.0),
+            },
+            CaptureShot {
+                name: "05_rotunda_looking_outward".to_string(),
+                eye: Vec3::new(0.0, 3.25, 0.0),
+                look_at: Vec3::new(0.0, 14.0, -100.0),
+            },
+            CaptureShot {
+                name: "06_jester_in_great_hall".to_string(),
+                eye: Vec3::new(14.5, 3.5, 2.5),
+                look_at: Vec3::new(10.2, 1.8, 6.2),
+            },
+            CaptureShot {
+                name: "07_abyss_threshold".to_string(),
+                eye: Vec3::new(0.0, 2.5, -20.0),
+                look_at: Vec3::new(0.0, -10.0, -45.0),
+            },
         ];
-        for (i, (name, angle)) in rooms.iter().enumerate() {
-            let radial = Vec3::new(angle.cos(), 0.0, angle.sin());
-            let center = radial * castle::OUTER_ROOM_DISTANCE;
-            shots.push(CaptureShot {
-                name: format!("{:02}_room_{name}", i + 2),
-                eye: center - radial * 21.0 + Vec3::Y * 7.0,
-                look_at: center + radial * castle::EMBODIMENT_RADIAL_OFFSET + Vec3::Y * 3.0,
-            });
-        }
 
         // Shots that exist to show the scale of the shell itself.
         let stair_foot_bearing = castle::stair_start_bearing(0) + 0.08;
