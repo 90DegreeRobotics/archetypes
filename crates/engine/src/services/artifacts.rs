@@ -103,14 +103,46 @@ pub fn placements_path() -> PathBuf {
     library_root().join("placements.jsonl")
 }
 
+/// Every assets root this build's asset server might read from, in the order `main::asset_root`
+/// resolves them.
+///
+/// **There are two, and they differ between build profiles.** An installed build reads `assets`
+/// beside the executable; a debug build reads the repository's `assets/` directly, so the
+/// developer sees source edits without a copy step. `manifested_assets_dir` only ever returned
+/// the first, so in a dev build every manifested object was written to `target/debug/assets/`
+/// and the asset server looked for it in the repository -- the file existed, the library row
+/// existed, and the object silently never loaded. That is invisible from an installed build,
+/// which is the only way the operator tests, so it could sit here indefinitely.
+pub fn asset_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(beside_exe) =
+        std::env::current_exe().ok().and_then(|exe| exe.parent().map(|dir| dir.join("assets")))
+    {
+        roots.push(beside_exe);
+    }
+    if cfg!(debug_assertions) {
+        roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("assets"));
+    }
+    roots
+}
+
 /// Where a manifested GLB is written so the asset server can find it.
 ///
-/// Beside the executable, because an installed build must read its own copy rather than the
-/// repository's — the same rule the museum's staged art follows.
-pub fn manifested_assets_dir() -> Option<PathBuf> {
-    std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join("assets").join("manifested")))
+/// Returns every candidate, because writing only the first leaves a dev build unable to load its
+/// own creations. A few hundred kilobytes copied twice is cheaper than a class of bug that only
+/// appears in the profile nobody demos from.
+pub fn manifested_asset_dirs() -> Vec<PathBuf> {
+    asset_roots().into_iter().map(|root| root.join("manifested")).collect()
+}
+
+/// The first root under which this asset-server path actually exists on disk.
+///
+/// A library row is a record that something *was* created; it is not proof the file is still
+/// there. An uninstall, a fresh machine, or a build profile switch all leave rows whose asset is
+/// gone, and summoning one of those hands the player an invisible object -- which reads as the
+/// game being broken rather than as a file being missing.
+pub fn resolve_asset(relative: &str) -> Option<PathBuf> {
+    asset_roots().into_iter().map(|root| root.join(relative)).find(|path| path.is_file())
 }
 
 /// The asset-server path for an artifact id. Relative, forward slashes: that is what the asset
@@ -359,6 +391,34 @@ mod tests {
 ").unwrap();
         assert_eq!(load_library_from(&path), vec![record]);
         let _ = fs::remove_file(&path);
+    }
+
+    /// The bug this resolver exists to make impossible: a debug build wrote manifested objects
+    /// beside the executable while its asset server read the repository, so nothing the player
+    /// made ever loaded -- and it was invisible from an installed build, which is the only way
+    /// the operator tests.
+    #[test]
+    fn a_debug_build_writes_where_its_own_asset_server_reads() {
+        let dirs = manifested_asset_dirs();
+        assert!(!dirs.is_empty(), "nowhere to write a manifested object");
+        if cfg!(debug_assertions) {
+            assert!(
+                dirs.len() > 1,
+                "a debug build reads the repository's assets/, so it must be written to as well"
+            );
+            let repo = dirs
+                .iter()
+                .map(|dir| dir.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/"))
+                .any(|rendered| rendered.contains("/../../assets/manifested"));
+            assert!(repo, "no repository assets root among {dirs:?}");
+        }
+        assert!(dirs.iter().all(|dir| dir.ends_with("manifested")));
+    }
+
+    /// A row is a record that something was created, not proof the file survived.
+    #[test]
+    fn an_asset_that_is_not_on_this_machine_resolves_to_nothing() {
+        assert!(resolve_asset("manifested/nothing-was-ever-here.glb").is_none());
     }
 
     #[test]

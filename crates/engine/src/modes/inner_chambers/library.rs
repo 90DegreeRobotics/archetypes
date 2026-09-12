@@ -75,6 +75,8 @@ fn spawn_library_ui(mut commands: Commands) {
                 right: Val::Percent(15.0),
                 top: Val::Px(92.0),
                 padding: UiRect::all(Val::Px(24.0)),
+                // Without a width the BorderColor below draws nothing at all.
+                border: UiRect::all(Val::Px(2.0)),
                 flex_direction: FlexDirection::Column,
                 ..default()
             },
@@ -144,11 +146,12 @@ fn drive_library(
             sfx.write(PlaySfx::new(Sfx::MenuMove));
         }
     }
-    if keyboard.just_pressed(KeyCode::KeyL) {
-        state.reload();
-        state.status = "Library refreshed from your local artifact record.".to_owned();
-        return;
-    }
+    // Deliberately NOT a refresh-on-L here.
+    //
+    // `toggle_library` runs immediately before this in the same chain, so on the frame the
+    // library opens `just_pressed(KeyL)` is still true when this system reads it -- one press
+    // was being consumed twice, reloading again and announcing a refresh the player never
+    // asked for. Opening already reloads, and Escape-then-L is the refresh.
     if !keyboard.just_pressed(KeyCode::Enter) {
         return;
     }
@@ -160,6 +163,18 @@ fn drive_library(
         state.status = "Nothing has been manifested yet. Create something at the altar first.".to_owned();
         return;
     };
+    // A library row records that something *was* created. It is not proof the file is still
+    // there -- a reinstall, a fresh machine, or a build-profile switch all leave rows whose
+    // asset is gone. Summoning one of those puts an invisible object in the player's hand,
+    // which reads as the game being broken rather than as a file being missing.
+    if artifacts::resolve_asset(&record.asset).is_none() {
+        state.status = format!(
+            "\"{}\" is in your record, but its file is no longer on this machine ({}). Nothing              was summoned.",
+            record.prompt.trim(),
+            record.asset
+        );
+        return;
+    }
     carried.artifact = Some(record.clone());
     carried.copies = 0;
     state.open = false;
@@ -181,6 +196,25 @@ fn render_library_ui(
     if text.0 != body { text.0 = body; }
 }
 
+/// What a row can honestly say about where it came from.
+///
+/// Rows written before provenance was recorded are still the player's creations and must not
+/// look broken -- they simply cannot say what governed them, and the line says exactly that
+/// rather than showing zeroes that would read as measurements.
+fn provenance_line(record: &ArtifactRecord) -> String {
+    let provenance = &record.provenance;
+    if provenance.glb_sha256.is_empty() && provenance.sentinel_verdict.is_empty() {
+        return format!("id: {}  (recorded before provenance was kept)", record.id);
+    }
+    format!(
+        "id: {}  |  Sentinel: {}  |  subject {:.1}%  |  glb {}",
+        record.id,
+        if provenance.sentinel_verdict.is_empty() { "unrecorded" } else { &provenance.sentinel_verdict },
+        provenance.subject_coverage * 100.0,
+        provenance.glb_sha256.chars().take(12).collect::<String>(),
+    )
+}
+
 fn library_body(state: &LibraryState) -> String {
     let mut body = String::from("CREATION LIBRARY — objects you manifested and kept locally\n\n");
     if state.records.is_empty() {
@@ -189,7 +223,9 @@ fn library_body(state: &LibraryState) -> String {
         for (index, record) in state.records.iter().enumerate() {
             let marker = if index == state.selected { ">" } else { " " };
             let prompt = if record.prompt.trim().is_empty() { "(prompt unavailable)" } else { &record.prompt };
-            body.push_str(&format!("{marker} {prompt}\n    id: {}\n", record.id));
+            body.push_str(&format!("{marker} {prompt}
+    {}
+", provenance_line(record)));
         }
     }
     body.push_str("\n[Up/Down] Choose    [Enter] Summon to hand    [L] Refresh    [Esc] Return");
@@ -213,6 +249,42 @@ mod tests {
         assert!(body.contains("> a brass astrolabe"));
         assert!(body.contains("id: kept-1"));
         assert_eq!(state.selected().map(|record| record.asset.as_str()), Some("manifested/kept-1.glb"));
+    }
+
+    /// A creation kept before provenance existed must not render as a row of zeroes -- "subject
+    /// 0.0%" is a measurement, and claiming one that was never taken is worse than saying so.
+    #[test]
+    fn a_row_without_provenance_says_so_instead_of_showing_zeroes() {
+        let line = provenance_line(&ArtifactRecord {
+            id: "old-1".to_owned(),
+            asset: "manifested/old-1.glb".to_owned(),
+            prompt: "a lantern".to_owned(),
+            ..Default::default()
+        });
+        assert!(line.contains("recorded before provenance was kept"), "{line}");
+        assert!(!line.contains("0.0%"), "an unmeasured row must not show a measurement: {line}");
+    }
+
+    /// What the receipt verified travels all the way to the player's screen.
+    #[test]
+    fn a_verified_creation_shows_what_governed_it_and_what_was_measured() {
+        let line = provenance_line(&ArtifactRecord {
+            id: "kept-1".to_owned(),
+            asset: "manifested/kept-1.glb".to_owned(),
+            prompt: "a brass astrolabe".to_owned(),
+            created: "1".to_owned(),
+            provenance: artifacts::Provenance {
+                sentinel_verdict: "allowed".to_owned(),
+                mesh_sha256: "f17709c749b1".to_owned(),
+                source_image_sha256: "62b2e3b780e1".to_owned(),
+                glb_sha256: "aabbccddeeff0011".to_owned(),
+                subject_coverage: 0.4456,
+            },
+        });
+        assert!(line.contains("Sentinel: allowed"), "{line}");
+        assert!(line.contains("44.6%"), "{line}");
+        // Truncated: a full 64-character digest would push the prompt off the row.
+        assert!(line.contains("aabbccddeeff") && !line.contains("aabbccddeeff0011"), "{line}");
     }
 
     #[test]

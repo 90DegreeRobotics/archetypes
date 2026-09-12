@@ -1368,11 +1368,21 @@ fn dispatch_manifestation_worker(
                     .map(|name| name.to_string_lossy().to_string())
                     .unwrap_or_else(|| "artifact".to_string());
                 let mut staged_id = None;
-                if let Some(dir) = crate::services::artifacts::manifested_assets_dir() {
+                // Written to every assets root this build might read from. A debug build reads
+                // the repository's assets/ while an installed build reads the one beside the
+                // executable, and writing only the second left dev builds unable to load their
+                // own creations.
+                let mut staged_copy: Option<std::path::PathBuf> = None;
+                for dir in crate::services::artifacts::manifested_asset_dirs() {
                     let own = dir.join(format!("{artifact_id}.glb"));
                     if std::fs::create_dir_all(&dir).is_ok()
                         && std::fs::copy(&primary_output, &own).is_ok()
                     {
+                        staged_copy.get_or_insert(own);
+                    }
+                }
+                {
+                    if let Some(own) = staged_copy {
                         // Our own digest of the finished GLB. Chronos2 cannot supply this --
                         // the GLB is produced by the Blender import above, after its bundle was
                         // sealed -- so if Archetypes does not measure it here nothing ever does,
