@@ -43,7 +43,8 @@ These are absolute. If you would violate one of them to "finish" a task, stop an
 
 - **There is one branch: `main`.** No agent ever creates a branch or checks one out.
 - **Worktrees are graveyards.** Any agent that finds work sitting outside `main` must assimilate it to `main` immediately.
-- **Nothing ever sits in the working tree.** `git status` must be clean after every session.
+- **Nothing ever sits in the working tree — no agent leaves a dirty tree, ever.** `git status` must be clean when you finish, every time. Uncommitted work is unreviewable, unattributed, and one `git checkout` away from being destroyed.
+- **An inherited dirty tree is YOUR first duty, not a pre-existing condition.** Arrive to uncommitted changes and you audit them before anything else: read every changed hunk, establish what it was for, run the gate its surface requires (Section 3), and land it on `main` crediting whoever wrote it. Never stash it, never revert it, never build on top of it while leaving it uncommitted, and never pass it on as somebody else's mess. If it genuinely cannot be landed — it fails its gate, or contradicts a shipped decision — commit nothing quietly: name the file and the reason and surface it to the operator.
 - **Push immediately.** The moment a unit of work is done and its required verification passes, `git push origin main`.
 
 ## 3. Verification gates

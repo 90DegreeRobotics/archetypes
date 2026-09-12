@@ -17,6 +17,9 @@ Archetypes is a focused Rust backend serving a single primary function. We have 
 - **Plan before every action — no exceptions.** Create a dated plan document `plan_<YYYY-MM-DD_HHMM>_<topic>.md`.
 - **There is one branch: `main`. Always. No exceptions.** No agent ever creates a branch, checks one out, or does work anywhere but `main`. Worktrees are graveyards.
 - **Push completed work to `origin` immediately.** The repo must receive new work as soon as it is done.
+- **NO AGENT LEAVES A DIRTY WORK TREE. EVER.** `git status` is clean when you finish, every time. Uncommitted work is unreviewable, unattributed and one `git checkout` from gone — it is the single most reliable way an agent loses someone else's day of work.
+  - This binds you to work you did **not** write. Find a dirty tree on arrival and your **first** duty is to audit it: read every changed hunk, understand what it was for, verify it against the gate its surface requires, and land it on `main` with attribution to whoever wrote it. Never stash it, never revert it, never build on top of it while leaving it uncommitted, and never hand it onward as "pre-existing changes".
+  - If audited work cannot be landed — it fails its gate, or it contradicts a shipped decision — commit nothing silently. Say so plainly, name the file and the reason, and surface it to the operator. "I left it dirty because I wasn't sure" is not a report.
 - **Never present a stub as the real surface.** STUBS ARE THE ENEMY.
 - **One central output tree, uniform names.** No scattered output files.
 
