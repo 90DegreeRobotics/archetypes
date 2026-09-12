@@ -204,7 +204,17 @@ pub(crate) fn drive_manifest_capture(
         }
     }
 
-    if !run.stage_only && run.positioned && !run.pressed_e && now >= 3.5 {
+    // Press `E` until the prompt actually opens, rather than once and hoping.
+    //
+    // Ordering alone should be enough now, but a harness whose entire run depends on a single
+    // frame landing correctly is a harness that reports infrastructure as broken whenever it
+    // does not. Retrying costs nothing: `handle_manifestation_input` only acts on the frame the
+    // phase is still Idle.
+    if !run.stage_only
+        && run.positioned
+        && now >= 3.5
+        && manifest_state.phase == ManifestationPhase::Idle
+    {
         keyboard.press(KeyCode::KeyE);
         run.pressed_e = true;
     }
@@ -218,8 +228,12 @@ pub(crate) fn drive_manifest_capture(
         }
     }
 
-    if manifest_state.phase == ManifestationPhase::Manifesting {
+    if manifest_state.phase == ManifestationPhase::Manifesting && !run.manifesting_seen {
         run.manifesting_seen = true;
+        eprintln!(
+            "[manifest-capture] prompt submitted at {now:.1}s; Chronos2 is running. Stage lines \
+             follow."
+        );
     }
 
     // Once real Manifesting was observed and the phase later leaves it
@@ -305,7 +319,20 @@ pub(crate) fn drive_manifest_capture(
             std::process::exit(0);
         }
     } else if now >= run.timeout_at {
-        eprintln!("[manifest-capture] TIMEOUT waiting for manifestation to leave Manifesting phase");
+        // Report the phase it actually reached. The old message asserted it was waiting on
+        // `Manifesting` whatever had happened, so a run that never opened the prompt at all -
+        // and therefore never spawned Chronos2 - read as a pipeline that hangs.
+        eprintln!(
+            "[manifest-capture] TIMEOUT after {:.0}s in phase {:?} (positioned={}, pressed_e={}, \
+             submitted={}, manifesting_seen={}). Chronos2 is only spawned once the phase reaches \
+             Manifesting; if it never did, nothing was asked of the pipeline.",
+            run.timeout_at,
+            manifest_state.phase,
+            run.positioned,
+            run.pressed_e,
+            run.pressed_enter_at.is_some(),
+            run.manifesting_seen,
+        );
         std::process::exit(1);
     }
 }

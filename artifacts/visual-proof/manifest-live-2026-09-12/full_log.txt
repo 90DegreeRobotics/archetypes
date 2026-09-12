@@ -1,0 +1,72 @@
+[2m2026-09-12T19:24:02.242692Z[0m [32m INFO[0m [2mbevy_diagnostic::system_information_diagnostics_plugin::internal[0m[2m:[0m SystemInfo { os: "Windows 11 Pro", kernel: "26200", cpu: "AMD Ryzen 7 2700 Eight-Core Processor", core_count: "8", memory: "31.9 GiB" }
+[2m2026-09-12T19:24:02.867480Z[0m [32m INFO[0m [2mbevy_render::renderer[0m[2m:[0m AdapterInfo { name: "NVIDIA GeForce RTX 3060", vendor: 4318, device: 9475, device_type: DiscreteGpu, driver: "NVIDIA", driver_info: "610.88", backend: Vulkan }
+[2m2026-09-12T19:24:03.164587Z[0m [32m INFO[0m [2mbevy_render::batching::gpu_preprocessing[0m[2m:[0m GPU preprocessing is fully supported on this device.
+[2m2026-09-12T19:24:03.167001Z[0m [32m INFO[0m [2mbevy_winit::system[0m[2m:[0m Creating new window Archetypes 1.0.5 (build 6) — Council Chamber (0v0)
+[2m2026-09-12T19:24:03.338037Z[0m [33m WARN[0m [2mgilrs::gamepad[0m[2m:[0m No mapping found for UUID 00000000-0000-0000-0000-000000000000
+	Default mapping will be used.
+[2m2026-09-12T19:24:03.338664Z[0m [32m INFO[0m [2mbevy_input::gamepad[0m[2m:[0m Gamepad 31v0 connected.
+[2m2026-09-12T19:24:04.530187Z[0m [32m INFO[0m [2mengine::modes::inner_chambers::objects[0m[2m:[0m objects: restored 4 placed object(s) from the ledger
+[2m2026-09-12T19:24:04.534769Z[0m [32m INFO[0m [2mengine::modes::inner_chambers::museum[0m[2m:[0m museum: hung 36 works across 12 chambers (36 positions, 126 eligible runs staged)
+[manifest-capture] prompt submitted at 4.1s; Chronos2 is running. Stage lines follow.
+[Chronos stdout] [chronos-stage] id=start pct=2 state=begin msg=Starting your creation
+[Chronos stdout] [first-light] creating a brand-new artifact from your prompt — this is a live generation, not a saved file.
+[Chronos stdout] [first-light] material mode: Auto
+[Chronos stdout] [chronos-stage] id=start pct=2 state=done msg=Starting your creation
+[Chronos stdout] [chronos-stage] id=intent pct=5 state=begin msg=Recording what you asked for
+[Chronos stdout] [chronos-stage] id=intent pct=5 state=done msg=Recording what you asked for
+[Chronos stdout] [chronos-stage] id=sentinel pct=6 state=begin msg=Sentinel is reviewing your request
+[Chronos stdout] [chronos-stage] id=sentinel pct=6 state=done msg=Sentinel is reviewing your request - cleared - no prohibited use found
+[Chronos stdout] [chronos-decision] kind=governance id=village_protection verdict=allowed msg=The Sentinel read your request against the published prohibited-use policy on this machine and cleared it.
+[Chronos stdout] [chronos-stage] id=oracle pct=8 state=skip msg=Imagining your scene with the local language model - Object mode paints its own views; the language-model scene plan is not used
+[Chronos stdout] [governed-artifact] oracle: skipped — Object mode does not consume the scene sketch
+[Chronos stdout] [chronos-stage] id=staging pct=18 state=begin msg=Checking and freezing the scene plan
+[Chronos stdout] [object] ComfyUI ready at http://127.0.0.1:8000 (attempt 1)
+[Chronos stdout] [chronos-stage] id=forge_plan pct=52 state=begin msg=Planning the geometry - Object reference for TripoSR
+[Chronos stderr] [weaver] reference cache hit  concept "sacred celestial relic" → 213aff1f446786d5f5863113b51d8ec3
+[Chronos stdout] [geometry-forge] requested ComfyUI VRAM free before GPU render
+[Chronos stdout] [engine] building the Object-mode body with TripoSR…
+[Chronos stdout] [chronos-stage] id=forge_plan pct=52 state=done msg=Planning the geometry
+[Chronos stdout] [chronos-decision] kind=engine id=triposr verdict=chosen msg=TripoSR produced the Object-mode mesh from the generated reference.
+[Chronos stdout] [chronos-stage] id=staging pct=18 state=done msg=Checking and freezing the scene plan
+[Chronos stdout] [chronos-stage] id=materials pct=22 state=skip msg=Synthesizing the materials - Object mode paints its own reference views; PBR maps from this sketch are not used
+[Chronos stdout] [object] staging the TripoSR mesh for buyer review
+[Chronos stdout] [chronos-decision] kind=presentation id=triposr_showcase verdict=chosen msg=Staged the TripoSR mesh from the exact reference supplied to the engine.
+[Chronos stdout] [chronos-stage] id=blender_connect pct=64 state=begin msg=Connecting to Blender
+[Chronos stdout] [governed-artifact] connecting to BlenderMCP at tcp://127.0.0.1:9876
+[Chronos stdout] [chronos-stage] id=blender_connect pct=64 state=done msg=Connecting to Blender
+[Chronos stdout] [chronos-stage] id=render pct=68 state=begin msg=Building and rendering in Blender
+[Chronos stdout] [governed-artifact] triposr_object: dispatching authorized render through the governed gate…
+[Chronos stdout] [chronos-stage] id=render pct=68 state=done msg=Building and rendering in Blender
+[Chronos stdout] [chronos-stage] id=redteam pct=88 state=begin msg=Governance check - proving the refusal path works
+[Chronos stdout] [governed-artifact] red-team: attempting an unauthorized command (must be refused)…
+[Chronos stdout] [chronos-stage] id=redteam pct=88 state=done msg=Governance check - proving the refusal path works
+[Chronos stdout] [chronos-stage] id=seal pct=92 state=begin msg=Sealing the provenance record
+[Chronos stdout] [chronos-stage] id=seal pct=92 state=done msg=Sealing the provenance record
+[Chronos stdout] [chronos-decision] kind=guard id=subject_match verdict=chosen msg=The built object is not the shape that was drawn — it covers only 19% of the outline and 48% of what was built is not in the drawing at all.
+[Chronos stdout] [object] subject match sealed -> C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\47cc55ca-2802-416a-b2f7-a118bbaea2c8\subject_match.json
+[Chronos stdout] [chronos-stage] id=bundle pct=97 state=begin msg=Writing your artifact bundle
+[Chronos stdout] 
+[Chronos stdout] === Undeniable Artifact Run I ===
+[Chronos stdout]   bundle:            C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\47cc55ca-2802-416a-b2f7-a118bbaea2c8
+[Chronos stdout]   render dispatched: true
+[Chronos stdout]   drift blocked:     YES (CBIG)
+[Chronos stdout]   chain valid:       true
+[Chronos stdout]   comfy material:    applied
+[Chronos stdout]   artifact png:      3bab6c583269448d2fbd67d1b86bde59c8c4ab4c92816d0471d3900c1b6cc43e
+[Chronos stdout]   events sealed:     15
+[Chronos stdout] [chronos-stage] id=bundle pct=97 state=done msg=Writing your artifact bundle
+[Chronos stdout] [chronos-stage] id=complete pct=100 state=done msg=Finished
+[Chronos stdout] [spin] background spin job started for C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\47cc55ca-2802-416a-b2f7-a118bbaea2c8
+[archetypes-import] generic triangle budget: 69964 -> 69964 (limit 75000); mesh_repaired=False
+INFO Draco mesh compression is available, use library at C:\Program Files\Blender Foundation\Blender 4.5\4.5\scripts\addons_core\io_scene_gltf2\extern_draco.dll
+14:25:08 | INFO: Starting glTF 2.0 export
+14:25:08 | INFO: Extracting primitive: mesh
+14:25:08 | INFO: Primitives created: 1
+14:25:08 | INFO: Finished glTF 2.0 export in 0.13851380348205566 s
+
+Blender 4.5.4 LTS (hash b3efe983cc58 built 2025-10-28 14:22:47)
+OBJ import of 'mesh.obj' took 45.09 ms
+
+Blender quit
+[ManifestationSystem] Succeeded: Manifested 'sacred celestial relic' atop the altar!
+[2m2026-09-12T19:25:15.176352Z[0m [32m INFO[0m [2mbevy_render::view::window::screenshot[0m[2m:[0m Screenshot saved to C:\archetypes\artifacts\visual-proof\manifest-live-2026-09-12\00_pedestal_and_reference_panel_completed.png

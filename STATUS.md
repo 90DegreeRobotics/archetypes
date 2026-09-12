@@ -5,6 +5,24 @@
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **The manifestation pipeline was never broken; the capture harness was (2026-09-12):** It was
+  reported here as "no stage output in 25 minutes from inside the game, 5 minutes on the CLI."
+  That was wrong. `drive_manifest_capture` was registered with **no system ordering**, while
+  `drive_walk_capture` is ordered `.before(InnerInteractionSet::Resolve)` — with a comment
+  stating exactly why: `just_pressed` lives one frame and Bevy clears it in `PreUpdate`, so a
+  synthesized press issued after `resolve_actions` has run is wiped before anything reads it.
+  The harness pressed `E` **once**, lost it, never opened the prompt, never spawned Chronos2,
+  and sat in `Idle` until its timeout — then printed "TIMEOUT waiting for manifestation to leave
+  Manifesting phase", asserting a phase it had never reached. The evidence was already on disk
+  and was misread: **no manifestation out-dir had ever been created**, which only happens if
+  Chronos2 was never invoked. Fixed by ordering the harness before the resolver, retrying `E`
+  while the phase is still `Idle`, and reporting the phase actually reached on timeout. A live
+  in-game run now completes end to end: prompt submitted at 4.1s, every `[chronos-stage]` line
+  through `complete pct=100`, `Succeeded: Manifested 'sacred celestial relic' atop the altar!`,
+  the painting on the cushion with the object above it, the `[E] Take it from the altar` prompt
+  live, and the content-addressed library written —
+  `manifested/47cc55ca-2802-416a-b2f7-a118bbaea2c8.glb`. Evidence:
+  `artifacts/visual-proof/manifest-live-2026-09-12/`, including the complete unfiltered log.
 - **Objects the player owns: taken, carried, placed, duplicated (2026-09-12):** The blocker was
   never hands. Manifestation wrote one fixed path and overwrote it every run, and Bevy caches by
   asset path — so two creations in the world were two views of whatever was made last, and a

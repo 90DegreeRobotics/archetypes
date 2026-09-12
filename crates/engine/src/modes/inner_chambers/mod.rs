@@ -66,9 +66,19 @@ impl Plugin for InnerChambersPlugin {
                 .add_systems(Update, capture::drive_inner_capture);
         }
 
+        // Ordered before the action resolver for the same reason the walking harness is:
+        // `just_pressed` lives for exactly one frame and Bevy clears it in `PreUpdate`, so a
+        // synthesized press issued *after* `resolve_actions` has already run is wiped before
+        // anything can observe it. Without this the harness pressed `E` once, lost it, and then
+        // waited out its whole timeout in `Idle` while reporting that it was waiting on
+        // `Manifesting` - which is how a working manifestation pipeline came to be reported as
+        // broken.
         if let Some(run) = manifest_capture::ManifestCaptureRun::from_env() {
-            app.insert_resource(run)
-                .add_systems(Update, manifest_capture::drive_manifest_capture);
+            app.insert_resource(run).add_systems(
+                Update,
+                manifest_capture::drive_manifest_capture
+                    .before(interaction::InnerInteractionSet::Resolve),
+            );
         }
 
         // Ordered before both the action resolver and locomotion: `just_pressed` lives for
