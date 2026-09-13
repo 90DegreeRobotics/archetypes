@@ -3,6 +3,7 @@ use super::manifestation::MANIFESTATION_PEDESTAL_POS;
 use crate::chamber::boot::spawn_main_menu;
 use crate::modes::ModeRegistry;
 use bevy::asset::RenderAssetUsages;
+use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 use crate::theme::Archetype;
 use super::encounters::ArchetypeEmbodiment;
@@ -63,6 +64,7 @@ pub struct WorldPlugin;
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<HintRequest>()
+            .init_resource::<FpsOverlayToggle>()
             .configure_sets(
                 Update,
                 (InnerHintSet::Request, InnerHintSet::Render)
@@ -85,6 +87,11 @@ impl Plugin for WorldPlugin {
                 ),
             )
             .add_systems(Update, render_hint.in_set(InnerHintSet::Render))
+            .add_systems(
+                Update,
+                (update_fps_overlay, update_crosshair)
+                    .run_if(in_state(InnerChambersState::Navigating)),
+            )
             .add_systems(OnEnter(InnerChambersState::Exiting), teardown_inner_world);
     }
 }
@@ -94,6 +101,29 @@ pub struct InnerWorldElement;
 
 #[derive(Component)]
 pub struct InnerChambersHint;
+
+/// FPS overlay, toggled by F3.
+#[derive(Component)]
+pub struct FpsOverlayText;
+
+#[derive(Component)]
+pub struct FpsOverlayPanel;
+
+/// Crosshair reticle at screen centre.
+#[derive(Component)]
+pub struct CrosshairReticle;
+
+/// Whether the FPS overlay is visible. Toggled by F3.
+#[derive(Resource)]
+pub struct FpsOverlayToggle {
+    pub visible: bool,
+}
+
+impl Default for FpsOverlayToggle {
+    fn default() -> Self {
+        Self { visible: false }
+    }
+}
 
 /// The workshop table in the Architect's room. `interaction.rs` resolves focus against this
 /// entity's transform, so the prompt appears where the furniture actually stands.
@@ -155,6 +185,46 @@ fn render_hint(
     }
 }
 
+/// Developer-facing performance witness.  It stays invisible until F3 so the player HUD is not
+/// polluted, but it gives us a number to fix when the world feels bad instead of guessing.
+fn update_fps_overlay(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    diagnostics: Res<DiagnosticsStore>,
+    mut toggle: ResMut<FpsOverlayToggle>,
+    mut panel: Query<&mut Node, With<FpsOverlayPanel>>,
+    mut text: Query<&mut Text, With<FpsOverlayText>>,
+) {
+    if keyboard.just_pressed(KeyCode::F3) {
+        toggle.visible = !toggle.visible;
+    }
+    for mut node in &mut panel {
+        node.display = if toggle.visible { Display::Flex } else { Display::None };
+    }
+    let fps = diagnostics
+        .get(&FrameTimeDiagnosticsPlugin::FPS)
+        .and_then(|diagnostic| diagnostic.smoothed())
+        .unwrap_or(0.0);
+    for mut value in &mut text {
+        value.0 = if toggle.visible {
+            format!("{fps:.0} FPS  [F3 hide]")
+        } else {
+            String::new()
+        };
+    }
+}
+
+/// The crosshair belongs to first-person navigation only.  A modal owns the cursor and should
+/// never have a reticle pretending the world is still interactive.
+fn update_crosshair(
+    modal: Res<super::interaction::InnerModalState>,
+    mut crosshair: Query<&mut Visibility, With<CrosshairReticle>>,
+) {
+    let visible = if modal.any() { Visibility::Hidden } else { Visibility::Visible };
+    for mut value in &mut crosshair {
+        *value = visible;
+    }
+}
+
 #[derive(Component)]
 pub struct ChronosExhibitTurntable {
     pub speed: f32,
@@ -204,6 +274,7 @@ fn setup_inner_world(
         Transform::from_xyz(0.0, 140.0, 0.0)
             .looking_at(Vec3::new(40.0, 0.0, -70.0), Vec3::Y),
         InnerWorldElement,
+        FpsOverlayPanel,
         Name::new("Castle_VaultKeyLight"),
     ));
     // Authored seamless stone, world-scaled to the same tile the Blender kit's UVs use.
@@ -342,8 +413,54 @@ fn setup_inner_world(
         Name::new("InnerCastle_EnclosingCobbleDrum"),
     ));
 
+    // --- Bottom-left status HUD ---
     commands.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(24.0), bottom: Val::Px(24.0), padding: UiRect::axes(Val::Px(18.0), Val::Px(12.0)), max_width: Val::Px(780.0), ..default() }, BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.88)), GlobalZIndex(920), InnerWorldElement))
-        .with_children(|parent| { parent.spawn((Text::new("INNER CASTLE  •  [STATUS: GROUND WALKING]\nWASD: Move & Strafe  •  Space: Jump (Double-Tap: Fly)  •  Mouse: Look  •  L: Creation Library  •  Esc: Menu"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::srgb(0.92, 0.93, 0.88)), InnerChambersHint)); });
+        .with_children(|parent| { parent.spawn((Text::new("Walking  \u{00b7}  Shift: Sprint  \u{00b7}  2\u{00d7}Space: Fly  \u{00b7}  Esc: Menu"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::srgb(0.92, 0.93, 0.88)), InnerChambersHint)); });
+
+    // --- Crosshair reticle at screen centre ---
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            width: Val::Px(6.0),
+            height: Val::Px(6.0),
+            left: Val::Percent(50.0),
+            top: Val::Percent(50.0),
+            margin: UiRect { left: Val::Px(-3.0), top: Val::Px(-3.0), ..default() },
+            border_radius: BorderRadius::all(Val::Px(3.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.85, 0.87, 0.82, 0.55)),
+        GlobalZIndex(950),
+    )).insert((
+        CrosshairReticle,
+        InnerWorldElement,
+        Name::new("HUD_Crosshair"),
+    ));
+
+    // --- FPS overlay (top-right, hidden by default, F3 toggles) ---
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            right: Val::Px(12.0),
+            top: Val::Px(12.0),
+            padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
+            display: Display::None,
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.72)),
+        GlobalZIndex(960),
+        InnerWorldElement,
+        Name::new("HUD_FpsOverlay"),
+    ))
+    .with_children(|parent| {
+        parent.spawn((
+            Text::new("-- fps"),
+            TextFont { font_size: 16.0, ..default() },
+            TextColor(Color::srgb(0.6, 0.9, 0.5)),
+            FpsOverlayText,
+        ));
+    });
+
     next_state.set(InnerChambersState::Navigating);
 }
 

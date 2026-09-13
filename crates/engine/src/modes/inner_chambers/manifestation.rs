@@ -1077,20 +1077,22 @@ fn target_glb_paths() -> Vec<PathBuf> {
 /// and fed to TripoSR, staged where the asset server can load it, so the
 /// pedestal can show the player the painting their prompt became before it
 /// became an object.
-fn target_reference_image_paths() -> Vec<PathBuf> {
+fn reference_asset_path(artifact_id: &str) -> String {
+    format!("manifested/{artifact_id}.reference.png")
+}
+
+fn target_reference_image_paths(artifact_id: &str) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             paths.push(
                 dir.join("assets")
-                    .join("scenes")
-                    .join("manifested_reference.png"),
+                    .join("manifested")
+                    .join(format!("{artifact_id}.reference.png")),
             );
         }
     }
-    paths.push(PathBuf::from(
-        r"C:\archetypes\assets\scenes\manifested_reference.png",
-    ));
+    paths.push(crate::services::paths::asset_root().join(reference_asset_path(artifact_id)));
     paths
 }
 
@@ -1402,13 +1404,17 @@ fn dispatch_manifestation_worker(
                         ) {
                             Ok(_) => staged_id = Some(artifact_id.clone()),
                             Err(error) => {
-                                // Reported, not swallowed. The object exists either way; what is
-                                // lost is its place in the library across restarts.
-                                eprintln!(
-                                    "[ManifestationSystem] staged {artifact_id}.glb but the \
-                                     library write failed: {error}"
-                                );
-                                staged_id = Some(artifact_id.clone());
+                                // A GLB that is not durably recorded is not a player creation:
+                                // after restart it cannot be summoned. Keep the staged file for
+                                // recovery, but fail visibly instead of declaring false success.
+                                let _ = sender.send(ManifestationEvent::Failure {
+                                    prompt,
+                                    stage_id: Some("library".into()),
+                                    detail: format!(
+                                        "Object converted, but its permanent library record could not be written: {error}. The staged file was kept for recovery."
+                                    ),
+                                });
+                                return;
                             }
                         }
                     }
@@ -1421,7 +1427,7 @@ fn dispatch_manifestation_worker(
                 // must never fail or retry a completed manifestation.
                 let reference_source = bundle.join("reference_input.png");
                 if reference_source.is_file() {
-                    for target in target_reference_image_paths() {
+                    for target in target_reference_image_paths(&artifact_id) {
                         if let Some(p) = target.parent() {
                             let _ = std::fs::create_dir_all(p);
                         }
@@ -1637,7 +1643,9 @@ fn poll_manifestation_results(
                 let panel_pos = Vec3::new(p.x, cushion_y + 0.005, p.z);
                 let panel_material = materials.add(StandardMaterial {
                     base_color_texture: Some(
-                        asset_server.load("scenes/manifested_reference.png"),
+                        asset_server.load(reference_asset_path(
+                            artifact_id.as_deref().unwrap_or("legacy"),
+                        )),
                     ),
                     perceptual_roughness: 0.55,
                     metallic: 0.0,

@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use bevy::prelude::*;
+use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use bevy::window::PrimaryWindow;
 use bevy::winit::{UpdateMode, WinitSettings};
 use std::time::Duration;
@@ -42,7 +43,13 @@ fn main() {
                 }),
         )
         .add_systems(Startup, maximize_primary_window)
-        .add_plugins((SettingsPlugin, SfxPlugin, ModesPlugin, CouncilChamberPlugin))
+        .add_plugins((
+            FrameTimeDiagnosticsPlugin::default(),
+            SettingsPlugin,
+            SfxPlugin,
+            ModesPlugin,
+            CouncilChamberPlugin,
+        ))
         .run();
 }
 

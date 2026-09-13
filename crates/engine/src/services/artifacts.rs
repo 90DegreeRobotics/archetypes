@@ -228,12 +228,24 @@ pub fn load_library_from(path: &Path) -> Vec<ArtifactRecord> {
     let Ok(body) = fs::read_to_string(path) else {
         return Vec::new();
     };
-    body.lines()
+    let rows: Vec<ArtifactRecord> = body.lines()
         .filter(|line| !line.trim().is_empty())
         // A corrupt row is skipped, not fatal. One bad line must never cost the player their
         // whole library.
         .filter_map(|line| serde_json::from_str::<ArtifactRecord>(line).ok())
-        .collect()
+        .collect();
+
+    // The ledger is append-only, but the library is a collection. Retain only the newest row
+    // for an artifact identity so an old seeding pass or a retry cannot show one object three
+    // times while preserving order for genuinely distinct creations.
+    let mut seen = std::collections::HashSet::new();
+    let mut unique: Vec<ArtifactRecord> = rows
+        .into_iter()
+        .rev()
+        .filter(|record| seen.insert(record.id.clone()))
+        .collect();
+    unique.reverse();
+    unique
 }
 
 pub fn record_placement(
@@ -491,7 +503,9 @@ mod tests {
         })
         .unwrap();
         fs::write(&path, format!("{good}\nnot json at all\n{good}\n")).unwrap();
-        assert_eq!(load_library_from(&path).len(), 2);
+        // Repeating an intact row is not a second creation. The corrupt line costs only itself,
+        // while the library still presents one unique, usable artifact.
+        assert_eq!(load_library_from(&path).len(), 1);
         let _ = fs::remove_file(&path);
     }
 

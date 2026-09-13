@@ -52,11 +52,22 @@ pub enum LocomotionMode {
     Flying,
 }
 
+/// Whether the player is holding sprint (Shift / left-stick click).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SprintState {
+    #[default]
+    Normal,
+    Sprinting,
+}
+
 #[derive(Component)]
 pub struct CameraController {
     pub mode: LocomotionMode,
+    pub sprint: SprintState,
     pub eye_height: f32,
     pub walk_speed: f32,
+    /// Multiplier applied to `walk_speed` while sprinting.
+    pub sprint_multiplier: f32,
     pub flight_speed: f32,
     pub velocity_y: f32,
     pub gravity: f32,
@@ -85,17 +96,18 @@ pub struct CameraController {
 }
 
 impl CameraController {
+    /// Short, context-sensitive status line for the bottom-left HUD.
+    ///
+    /// The full keybinding reference belongs in the settings/help overlay. This line tells
+    /// the player only what mode they are in — walking, sprinting, or flying.
     pub fn locomotion_hud_text(&self) -> String {
         match self.mode {
-            LocomotionMode::Walking => {
-                "INNER CASTLE  -  [STATUS: GROUND WALKING]
-WASD/L-Stick: Move & Strafe  -  Space/A: Jump (Double-Tap: Fly)  -  Mouse/R-Stick: Look
-[E] Take  -  [F] Set down  -  [R] Duplicate  -  Esc/B: Menu".to_string()
-            }
+            LocomotionMode::Walking => match self.sprint {
+                SprintState::Normal => "Walking  ·  Shift: Sprint  ·  2×Space: Fly  ·  Esc: Menu".to_string(),
+                SprintState::Sprinting => "Sprinting  ·  Release Shift: Walk  ·  2×Space: Fly  ·  Esc: Menu".to_string(),
+            },
             LocomotionMode::Flying => {
-                "INNER CASTLE  -  [STATUS: FREE FLIGHT]
-WASD/L-Stick: Fly  -  Space/RT: Ascend  -  Shift/LT: Descend  -  3x Space/A: Land
-[E] Take  -  [F] Set down  -  [R] Duplicate  -  Esc/B: Menu".to_string()
+                "Flying  ·  Space: Ascend  ·  Shift: Descend  ·  3×Space: Land  ·  Esc: Menu".to_string()
             }
         }
     }
@@ -105,8 +117,10 @@ impl Default for CameraController {
     fn default() -> Self {
         Self {
             mode: LocomotionMode::Walking,
+            sprint: SprintState::Normal,
             eye_height: 2.85,     // Natural vantage standing above table and artifact pedestals
             walk_speed: 6.5,
+            sprint_multiplier: 1.8,  // 6.5 × 1.8 = 11.7 m/s — brisk run, not a blur
             flight_speed: 10.5,
             velocity_y: 0.0,
             gravity: 16.0,
@@ -216,6 +230,8 @@ fn character_obstacles() -> [(Vec2, f32); 2] {
 /// brisk walk rather than a jog. It is a distance and not an interval on purpose: a timer plays
 /// the same rhythm whether the player is moving or pressed against a wall.
 const STRIDE_LENGTH: f32 = 1.9;
+/// Shorter stride when sprinting — the cadence quickens to match the faster pace.
+const STRIDE_LENGTH_SPRINT: f32 = 1.25;
 
 /// Canonical room-figure obstacles, derived from each room's radial embodiment offset.
 /// Pinned by test so that when satellite rooms are re-enabled or relocated, their positions
@@ -383,6 +399,20 @@ pub(super) fn player_locomotion(
     // --- 3. MOVEMENT BY MODE ---
     match controller.mode {
         LocomotionMode::Walking => {
+            // Sprint: hold Shift or click the left stick on gamepad.
+            let shift_held = keyboard.pressed(KeyCode::ShiftLeft)
+                || keyboard.pressed(KeyCode::ShiftRight)
+                || gamepad_input::any_pressed(&gamepads, GamepadButton::LeftThumb);
+            controller.sprint = if shift_held {
+                SprintState::Sprinting
+            } else {
+                SprintState::Normal
+            };
+            let effective_speed = match controller.sprint {
+                SprintState::Normal => controller.walk_speed,
+                SprintState::Sprinting => controller.walk_speed * controller.sprint_multiplier,
+            };
+
             // Standard FPS walking and strafing on horizontal plane
             let mut move_dir = Vec2::ZERO;
             if keyboard.pressed(KeyCode::KeyW) { move_dir.y += 1.0; }
@@ -397,7 +427,7 @@ pub(super) fn player_locomotion(
             let walk_origin = Vec2::new(transform.translation.x, transform.translation.z);
             if move_dir != Vec2::ZERO {
                 let norm = move_dir.normalize();
-                let horizontal_vel = (forward * norm.y + right * norm.x) * controller.walk_speed;
+                let horizontal_vel = (forward * norm.y + right * norm.x) * effective_speed;
                 transform.translation += horizontal_vel * dt;
             }
 
@@ -414,10 +444,16 @@ pub(super) fn player_locomotion(
             // Footsteps are spaced by ground actually covered, measured *after* collision has
             // had its say. Measuring intent instead would keep the boots marching while the
             // player is pressed against a wall going nowhere.
+            //
+            // The stride shortens when sprinting so the rhythm quickens with the pace.
+            let stride = match controller.sprint {
+                SprintState::Normal => STRIDE_LENGTH,
+                SprintState::Sprinting => STRIDE_LENGTH_SPRINT,
+            };
             if controller.is_grounded {
                 controller.stride_accumulated += resolved.distance(walk_origin);
-                if controller.stride_accumulated >= STRIDE_LENGTH {
-                    controller.stride_accumulated -= STRIDE_LENGTH;
+                if controller.stride_accumulated >= stride {
+                    controller.stride_accumulated -= stride;
                     controller.stride_index = controller.stride_index.wrapping_add(1);
                     sfx.write(PlaySfx::variant(Sfx::Footstep, controller.stride_index));
                 }
