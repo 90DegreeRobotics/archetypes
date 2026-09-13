@@ -23,9 +23,7 @@
 
 use bevy::prelude::*;
 
-use crate::services::artifacts::{
-    self, ArtifactRecord, Placement,
-};
+use crate::services::artifacts::{self, ArtifactRecord, Placement};
 use crate::services::sfx::{PlaySfx, Sfx};
 
 use super::castle;
@@ -111,7 +109,8 @@ pub struct Swing {
 impl Swing {
     /// 0 at the start of the swing, 1 at the end.
     pub fn progress(&self) -> Option<f32> {
-        self.elapsed.map(|elapsed| (elapsed / SWING_SECONDS).clamp(0.0, 1.0))
+        self.elapsed
+            .map(|elapsed| (elapsed / SWING_SECONDS).clamp(0.0, 1.0))
     }
 
     /// A single arc: up and through, then back. Sine rather than a linear ramp, so the object
@@ -133,7 +132,10 @@ impl Plugin for ObjectsPlugin {
         app.init_resource::<Carried>()
             .init_resource::<Swing>()
             .init_resource::<PlacementCounter>()
-            .add_systems(OnEnter(InnerChambersState::Loading), spawn_standing_placements)
+            .add_systems(
+                OnEnter(InnerChambersState::Loading),
+                spawn_standing_placements,
+            )
             .add_systems(
                 Update,
                 (
@@ -157,11 +159,7 @@ impl Plugin for ObjectsPlugin {
     }
 }
 
-fn spawn_one_placement(
-    commands: &mut Commands,
-    asset_server: &AssetServer,
-    placement: &Placement,
-) {
+fn spawn_one_placement(commands: &mut Commands, asset_server: &AssetServer, placement: &Placement) {
     commands.spawn((
         SceneRoot(asset_server.load(format!("{}#Scene0", placement.asset))),
         Transform::from_xyz(
@@ -226,7 +224,7 @@ fn ground_target(camera: &Transform, offset: f32) -> Vec3 {
 
     // The same collision the player obeys. An object cannot be put somewhere the player could
     // not have walked to, which keeps them out of masonry and out of the abyss.
-    let ground = castle::clamp_inside_wall(castle::resolve_room_walls(wanted));
+    let ground = castle::clamp_inside_live_hall(wanted);
     let surface = castle::castle_surface_y(ground, camera.translation.y - 2.85);
     Vec3::new(ground.x, surface, ground.y)
 }
@@ -257,17 +255,22 @@ fn take_object(
 
     // The ledger records the withdrawal rather than forgetting the placement ever happened.
     if let Err(error) = artifacts::withdraw_placement(&object.placement) {
-        warn!("objects: picked up {} but could not record it: {error}", object.placement);
+        warn!(
+            "objects: picked up {} but could not record it: {error}",
+            object.placement
+        );
     }
     // Prefer the library row: a placement records an id and an asset path, but the prompt this
     // object came from and the provenance of its run live on the row. Falling back to the
     // placement keeps an object whose row was lost still pickup-able -- it is the player's
     // either way, it just cannot say where it came from.
-    carried.artifact = Some(artifacts::find_artifact(&object.artifact).unwrap_or(ArtifactRecord {
-        id: object.artifact.clone(),
-        asset: object.asset.clone(),
-        ..Default::default()
-    }));
+    carried.artifact = Some(
+        artifacts::find_artifact(&object.artifact).unwrap_or(ArtifactRecord {
+            id: object.artifact.clone(),
+            asset: object.asset.clone(),
+            ..Default::default()
+        }),
+    );
     carried.copies = 0;
     commands.entity(entity).despawn();
     sfx.write(PlaySfx::new(Sfx::PickUp));
@@ -437,10 +440,7 @@ fn swing_held_object(
     carried: Res<Carried>,
     mut swing: ResMut<Swing>,
     mut held: Query<&mut Transform, With<CarriedVisual>>,
-    mut camera: Query<
-        &mut super::camera::CameraController,
-        With<super::camera::PlayerCamera>,
-    >,
+    mut camera: Query<&mut super::camera::CameraController, With<super::camera::PlayerCamera>>,
     mut sfx: MessageWriter<PlaySfx>,
 ) {
     if !carried.is_carrying() {
@@ -486,8 +486,7 @@ fn swing_held_object(
     for mut transform in &mut held {
         // Forward, up and rotating: the object leads with its top, which is what a swing looks
         // like from behind the hands.
-        transform.translation = HELD_OFFSET
-            + Vec3::new(-0.10 * arc, 0.30 * arc, -0.42 * arc);
+        transform.translation = HELD_OFFSET + Vec3::new(-0.10 * arc, 0.30 * arc, -0.42 * arc);
         transform.rotation = Quat::from_axis_angle(Vec3::X, -1.5 * arc);
     }
 }
@@ -515,7 +514,10 @@ fn object_hint(
     } else if matches!(focus.0, Some(InteractionTarget::PlacedObject(_))) {
         hint.request(HintPriority::Device, "[E] Pick it up".to_string());
     } else if altar_holds_something && focus.0 == Some(InteractionTarget::ManifestationAltar) {
-        hint.request(HintPriority::Device, "[E] Take it from the altar".to_string());
+        hint.request(
+            HintPriority::Device,
+            "[E] Take it from the altar".to_string(),
+        );
     }
 }
 
@@ -680,9 +682,18 @@ mod tests {
         const AUTHORED_MAX_DIMENSION: f32 = 1.4;
         let held = AUTHORED_MAX_DIMENSION * HELD_SCALE;
         assert!(held < 0.6, "a held object is {held:.2}m across");
-        assert!(held > 0.25, "a held object is only {held:.2}m across and reads as a speck");
-        assert!(HELD_OFFSET.z < 0.0, "the held object must be in front of the eye");
-        assert!(HELD_OFFSET.y < 0.0, "the held object must be below the centre of view");
+        assert!(
+            held > 0.25,
+            "a held object is only {held:.2}m across and reads as a speck"
+        );
+        assert!(
+            HELD_OFFSET.z < 0.0,
+            "the held object must be in front of the eye"
+        );
+        assert!(
+            HELD_OFFSET.y < 0.0,
+            "the held object must be below the centre of view"
+        );
     }
 
     /// A swing is one arc: it starts and ends at rest, and peaks in the middle. A linear ramp

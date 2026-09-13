@@ -11,9 +11,9 @@
 //! 3. Failed: A 3D floating luminous Red 'X' with a crimson warning beacon and explicit error message.
 //! 4. Succeeded: Grand golden radiance flash, despawning the hourglass, and revealing the newly summoned 3D object rotating atop the cushion.
 
-use super::world::ChronosExhibitTurntable;
 use super::encounters::EncounterState;
 use super::interaction::{InnerInteractionSet, InteractionFocus, InteractionTarget};
+use super::world::ChronosExhibitTurntable;
 use super::InnerChambersState;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
@@ -878,7 +878,11 @@ fn handle_manifestation_input(
 
     match state.phase {
         ManifestationPhase::Idle | ManifestationPhase::Completed | ManifestationPhase::Failed => {
-            if is_near && !encounter_state.is_open() && interaction_focus.0 == Some(InteractionTarget::ManifestationAltar) && actions.interact {
+            if is_near
+                && !encounter_state.is_open()
+                && interaction_focus.0 == Some(InteractionTarget::ManifestationAltar)
+                && actions.interact
+            {
                 // While something is standing on the cushion, `E` means "take it", and
                 // `objects::take_from_altar` owns that. Opening the prompt here as well would
                 // make one press do two things - the exact bug the interaction arbiter exists to
@@ -1141,20 +1145,18 @@ fn dispatch_manifestation_worker(
             message: "Initiating Chronos2 Object mode...".into(),
         });
 
-        // Best-effort non-blocking flush of ComfyUI VRAM cache before launching generation
-        let _ = std::thread::spawn(|| {
-            let _ = ureq::post("http://127.0.0.1:8000/free")
-                .timeout(std::time::Duration::from_millis(600))
-                .send_json(serde_json::json!({ "unload_models": true, "free_memory": true }));
-        });
-
         let mut command = Command::new(&chronos);
         command
             .args(["first-light", "--prompt"])
             .arg(&prompt)
             .args(["--out-dir"])
             .arg(&bundle)
-            .args(["--geometry-forge", "--void"]);
+            .args([
+                "--intent-json",
+                "{\"attempt\":2}",
+                "--geometry-forge",
+                "--void",
+            ]);
 
         // Use Chronos2's default compact Flux reference lane. The accepted
         // ice-cream witness came from its clean 768px isolated product view.
@@ -1163,7 +1165,12 @@ fn dispatch_manifestation_worker(
         // Remove even a process-level override so the game and the witnessed
         // direct Chronos command cannot silently diverge again.
         command.env_remove("CHRONOS_FORGE_REFERENCE_CKPT");
-        command.env("CHRONOS_FLUX_PROFILE", "lowvram");
+        // The Forge has 12 GB VRAM. Force the accepted 768px object-reference workflow rather
+        // than inheriting a stale low-VRAM profile that silently drops it to 512px.
+        command.env("CHRONOS_FLUX_PROFILE", "normal");
+        // A machine-wide override left tonight's failed sword run apparently frozen for 420s.
+        // Object references have their own bounded budget and must not inherit canvas timings.
+        command.env("CHRONOS_COMFY_REFERENCE_POLL_TIMEOUT_SECS", "180");
         // Marching-cubes grid for the reconstruction. Chronos2 defaults to 256; this is the one
         // geometry-fidelity knob it exposes, and a finer grid recovers detail that 256 rounds
         // away. Overridable, so a slower machine can put it back without a rebuild.
@@ -1635,11 +1642,9 @@ fn poll_manifestation_results(
                 }
                 let panel_pos = Vec3::new(p.x, cushion_y + 0.005, p.z);
                 let panel_material = materials.add(StandardMaterial {
-                    base_color_texture: Some(
-                        asset_server.load(reference_asset_path(
-                            artifact_id.as_deref().unwrap_or("legacy"),
-                        )),
-                    ),
+                    base_color_texture: Some(asset_server.load(reference_asset_path(
+                        artifact_id.as_deref().unwrap_or("legacy"),
+                    ))),
                     perceptual_roughness: 0.55,
                     metallic: 0.0,
                     ..default()
@@ -1896,6 +1901,18 @@ mod tests {
         let source = std::fs::read_to_string("src/modes/inner_chambers/manifestation.rs")
             .expect("manifestation source readable");
         assert!(source.contains("command.env_remove(\"CHRONOS_FORGE_REFERENCE_CKPT\")"));
+        assert!(source.contains("command.env(\"CHRONOS_FLUX_PROFILE\", \"normal\")"));
+        assert!(
+            source.contains("\"{\\\"attempt\\\":2}\"") ,
+            "the buyer path must use the witnessed single-subject candidate seed"
+        );
+        assert!(
+            source.contains("command.env(\"CHRONOS_COMFY_REFERENCE_POLL_TIMEOUT_SECS\", \"180\")")
+        );
+        assert!(
+            !source.contains("ureq::post(\"http://127.0.0.1:8000/free\")"),
+            "do not race ComfyUI model unloading against the generation submitted immediately afterward"
+        );
         assert!(
             !source.contains("command.env(\"CHRONOS_FORGE_REFERENCE_CKPT\""),
             "the game must not force a legacy checkpoint over Chronos2's accepted default lane"

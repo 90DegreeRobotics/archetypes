@@ -1,20 +1,18 @@
-use super::InnerChambersState;
+use super::encounters::ArchetypeEmbodiment;
 use super::manifestation::MANIFESTATION_PEDESTAL_POS;
+use super::InnerChambersState;
 use crate::chamber::boot::spawn_main_menu;
 use crate::modes::ModeRegistry;
+use crate::theme::Archetype;
 use bevy::asset::RenderAssetUsages;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
-use crate::theme::Archetype;
-use super::encounters::ArchetypeEmbodiment;
 use bevy::render::render_resource::{Extent3d, PrimitiveTopology, TextureDimension, TextureFormat};
 
 /// The generated images are deliberately non-color/normal PBR inputs, not light-emitting
 /// decals. Keeping them deterministic makes the chamber self-contained while the material
 /// still travels through Bevy's normal-map lighting path.
 const FLOOR_TEXTURE_SIZE: usize = 256;
-const GROUNDED_ROTUNDA_WALL_HEIGHT: f32 = 12.4;
-const GROUNDED_ROTUNDA_STONE_LEVEL: usize = 4;
 
 /// Operator directive, 2026-09-12: there is no table. The spinning vortex lies on the Council
 /// floor and the manifestation altar stands on the floor in the middle of it.
@@ -200,7 +198,11 @@ fn update_fps_overlay(
         toggle.visible = !toggle.visible;
     }
     for mut node in &mut panel {
-        node.display = if toggle.visible { Display::Flex } else { Display::None };
+        node.display = if toggle.visible {
+            Display::Flex
+        } else {
+            Display::None
+        };
     }
     let fps = diagnostics
         .get(&FrameTimeDiagnosticsPlugin::FPS)
@@ -221,7 +223,11 @@ fn update_crosshair(
     modal: Res<super::interaction::InnerModalState>,
     mut crosshair: Query<&mut Visibility, With<CrosshairReticle>>,
 ) {
-    let visible = if modal.any() { Visibility::Hidden } else { Visibility::Visible };
+    let visible = if modal.any() {
+        Visibility::Hidden
+    } else {
+        Visibility::Visible
+    };
     for mut value in &mut crosshair {
         *value = visible;
     }
@@ -271,8 +277,7 @@ fn setup_inner_world(
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(0.0, 140.0, 0.0)
-            .looking_at(Vec3::new(40.0, 0.0, -70.0), Vec3::Y),
+        Transform::from_xyz(0.0, 140.0, 0.0).looking_at(Vec3::new(40.0, 0.0, -70.0), Vec3::Y),
         InnerWorldElement,
         FpsOverlayPanel,
         Name::new("Castle_VaultKeyLight"),
@@ -289,8 +294,18 @@ fn setup_inner_world(
         ..default()
     });
     let legacy_room_stone = palette.floor.clone();
-    let masonry = palette.level(GROUNDED_ROTUNDA_STONE_LEVEL).face.clone();
-    let trim = palette.level(GROUNDED_ROTUNDA_STONE_LEVEL).trim.clone();
+    let masonry = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.105, 0.115, 0.135),
+        perceptual_roughness: 0.94,
+        metallic: 0.0,
+        ..default()
+    });
+    let trim = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.24, 0.20, 0.14),
+        perceptual_roughness: 0.72,
+        metallic: 0.12,
+        ..default()
+    });
     // Handed to the world so `bind_kit_stone` can dress each module as its scene finishes
     // loading; the palette owns every material the kit can wear.
     commands.insert_resource(palette);
@@ -302,10 +317,9 @@ fn setup_inner_world(
 
     let _preserved_legacy_abyss_material = abyss;
 
-    spawn_grounded_rotunda_shell(
+    spawn_rectilinear_manifester_hall(
         &mut commands,
         &mut meshes,
-        &asset_server,
         floor,
         masonry.clone(),
         trim.clone(),
@@ -324,7 +338,13 @@ fn setup_inner_world(
     // Low and close: the vortex now lies in the floor rather than at chest height, so a light
     // seated where the tabletop used to be would leave the disc itself unlit.
     commands.spawn((
-        PointLight { intensity: 75_000.0, range: 12.0, color: Color::srgb(0.25, 0.70, 1.0), shadows_enabled: false, ..default() },
+        PointLight {
+            intensity: 75_000.0,
+            range: 12.0,
+            color: Color::srgb(0.25, 0.70, 1.0),
+            shadows_enabled: false,
+            ..default()
+        },
         Transform::from_xyz(0.0, COUNCIL_PORTAL_DISC_Y + 1.4, 0.0),
         InnerWorldElement,
         Name::new("CouncilPortalLight"),
@@ -346,90 +366,198 @@ fn setup_inner_world(
     if SPAWN_AURA {
         commands.spawn((
             SceneRoot(asset_server.load("scenes/aura.glb#Scene0")),
-            Transform::from_xyz(0.0, 0.42, -8.5).with_rotation(Quat::from_rotation_y(0.0)).with_scale(Vec3::splat(1.85)),
+            Transform::from_xyz(0.0, 0.42, -8.5)
+                .with_rotation(Quat::from_rotation_y(0.0))
+                .with_scale(Vec3::splat(1.85)),
             InnerWorldElement,
             Name::new("AURA_CentralEmbodiment"),
         ));
     }
     commands.spawn((
         SceneRoot(asset_server.load("scenes/nebula_jester.glb#Scene0")),
-        Transform::from_xyz(10.2, 0.42, 6.2).with_rotation(Quat::from_rotation_y(-2.35)).with_scale(Vec3::splat(1.82)),
+        Transform::from_xyz(10.2, 0.42, 6.2)
+            .with_rotation(Quat::from_rotation_y(-2.35))
+            .with_scale(Vec3::splat(1.82)),
         InnerWorldElement,
         Name::new("Jester_CouncilHost"),
     ));
 
     if SPAWN_OUTER_ROOMS {
         let rooms = [
-            SeedRoom { name: "Architect", title: "LuminousBlueprint", angle: -std::f32::consts::FRAC_PI_2, stone: Color::srgb(0.27, 0.34, 0.42), light: Color::srgb(0.30, 0.62, 1.0), asset: Some("scenes/architect.glb#Scene0"), furniture: FurnitureKind::Drafting },
-            SeedRoom { name: "Sentinel", title: "NullAegis", angle: -std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.12, 0.15, 0.19), light: Color::srgb(0.35, 0.55, 1.0), asset: Some("scenes/sentinel.glb#Scene0"), furniture: FurnitureKind::Guard },
-            SeedRoom { name: "Explorer", title: "FrontierFlare", angle: std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.22, 0.15, 0.09), light: Color::srgb(1.0, 0.42, 0.08), asset: Some("scenes/explorer.glb#Scene0"), furniture: FurnitureKind::Map },
-            SeedRoom { name: "Empath", title: "LumaResonance", angle: std::f32::consts::FRAC_PI_2, stone: Color::srgb(0.25, 0.13, 0.15), light: Color::srgb(1.0, 0.50, 0.58), asset: Some("scenes/empath.glb#Scene0"), furniture: FurnitureKind::Hearth },
-            SeedRoom { name: "Mentor", title: "AncientResonance", angle: 5.0 * std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.07, 0.20, 0.17), light: Color::srgb(0.08, 0.72, 0.56), asset: Some("scenes/mentor.glb#Scene0"), furniture: FurnitureKind::Library },
-            SeedRoom { name: "Oracle", title: "NoctisVeil", angle: 7.0 * std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.13, 0.09, 0.22), light: Color::srgb(0.48, 0.34, 0.86), asset: Some("scenes/oracle.glb#Scene0"), furniture: FurnitureKind::Observatory },
+            SeedRoom {
+                name: "Architect",
+                title: "LuminousBlueprint",
+                angle: -std::f32::consts::FRAC_PI_2,
+                stone: Color::srgb(0.27, 0.34, 0.42),
+                light: Color::srgb(0.30, 0.62, 1.0),
+                asset: Some("scenes/architect.glb#Scene0"),
+                furniture: FurnitureKind::Drafting,
+            },
+            SeedRoom {
+                name: "Sentinel",
+                title: "NullAegis",
+                angle: -std::f32::consts::FRAC_PI_6,
+                stone: Color::srgb(0.12, 0.15, 0.19),
+                light: Color::srgb(0.35, 0.55, 1.0),
+                asset: Some("scenes/sentinel.glb#Scene0"),
+                furniture: FurnitureKind::Guard,
+            },
+            SeedRoom {
+                name: "Explorer",
+                title: "FrontierFlare",
+                angle: std::f32::consts::FRAC_PI_6,
+                stone: Color::srgb(0.22, 0.15, 0.09),
+                light: Color::srgb(1.0, 0.42, 0.08),
+                asset: Some("scenes/explorer.glb#Scene0"),
+                furniture: FurnitureKind::Map,
+            },
+            SeedRoom {
+                name: "Empath",
+                title: "LumaResonance",
+                angle: std::f32::consts::FRAC_PI_2,
+                stone: Color::srgb(0.25, 0.13, 0.15),
+                light: Color::srgb(1.0, 0.50, 0.58),
+                asset: Some("scenes/empath.glb#Scene0"),
+                furniture: FurnitureKind::Hearth,
+            },
+            SeedRoom {
+                name: "Mentor",
+                title: "AncientResonance",
+                angle: 5.0 * std::f32::consts::FRAC_PI_6,
+                stone: Color::srgb(0.07, 0.20, 0.17),
+                light: Color::srgb(0.08, 0.72, 0.56),
+                asset: Some("scenes/mentor.glb#Scene0"),
+                furniture: FurnitureKind::Library,
+            },
+            SeedRoom {
+                name: "Oracle",
+                title: "NoctisVeil",
+                angle: 7.0 * std::f32::consts::FRAC_PI_6,
+                stone: Color::srgb(0.13, 0.09, 0.22),
+                light: Color::srgb(0.48, 0.34, 0.86),
+                asset: Some("scenes/oracle.glb#Scene0"),
+                furniture: FurnitureKind::Observatory,
+            },
         ];
         for room in rooms {
-            spawn_seed_room(&mut commands, &mut meshes, &mut materials, &asset_server, legacy_room_stone.clone(), trim.clone(), room);
+            spawn_seed_room(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                &asset_server,
+                legacy_room_stone.clone(),
+                trim.clone(),
+                room,
+            );
         }
     }
 
     let _preserved_museum = museum;
 
     // --- Bottom-left status HUD ---
-    commands.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(24.0), bottom: Val::Px(24.0), padding: UiRect::axes(Val::Px(18.0), Val::Px(12.0)), max_width: Val::Px(780.0), ..default() }, BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.88)), GlobalZIndex(920), InnerWorldElement))
-        .with_children(|parent| { parent.spawn((Text::new("Walking | Shift: Sprint | 2x Space: Fly | Esc: Menu"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::srgb(0.92, 0.93, 0.88)), InnerChambersHint)); });
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(24.0),
+                bottom: Val::Px(24.0),
+                padding: UiRect::axes(Val::Px(18.0), Val::Px(12.0)),
+                max_width: Val::Px(780.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.88)),
+            GlobalZIndex(920),
+            InnerWorldElement,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("Walking | Shift: Sprint | 2x Space: Fly | Esc: Menu"),
+                TextFont {
+                    font_size: 18.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.92, 0.93, 0.88)),
+                InnerChambersHint,
+            ));
+        });
 
     // --- Crosshair reticle at screen centre ---
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            width: Val::Px(6.0),
-            height: Val::Px(6.0),
-            left: Val::Percent(50.0),
-            top: Val::Percent(50.0),
-            margin: UiRect { left: Val::Px(-3.0), top: Val::Px(-3.0), ..default() },
-            border_radius: BorderRadius::all(Val::Px(3.0)),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.85, 0.87, 0.82, 0.55)),
-        GlobalZIndex(950),
-    )).insert((
-        CrosshairReticle,
-        InnerWorldElement,
-        Name::new("HUD_Crosshair"),
-    ));
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Px(6.0),
+                height: Val::Px(6.0),
+                left: Val::Percent(50.0),
+                top: Val::Percent(50.0),
+                margin: UiRect {
+                    left: Val::Px(-3.0),
+                    top: Val::Px(-3.0),
+                    ..default()
+                },
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.85, 0.87, 0.82, 0.55)),
+            GlobalZIndex(950),
+        ))
+        .insert((
+            CrosshairReticle,
+            InnerWorldElement,
+            Name::new("HUD_Crosshair"),
+        ));
 
     // --- FPS overlay (top-right, hidden by default, F3 toggles) ---
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            right: Val::Px(12.0),
-            top: Val::Px(12.0),
-            padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
-            display: Display::None,
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.72)),
-        GlobalZIndex(960),
-        InnerWorldElement,
-        Name::new("HUD_FpsOverlay"),
-    ))
-    .with_children(|parent| {
-        parent.spawn((
-            Text::new("-- fps"),
-            TextFont { font_size: 16.0, ..default() },
-            TextColor(Color::srgb(0.6, 0.9, 0.5)),
-            FpsOverlayText,
-        ));
-    });
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(12.0),
+                top: Val::Px(12.0),
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.72)),
+            GlobalZIndex(960),
+            InnerWorldElement,
+            Name::new("HUD_FpsOverlay"),
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("-- fps"),
+                TextFont {
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(Color::srgb(0.6, 0.9, 0.5)),
+                FpsOverlayText,
+            ));
+        });
 
     next_state.set(InnerChambersState::Navigating);
 }
 
 #[derive(Clone, Copy)]
-enum FurnitureKind { Drafting, Guard, Map, Hearth, Library, Observatory }
+enum FurnitureKind {
+    Drafting,
+    Guard,
+    Map,
+    Hearth,
+    Library,
+    Observatory,
+}
 
 #[derive(Clone, Copy)]
-struct SeedRoom { name: &'static str, title: &'static str, angle: f32, stone: Color, light: Color, asset: Option<&'static str>, furniture: FurnitureKind }
+struct SeedRoom {
+    name: &'static str,
+    title: &'static str,
+    angle: f32,
+    stone: Color,
+    light: Color,
+    asset: Option<&'static str>,
+    furniture: FurnitureKind,
+}
 
 fn archetype_for_room(name: &str) -> Archetype {
     match name {
@@ -485,98 +613,142 @@ fn spawn_museum_chambers(commands: &mut Commands, asset_server: &AssetServer) {
     }
 }
 
-/// Buyer-facing architectural reset: one floor, one arcade, one vault.
-///
-/// The previous live shell put a raised flagstone mesh directly on the top face of a cylinder,
-/// then repeated seven gallery decks and 504 arcade scenes above an unwalkable void. Besides
-/// being expensive, the coplanar floor faces produced the broad crawling interference bands the
-/// operator saw. This shell deliberately has exactly one opaque floor surface.
-fn spawn_grounded_rotunda_shell(
+/// Buyer-facing Manifester workspace: a rectangular floor, four straight walls and a flat roof.
+/// Every plane has one owner and every structural accent projects clear of its backing surface.
+/// There is no radial shell, repeated arcade, tiled floor overlay or dome on the live path.
+fn spawn_rectilinear_manifester_hall(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
-    asset_server: &AssetServer,
     floor: Handle<StandardMaterial>,
     masonry: Handle<StandardMaterial>,
     trim: Handle<StandardMaterial>,
 ) {
     const FLOOR_THICKNESS: f32 = 0.50;
+    const WALL_THICKNESS: f32 = 0.80;
 
     commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(LIVE_ROTUNDA_FLOOR_RADIUS, FLOOR_THICKNESS))),
+        Mesh3d(meshes.add(Cuboid::new(
+            LIVE_HALL_HALF_X * 2.0,
+            FLOOR_THICKNESS,
+            LIVE_HALL_HALF_Z * 2.0,
+        ))),
         MeshMaterial3d(floor),
         Transform::from_xyz(0.0, GROUND_Y - FLOOR_THICKNESS * 0.5, 0.0),
         InnerWorldElement,
-        Name::new("GroundedRotunda_SingleSurfaceFloor"),
+        Name::new("ManifesterHall_SingleSurfaceFloor"),
     ));
 
-    commands.spawn((
-        Mesh3d(meshes.add(build_wall_ring_mesh(
-            CASTLE_RADIUS,
-            GROUNDED_ROTUNDA_WALL_HEIGHT,
-            CASTLE_WALL_THICKNESS,
-            288,
-            0.0,
-            0.0,
-        ))),
-        MeshMaterial3d(masonry),
-        Transform::from_xyz(0.0, GROUND_Y, 0.0),
-        InnerWorldElement,
-        Name::new("GroundedRotunda_EnclosingWall"),
-    ));
-
-    for index in 0..ARCADE_BAYS_PER_LEVEL {
-        let bearing = arcade_bay_bearing(index);
-        let radial = Vec3::new(bearing.cos(), 0.0, bearing.sin());
+    let wall_y = GROUND_Y + LIVE_HALL_HEIGHT * 0.5;
+    for (name, size, position) in [
+        (
+            "North",
+            Vec3::new(
+                LIVE_HALL_HALF_X * 2.0,
+                LIVE_HALL_HEIGHT,
+                WALL_THICKNESS,
+            ),
+            Vec3::new(0.0, wall_y, -LIVE_HALL_HALF_Z),
+        ),
+        (
+            "South",
+            Vec3::new(
+                LIVE_HALL_HALF_X * 2.0,
+                LIVE_HALL_HEIGHT,
+                WALL_THICKNESS,
+            ),
+            Vec3::new(0.0, wall_y, LIVE_HALL_HALF_Z),
+        ),
+        (
+            "West",
+            Vec3::new(
+                WALL_THICKNESS,
+                LIVE_HALL_HEIGHT,
+                LIVE_HALL_HALF_Z * 2.0,
+            ),
+            Vec3::new(-LIVE_HALL_HALF_X, wall_y, 0.0),
+        ),
+        (
+            "East",
+            Vec3::new(
+                WALL_THICKNESS,
+                LIVE_HALL_HEIGHT,
+                LIVE_HALL_HALF_Z * 2.0,
+            ),
+            Vec3::new(LIVE_HALL_HALF_X, wall_y, 0.0),
+        ),
+    ] {
         commands.spawn((
-            SceneRoot(asset_server.load("scenes/arcade_bay.glb#Scene0")),
-            Transform::from_translation(
-                radial * GALLERY_OUTER_RADIUS + Vec3::Y * GROUND_Y,
-            )
-            .with_rotation(Quat::from_rotation_y(wall_module_yaw(bearing))),
-            KitStone::at(GROUNDED_ROTUNDA_STONE_LEVEL),
+            Mesh3d(meshes.add(Cuboid::new(size.x, size.y, size.z))),
+            MeshMaterial3d(masonry.clone()),
+            Transform::from_translation(position),
             InnerWorldElement,
-            Name::new(format!("GroundedRotunda_ArcadeBay_{index:02}")),
+            Name::new(format!("ManifesterHall_{name}Wall")),
         ));
     }
 
     commands.spawn((
-        Mesh3d(meshes.add(Torus::new(
-            GALLERY_OUTER_RADIUS - 0.40,
-            GALLERY_OUTER_RADIUS + 0.18,
+        Mesh3d(meshes.add(Cuboid::new(
+            LIVE_HALL_HALF_X * 2.0,
+            WALL_THICKNESS,
+            LIVE_HALL_HALF_Z * 2.0,
         ))),
-        MeshMaterial3d(trim),
-        Transform::from_xyz(0.0, GROUND_Y + 0.06, 0.0),
+        MeshMaterial3d(masonry.clone()),
+        Transform::from_xyz(0.0, GROUND_Y + LIVE_HALL_HEIGHT, 0.0),
         InnerWorldElement,
-        Name::new("GroundedRotunda_WallFootCourse"),
+        Name::new("ManifesterHall_FlatCeiling"),
     ));
 
-    commands.spawn((
-        SceneRoot(asset_server.load("scenes/vault_fresco.glb#Scene0")),
-        Transform::from_xyz(0.0, GROUND_Y + GROUNDED_ROTUNDA_WALL_HEIGHT, 0.0),
-        InnerWorldElement,
-        Name::new("GroundedRotunda_Vault"),
-    ));
+    for x in [-24.0_f32, -12.0, 0.0, 12.0, 24.0] {
+        for side in [-1.0_f32, 1.0] {
+            commands.spawn((
+                Mesh3d(meshes.add(Cuboid::new(0.70, LIVE_HALL_HEIGHT, 0.70))),
+                MeshMaterial3d(trim.clone()),
+                Transform::from_xyz(x, wall_y, side * (LIVE_HALL_HALF_Z - 0.75)),
+                InnerWorldElement,
+                Name::new(format!("ManifesterHall_LongWallPost_{x}_{side}")),
+            ));
+        }
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(0.42, 0.55, LIVE_HALL_HALF_Z * 2.0 - 1.6))),
+            MeshMaterial3d(trim.clone()),
+            Transform::from_xyz(x, GROUND_Y + LIVE_HALL_HEIGHT - 0.62, 0.0),
+            InnerWorldElement,
+            Name::new(format!("ManifesterHall_CeilingBeam_{x}")),
+        ));
+    }
 
-    for lamp in 0..8 {
-        let theta = lamp as f32 * std::f32::consts::TAU / 8.0;
-        let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
+    for (index, x) in [-18.0_f32, -6.0, 6.0, 18.0].into_iter().enumerate() {
         commands.spawn((
             PointLight {
-                intensity: 1_100_000.0,
-                range: 52.0,
-                color: Color::srgb(1.0, 0.78, 0.52),
+                intensity: 520_000.0,
+                range: 30.0,
+                color: Color::srgb(1.0, 0.86, 0.68),
                 shadows_enabled: false,
                 ..default()
             },
-            Transform::from_translation(radial * 92.0 + Vec3::Y * 7.0),
+            Transform::from_xyz(x, GROUND_Y + 9.5, 2.0),
             InnerWorldElement,
-            Name::new(format!("GroundedRotunda_Lamp_{lamp}")),
+            Name::new(format!("ManifesterHall_WorkLight_{index}")),
         ));
     }
 }
 
-fn spawn_castle_platform(commands: &mut Commands, meshes: &mut Assets<Mesh>, stone: Handle<StandardMaterial>, trim: Handle<StandardMaterial>, center: Vec3, radius: f32, name: &str) {
-    commands.spawn((Mesh3d(meshes.add(Cylinder::new(radius, 0.8))), MeshMaterial3d(stone.clone()), Transform::from_translation(center), InnerWorldElement, Name::new(format!("{name}_StoneSlabPlatform"))));
+fn spawn_castle_platform(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    stone: Handle<StandardMaterial>,
+    trim: Handle<StandardMaterial>,
+    center: Vec3,
+    radius: f32,
+    name: &str,
+) {
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(radius, 0.8))),
+        MeshMaterial3d(stone.clone()),
+        Transform::from_translation(center),
+        InnerWorldElement,
+        Name::new(format!("{name}_StoneSlabPlatform")),
+    ));
     // Broad, individually separated flagstones make the walking surface read as
     // masonry, not as a single GPU-smooth disc.
     //
@@ -588,71 +760,293 @@ fn spawn_castle_platform(commands: &mut Commands, meshes: &mut Assets<Mesh>, sto
     // 2. The mesh raises its stones above its own origin, so placed at 0.41 with a 0.052m
     //    thickness the stone tops stood at 0.462 while collision put the player's feet on
     //    `GROUND_Y` (0.4) — the same "buried to the shin" bug the gallery decks had.
-    commands.spawn((Mesh3d(meshes.add(build_radial_flagstone_mesh(0.58, radius - 0.58, FLAGSTONE_THICKNESS, 16, joint_angle(0.05, radius)))), MeshMaterial3d(stone.clone()), Transform::from_translation(center + Vec3::Y * (GROUND_Y - FLAGSTONE_THICKNESS)), InnerWorldElement, Name::new(format!("{name}_LargeStoneFloorSlabs"))));
+    commands.spawn((
+        Mesh3d(meshes.add(build_radial_flagstone_mesh(
+            0.58,
+            radius - 0.58,
+            FLAGSTONE_THICKNESS,
+            16,
+            joint_angle(0.05, radius),
+        ))),
+        MeshMaterial3d(stone.clone()),
+        Transform::from_translation(center + Vec3::Y * (GROUND_Y - FLAGSTONE_THICKNESS)),
+        InnerWorldElement,
+        Name::new(format!("{name}_LargeStoneFloorSlabs")),
+    ));
     // The perimeter is a course of separate brick blocks.  The torus remains as
     // its shadowed bedding joint, while the blocks give it a visible hand-laid edge.
-    commands.spawn((Mesh3d(meshes.add(Torus::new(radius - 0.34, radius + 0.18))), MeshMaterial3d(trim.clone()), Transform::from_translation(center + Vec3::Y * 0.42), InnerWorldElement, Name::new(format!("{name}_BrickEdgeBedding"))));
+    commands.spawn((
+        Mesh3d(meshes.add(Torus::new(radius - 0.34, radius + 0.18))),
+        MeshMaterial3d(trim.clone()),
+        Transform::from_translation(center + Vec3::Y * 0.42),
+        InnerWorldElement,
+        Name::new(format!("{name}_BrickEdgeBedding")),
+    ));
     for brick in 0..28 {
         let theta = brick as f32 * std::f32::consts::TAU / 28.0;
         let edge = Vec3::new(theta.cos(), 0.0, theta.sin());
-        commands.spawn((Mesh3d(meshes.add(Cuboid::new(0.50, 0.18, 1.10))), MeshMaterial3d(trim.clone()), Transform::from_translation(center + edge * (radius - 0.06) + Vec3::Y * 0.52).with_rotation(Quat::from_rotation_y(-theta)), InnerWorldElement, Name::new(format!("{name}_BrickEdgeCourse_{brick}"))));
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(0.50, 0.18, 1.10))),
+            MeshMaterial3d(trim.clone()),
+            Transform::from_translation(center + edge * (radius - 0.06) + Vec3::Y * 0.52)
+                .with_rotation(Quat::from_rotation_y(-theta)),
+            InnerWorldElement,
+            Name::new(format!("{name}_BrickEdgeCourse_{brick}")),
+        ));
     }
 }
 
-fn spawn_seed_room(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>, asset_server: &AssetServer, stone: Handle<StandardMaterial>, trim: Handle<StandardMaterial>, room: SeedRoom) {
-    let center = Vec3::new(room.angle.cos() * OUTER_ROOM_DISTANCE, 0.0, room.angle.sin() * OUTER_ROOM_DISTANCE);
-    spawn_castle_platform(commands, meshes, stone, trim.clone(), center, OUTER_ROOM_RADIUS, room.name);
-    let room_mat = materials.add(StandardMaterial { base_color: room.stone, perceptual_roughness: 0.87, metallic: 0.05, double_sided: true, cull_mode: None, ..default() });
+fn spawn_seed_room(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    asset_server: &AssetServer,
+    stone: Handle<StandardMaterial>,
+    trim: Handle<StandardMaterial>,
+    room: SeedRoom,
+) {
+    let center = Vec3::new(
+        room.angle.cos() * OUTER_ROOM_DISTANCE,
+        0.0,
+        room.angle.sin() * OUTER_ROOM_DISTANCE,
+    );
+    spawn_castle_platform(
+        commands,
+        meshes,
+        stone,
+        trim.clone(),
+        center,
+        OUTER_ROOM_RADIUS,
+        room.name,
+    );
+    let room_mat = materials.add(StandardMaterial {
+        base_color: room.stone,
+        perceptual_roughness: 0.87,
+        metallic: 0.05,
+        double_sided: true,
+        cull_mode: None,
+        ..default()
+    });
     let toward_center = room.angle + std::f32::consts::PI;
-    commands.spawn((Mesh3d(meshes.add(build_wall_ring_mesh(ROOM_WALL_RADIUS, ROOM_WALL_HEIGHT, ROOM_WALL_HALF_THICKNESS * 2.0, 120, toward_center, ROOM_DOOR_HALF_ARC * 2.0))), MeshMaterial3d(room_mat.clone()), Transform::from_translation(center + Vec3::Y * 0.42), InnerWorldElement, Name::new(format!("{}_CobblestoneRoomWall", room.name))));
+    commands.spawn((
+        Mesh3d(meshes.add(build_wall_ring_mesh(
+            ROOM_WALL_RADIUS,
+            ROOM_WALL_HEIGHT,
+            ROOM_WALL_HALF_THICKNESS * 2.0,
+            120,
+            toward_center,
+            ROOM_DOOR_HALF_ARC * 2.0,
+        ))),
+        MeshMaterial3d(room_mat.clone()),
+        Transform::from_translation(center + Vec3::Y * 0.42),
+        InnerWorldElement,
+        Name::new(format!("{}_CobblestoneRoomWall", room.name)),
+    ));
     // Projecting irregular courses turn the structural ring into actual visible
     // cobblestone rather than a flat cylinder with a flattering name.  The doorway
     // interval stays clear for the trimmed threshold below.
     for course in 0..9 {
         for block in 0..28 {
-            let theta = block as f32 * std::f32::consts::TAU / 28.0 + if course % 2 == 0 { 0.0 } else { 0.11 };
-            let angular_delta = (theta - toward_center + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
-            if angular_delta.abs() < 0.37 { continue; }
+            let theta = block as f32 * std::f32::consts::TAU / 28.0
+                + if course % 2 == 0 { 0.0 } else { 0.11 };
+            let angular_delta = (theta - toward_center + std::f32::consts::PI)
+                .rem_euclid(std::f32::consts::TAU)
+                - std::f32::consts::PI;
+            if angular_delta.abs() < 0.37 {
+                continue;
+            }
             let radial_block = Vec3::new(theta.cos(), 0.0, theta.sin());
             let height = 0.72 + (block % 3) as f32 * 0.05;
-            commands.spawn((Mesh3d(meshes.add(Cuboid::new(0.50, height, 2.05))), MeshMaterial3d(room_mat.clone()), Transform::from_translation(center + radial_block * (OUTER_ROOM_RADIUS - 0.58) + Vec3::Y * (0.82 + course as f32 * 1.18)).with_rotation(Quat::from_rotation_y(-theta)), InnerWorldElement, Name::new(format!("{}_Cobble_{}_{}", room.name, course, block))));
+            commands.spawn((
+                Mesh3d(meshes.add(Cuboid::new(0.50, height, 2.05))),
+                MeshMaterial3d(room_mat.clone()),
+                Transform::from_translation(
+                    center
+                        + radial_block * (OUTER_ROOM_RADIUS - 0.58)
+                        + Vec3::Y * (0.82 + course as f32 * 1.18),
+                )
+                .with_rotation(Quat::from_rotation_y(-theta)),
+                InnerWorldElement,
+                Name::new(format!("{}_Cobble_{}_{}", room.name, course, block)),
+            ));
         }
     }
-    spawn_trimmed_doorway(commands, meshes, trim.clone(), center, toward_center, room.name);
+    spawn_trimmed_doorway(
+        commands,
+        meshes,
+        trim.clone(),
+        center,
+        toward_center,
+        room.name,
+    );
     // A 28m bridge makes the passage itself part of the castle: a player must cross
     // actual space above the abyss to enter an archetype room.
     let radial = Vec3::new(room.angle.cos(), 0.0, room.angle.sin());
     let bridge_center = radial * (COUNCIL_RADIUS + BRIDGE_LENGTH * 0.5);
-    commands.spawn((Mesh3d(meshes.add(Cuboid::new(BRIDGE_LENGTH, 0.55, 5.4))), MeshMaterial3d(room_mat.clone()), Transform::from_translation(bridge_center + Vec3::Y * 0.10).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_BridgeOverAbyss", room.name))));
-    for side in [-1.0_f32, 1.0] { commands.spawn((Mesh3d(meshes.add(Cuboid::new(BRIDGE_LENGTH, 1.6, 0.24))), MeshMaterial3d(trim.clone()), Transform::from_translation(bridge_center + Vec3::new(-room.angle.sin(), 0.0, room.angle.cos()) * side * 2.56 + Vec3::Y * 0.95).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_BridgeRail", room.name)))); }
-    spawn_room_furniture(commands, meshes, room_mat.clone(), trim.clone(), center, room);
-    if room.name == "Architect" {
-        spawn_architect_workshop(commands, meshes, materials, trim.clone(), center, room.angle);
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(BRIDGE_LENGTH, 0.55, 5.4))),
+        MeshMaterial3d(room_mat.clone()),
+        Transform::from_translation(bridge_center + Vec3::Y * 0.10)
+            .with_rotation(Quat::from_rotation_y(-room.angle)),
+        InnerWorldElement,
+        Name::new(format!("{}_BridgeOverAbyss", room.name)),
+    ));
+    for side in [-1.0_f32, 1.0] {
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(BRIDGE_LENGTH, 1.6, 0.24))),
+            MeshMaterial3d(trim.clone()),
+            Transform::from_translation(
+                bridge_center
+                    + Vec3::new(-room.angle.sin(), 0.0, room.angle.cos()) * side * 2.56
+                    + Vec3::Y * 0.95,
+            )
+            .with_rotation(Quat::from_rotation_y(-room.angle)),
+            InnerWorldElement,
+            Name::new(format!("{}_BridgeRail", room.name)),
+        ));
     }
-    if let Some(path) = room.asset { commands.spawn((SceneRoot(asset_server.load(path)), Transform::from_translation(center + radial * EMBODIMENT_RADIAL_OFFSET + Vec3::Y * 0.42).with_rotation(Quat::from_rotation_y(toward_center)).with_scale(Vec3::splat(2.20)), ArchetypeEmbodiment { archetype: archetype_for_room(room.name), chamber_title: room.title }, InnerWorldElement, Name::new(format!("{}_Embodiment", room.name)))); }
-    commands.spawn((PointLight { intensity: 180_000.0, range: 28.0, color: room.light, shadows_enabled: false, ..default() }, Transform::from_translation(center + Vec3::new(-radial.z * 6.5, 9.5, radial.x * 6.5)), InnerWorldElement, Name::new(format!("{}_ThemeKeyLight", room.name))));
-    commands.spawn((PointLight { intensity: 95_000.0, range: 18.0, color: Color::srgb(1.0, 0.66, 0.30), shadows_enabled: false, ..default() }, Transform::from_translation(center - radial * 12.5 + Vec3::Y * 5.5), InnerWorldElement, Name::new(format!("{}_WarmThresholdLight", room.name))));
-    commands.spawn((Name::new(format!("{}_{}", room.name, room.title)), InnerWorldElement));
+    spawn_room_furniture(
+        commands,
+        meshes,
+        room_mat.clone(),
+        trim.clone(),
+        center,
+        room,
+    );
+    if room.name == "Architect" {
+        spawn_architect_workshop(
+            commands,
+            meshes,
+            materials,
+            trim.clone(),
+            center,
+            room.angle,
+        );
+    }
+    if let Some(path) = room.asset {
+        commands.spawn((
+            SceneRoot(asset_server.load(path)),
+            Transform::from_translation(
+                center + radial * EMBODIMENT_RADIAL_OFFSET + Vec3::Y * 0.42,
+            )
+            .with_rotation(Quat::from_rotation_y(toward_center))
+            .with_scale(Vec3::splat(2.20)),
+            ArchetypeEmbodiment {
+                archetype: archetype_for_room(room.name),
+                chamber_title: room.title,
+            },
+            InnerWorldElement,
+            Name::new(format!("{}_Embodiment", room.name)),
+        ));
+    }
+    commands.spawn((
+        PointLight {
+            intensity: 180_000.0,
+            range: 28.0,
+            color: room.light,
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_translation(center + Vec3::new(-radial.z * 6.5, 9.5, radial.x * 6.5)),
+        InnerWorldElement,
+        Name::new(format!("{}_ThemeKeyLight", room.name)),
+    ));
+    commands.spawn((
+        PointLight {
+            intensity: 95_000.0,
+            range: 18.0,
+            color: Color::srgb(1.0, 0.66, 0.30),
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_translation(center - radial * 12.5 + Vec3::Y * 5.5),
+        InnerWorldElement,
+        Name::new(format!("{}_WarmThresholdLight", room.name)),
+    ));
+    commands.spawn((
+        Name::new(format!("{}_{}", room.name, room.title)),
+        InnerWorldElement,
+    ));
 }
 
-fn spawn_trimmed_doorway(commands: &mut Commands, meshes: &mut Assets<Mesh>, trim: Handle<StandardMaterial>, center: Vec3, angle: f32, name: &str) {
-    let radial = Vec3::new(angle.cos(), 0.0, angle.sin()); let tangent = Vec3::new(-angle.sin(), 0.0, angle.cos());
+fn spawn_trimmed_doorway(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    trim: Handle<StandardMaterial>,
+    center: Vec3,
+    angle: f32,
+    name: &str,
+) {
+    let radial = Vec3::new(angle.cos(), 0.0, angle.sin());
+    let tangent = Vec3::new(-angle.sin(), 0.0, angle.cos());
     let threshold = OUTER_ROOM_RADIUS - 1.55;
-    for side in [-1.0_f32, 1.0] { commands.spawn((Mesh3d(meshes.add(Cuboid::new(0.85, 8.2, 1.25))), MeshMaterial3d(trim.clone()), Transform::from_translation(center + radial * threshold + tangent * side * 3.2 + Vec3::Y * 4.5).with_rotation(Quat::from_rotation_y(-angle)), InnerWorldElement, Name::new(format!("{name}_TrimmedDoorJamb")))); }
-    commands.spawn((Mesh3d(meshes.add(Cuboid::new(7.4, 0.92, 1.5))), MeshMaterial3d(trim), Transform::from_translation(center + radial * threshold + Vec3::Y * 8.5).with_rotation(Quat::from_rotation_y(-angle)), InnerWorldElement, Name::new(format!("{name}_TrimmedDoorLintel"))));
+    for side in [-1.0_f32, 1.0] {
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(0.85, 8.2, 1.25))),
+            MeshMaterial3d(trim.clone()),
+            Transform::from_translation(
+                center + radial * threshold + tangent * side * 3.2 + Vec3::Y * 4.5,
+            )
+            .with_rotation(Quat::from_rotation_y(-angle)),
+            InnerWorldElement,
+            Name::new(format!("{name}_TrimmedDoorJamb")),
+        ));
+    }
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(7.4, 0.92, 1.5))),
+        MeshMaterial3d(trim),
+        Transform::from_translation(center + radial * threshold + Vec3::Y * 8.5)
+            .with_rotation(Quat::from_rotation_y(-angle)),
+        InnerWorldElement,
+        Name::new(format!("{name}_TrimmedDoorLintel")),
+    ));
 }
 
-fn spawn_room_furniture(commands: &mut Commands, meshes: &mut Assets<Mesh>, stone: Handle<StandardMaterial>, trim: Handle<StandardMaterial>, center: Vec3, room: SeedRoom) {
+fn spawn_room_furniture(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    stone: Handle<StandardMaterial>,
+    trim: Handle<StandardMaterial>,
+    center: Vec3,
+    room: SeedRoom,
+) {
     let tangent = Vec3::new(-room.angle.sin(), 0.0, room.angle.cos());
     let radial = Vec3::new(room.angle.cos(), 0.0, room.angle.sin());
-    for side in [-1.0_f32, 1.0] { commands.spawn((Mesh3d(meshes.add(Cuboid::new(1.35, 3.8, 6.4))), MeshMaterial3d(stone.clone()), Transform::from_translation(center + tangent * side * 11.5 + radial * 3.0 + Vec3::Y * 2.3).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_StoneShelf_{side}", room.name)))); }
+    for side in [-1.0_f32, 1.0] {
+        commands.spawn((
+            Mesh3d(meshes.add(Cuboid::new(1.35, 3.8, 6.4))),
+            MeshMaterial3d(stone.clone()),
+            Transform::from_translation(
+                center + tangent * side * 11.5 + radial * 3.0 + Vec3::Y * 2.3,
+            )
+            .with_rotation(Quat::from_rotation_y(-room.angle)),
+            InnerWorldElement,
+            Name::new(format!("{}_StoneShelf_{side}", room.name)),
+        ));
+    }
     // The Architect's counter is replaced by the authored workshop bench below, so the plain
     // slab is not spawned on top of it.
     if room.name == "Architect" {
         return;
     }
-    let (width, depth) = match room.furniture { FurnitureKind::Drafting => (7.2, 2.4), FurnitureKind::Guard => (5.8, 2.0), FurnitureKind::Map => (8.0, 2.2), FurnitureKind::Hearth => (6.4, 3.2), FurnitureKind::Library => (5.2, 2.0), FurnitureKind::Observatory => (4.4, 4.4) };
-    commands.spawn((Mesh3d(meshes.add(Cuboid::new(width, 1.5, depth))), MeshMaterial3d(trim), Transform::from_translation(center + radial * WORKSHOP_TABLE_RADIAL_OFFSET + Vec3::Y * 1.15).with_rotation(Quat::from_rotation_y(-room.angle)), InnerWorldElement, Name::new(format!("{}_FunctionalCounter", room.name))));
+    let (width, depth) = match room.furniture {
+        FurnitureKind::Drafting => (7.2, 2.4),
+        FurnitureKind::Guard => (5.8, 2.0),
+        FurnitureKind::Map => (8.0, 2.2),
+        FurnitureKind::Hearth => (6.4, 3.2),
+        FurnitureKind::Library => (5.2, 2.0),
+        FurnitureKind::Observatory => (4.4, 4.4),
+    };
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(width, 1.5, depth))),
+        MeshMaterial3d(trim),
+        Transform::from_translation(
+            center + radial * WORKSHOP_TABLE_RADIAL_OFFSET + Vec3::Y * 1.15,
+        )
+        .with_rotation(Quat::from_rotation_y(-room.angle)),
+        InnerWorldElement,
+        Name::new(format!("{}_FunctionalCounter", room.name)),
+    ));
 }
 
 /// The Architect's planning bench: a drafting table with a raked board, a tool shelf, and a
@@ -696,7 +1090,10 @@ fn spawn_architect_workshop(
             commands.spawn((
                 Mesh3d(meshes.add(Cuboid::new(0.17, 1.0, 0.17))),
                 MeshMaterial3d(timber.clone()),
-                Transform::from_translation(bench + tangent * side * 1.72 + radial * depth * 0.56 + Vec3::Y * 0.90).with_rotation(facing),
+                Transform::from_translation(
+                    bench + tangent * side * 1.72 + radial * depth * 0.56 + Vec3::Y * 0.90,
+                )
+                .with_rotation(facing),
                 InnerWorldElement,
                 Name::new("Architect_WorkshopBenchLeg"),
             ));
@@ -742,7 +1139,10 @@ fn spawn_architect_workshop(
         commands.spawn((
             Mesh3d(meshes.add(Cuboid::new(0.12, 2.6, 0.12))),
             MeshMaterial3d(trim.clone()),
-            Transform::from_translation(bench + tangent * side * 1.45 + radial * 1.5 + Vec3::Y * 1.7).with_rotation(facing),
+            Transform::from_translation(
+                bench + tangent * side * 1.45 + radial * 1.5 + Vec3::Y * 1.7,
+            )
+            .with_rotation(facing),
             InnerWorldElement,
             Name::new("Architect_WorkshopBoardPost"),
         ));
@@ -853,7 +1253,10 @@ fn spawn_castle_ascent(
 
         // Underside cornice, so each storey reads as a built floor from the hall below.
         commands.spawn((
-            Mesh3d(meshes.add(Torus::new(GALLERY_INNER_RADIUS - 0.55, GALLERY_INNER_RADIUS + 0.15))),
+            Mesh3d(meshes.add(Torus::new(
+                GALLERY_INNER_RADIUS - 0.55,
+                GALLERY_INNER_RADIUS + 0.15,
+            ))),
             MeshMaterial3d(trim.clone()),
             Transform::from_xyz(0.0, floor_y - 0.85, 0.0),
             InnerWorldElement,
@@ -862,7 +1265,10 @@ fn spawn_castle_ascent(
 
         // Balustrade on the inner edge, which is the edge with the drop.
         commands.spawn((
-            Mesh3d(meshes.add(Torus::new(GALLERY_INNER_RADIUS + 0.02, GALLERY_INNER_RADIUS + 0.30))),
+            Mesh3d(meshes.add(Torus::new(
+                GALLERY_INNER_RADIUS + 0.02,
+                GALLERY_INNER_RADIUS + 0.30,
+            ))),
             MeshMaterial3d(trim.clone()),
             Transform::from_xyz(0.0, floor_y + 1.25, 0.0),
             InnerWorldElement,
@@ -937,7 +1343,9 @@ fn spawn_castle_ascent(
                     shadows_enabled: false,
                     ..default()
                 },
-                Transform::from_translation(radial * (GALLERY_OUTER_RADIUS - 7.0) + Vec3::Y * (floor_y + 5.5)),
+                Transform::from_translation(
+                    radial * (GALLERY_OUTER_RADIUS - 7.0) + Vec3::Y * (floor_y + 5.5),
+                ),
                 InnerWorldElement,
                 Name::new(format!("Gallery_{:02}_Lamp_{lamp}", level + 1)),
             ));
@@ -946,13 +1354,7 @@ fn spawn_castle_ascent(
         if level == MUSEUM_LEVEL {
             spawn_museum_chambers(commands, asset_server);
             if let Some(museum) = museum {
-                super::museum::spawn_hung_works(
-                    commands,
-                    asset_server,
-                    meshes,
-                    materials,
-                    museum,
-                );
+                super::museum::spawn_hung_works(commands, asset_server, meshes, materials, museum);
             }
         }
 
@@ -961,7 +1363,10 @@ fn spawn_castle_ascent(
 
     // Wall head cornice and the vault above it.
     commands.spawn((
-        Mesh3d(meshes.add(Torus::new(GALLERY_OUTER_RADIUS - 2.0, GALLERY_OUTER_RADIUS + 1.0))),
+        Mesh3d(meshes.add(Torus::new(
+            GALLERY_OUTER_RADIUS - 2.0,
+            GALLERY_OUTER_RADIUS + 1.0,
+        ))),
         MeshMaterial3d(trim.clone()),
         Transform::from_xyz(0.0, CASTLE_WALL_HEIGHT - 2.0, 0.0),
         InnerWorldElement,
@@ -985,11 +1390,7 @@ fn spawn_castle_ascent(
 /// This replaced 36 loose `Cuboid` treads per flight plus one-sided balusters. A tread cannot
 /// carry a stringer, a parapet or a handrail, because all three run continuously along a flight
 /// and a box only knows about itself — so the flight, not the tread, is the repeat unit.
-fn spawn_ascent_flight(
-    commands: &mut Commands,
-    asset_server: &AssetServer,
-    level: usize,
-) {
+fn spawn_ascent_flight(commands: &mut Commands, asset_server: &AssetServer, level: usize) {
     for flight in 0..FLIGHTS_PER_LEVEL {
         let bearing = stair_flight_bearing(level, flight);
         commands.spawn((
@@ -2250,11 +2651,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn live_shell_has_one_floor_and_does_not_spawn_the_seven_storey_ascent() {
-        assert_eq!(LIVE_ROTUNDA_FLOOR_RADIUS, GALLERY_OUTER_RADIUS);
+    fn live_shell_is_rectilinear_and_does_not_spawn_the_seven_storey_ascent() {
+        assert!(LIVE_HALL_HALF_X > LIVE_HALL_HALF_Z);
         assert!(
-            GROUNDED_ROTUNDA_WALL_HEIGHT >= 12.0 && GROUNDED_ROTUNDA_WALL_HEIGHT < 20.0,
-            "the live wall must seat the 12m arcade without rebuilding the 96m tower"
+            LIVE_HALL_HEIGHT >= 12.0 && LIVE_HALL_HEIGHT < 20.0,
+            "the live hall must remain usable instead of rebuilding the 96m tower"
         );
         let source = std::fs::read_to_string("src/modes/inner_chambers/world.rs")
             .expect("world source readable");
@@ -2263,7 +2664,12 @@ mod tests {
             2,
             "only the preserved definition and this contract string may mention spawn_castle_ascent; a live call adds a third occurrence"
         );
-        assert!(source.contains("GroundedRotunda_SingleSurfaceFloor"));
+        assert!(source.contains("ManifesterHall_SingleSurfaceFloor"));
+        assert_eq!(
+            source.matches("spawn_grounded_rotunda_shell(").count(),
+            1,
+            "only this retirement guard may mention the removed round live shell"
+        );
     }
 
     #[test]

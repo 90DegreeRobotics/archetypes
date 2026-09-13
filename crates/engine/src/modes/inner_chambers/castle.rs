@@ -89,9 +89,16 @@ pub const GALLERY_RISE: f32 = 12.0;
 pub const FIRST_GALLERY_Y: f32 = 12.0;
 pub const GALLERY_INNER_RADIUS: f32 = 102.0;
 pub const GALLERY_OUTER_RADIUS: f32 = 114.0;
-/// The reset live rotunda is one continuous walking surface from its centre to the arcade.
-/// Keeping this equal to the arcade face makes the architecture reachable without flight.
-pub const LIVE_ROTUNDA_FLOOR_RADIUS: f32 = GALLERY_OUTER_RADIUS;
+/// Buyer-facing hall bounds. The legacy circular castle math below remains available to old
+/// records and tests, but movement and placement use this rectilinear contract exclusively.
+pub const LIVE_HALL_HALF_X: f32 = 36.0;
+pub const LIVE_HALL_HALF_Z: f32 = 26.0;
+pub const LIVE_HALL_HEIGHT: f32 = 13.0;
+pub const LIVE_HALL_WALL_CLEARANCE: f32 = 0.85;
+
+pub fn live_hall_flight_ceiling() -> f32 {
+    GROUND_Y + LIVE_HALL_HEIGHT - 0.75
+}
 
 pub const STAIR_CENTRE_RADIUS: f32 = 108.0;
 pub const STAIR_WIDTH: f32 = 8.0;
@@ -429,8 +436,7 @@ pub fn stair_flight_position(level: usize, flight: usize) -> Vec3 {
 /// Where a bay module's origin sits: on the wall face, at the level's deck.
 pub fn arcade_bay_position(level: usize, index: usize) -> Vec3 {
     let bearing = arcade_bay_bearing(index);
-    Vec3::new(bearing.cos(), 0.0, bearing.sin()) * GALLERY_OUTER_RADIUS
-        + Vec3::Y * gallery_y(level)
+    Vec3::new(bearing.cos(), 0.0, bearing.sin()) * GALLERY_OUTER_RADIUS + Vec3::Y * gallery_y(level)
 }
 
 /// Ceiling for free flight: just under the wall head, so the top gallery is reachable and the
@@ -582,11 +588,7 @@ pub fn gallery_surface_y(position: Vec2, feet_y: f32) -> Option<f32> {
     (0..GALLERY_LEVELS)
         .map(gallery_y)
         .filter(|y| (*y - feet_y).abs() <= GALLERY_RISE * 0.75)
-        .min_by(|left, right| {
-            (left - feet_y)
-                .abs()
-                .total_cmp(&(right - feet_y).abs())
-        })
+        .min_by(|left, right| (left - feet_y).abs().total_cmp(&(right - feet_y).abs()))
 }
 
 fn bridge_surface_y(position: Vec2) -> Option<f32> {
@@ -629,7 +631,7 @@ fn choose_surface(candidates: &[f32], feet_y: f32) -> Option<f32> {
 pub fn castle_surface_y(position: Vec2, feet_y: f32) -> f32 {
     let radius = position.length();
     let mut candidates: Vec<f32> = Vec::new();
-    if radius <= LIVE_ROTUNDA_FLOOR_RADIUS {
+    if position.x.abs() <= LIVE_HALL_HALF_X && position.y.abs() <= LIVE_HALL_HALF_Z {
         candidates.push(GROUND_Y);
     }
     for centre in room_centres() {
@@ -653,6 +655,20 @@ pub fn castle_surface_y(position: Vec2, feet_y: f32) -> f32 {
         candidates.push(y);
     }
     choose_surface(&candidates, feet_y).unwrap_or(ABYSS_Y)
+}
+
+/// Keep player and placed objects inside the straight walls of the live Manifester hall.
+pub fn clamp_inside_live_hall(position: Vec2) -> Vec2 {
+    Vec2::new(
+        position.x.clamp(
+            -LIVE_HALL_HALF_X + LIVE_HALL_WALL_CLEARANCE,
+            LIVE_HALL_HALF_X - LIVE_HALL_WALL_CLEARANCE,
+        ),
+        position.y.clamp(
+            -LIVE_HALL_HALF_Z + LIVE_HALL_WALL_CLEARANCE,
+            LIVE_HALL_HALF_Z - LIVE_HALL_WALL_CLEARANCE,
+        ),
+    )
 }
 
 /// Keeps the player inside the enclosing wall. The wall previously had no collision at all —
@@ -692,7 +708,11 @@ pub fn resolve_room_walls(position: Vec2) -> Vec2 {
         if diff.abs() < ROOM_DOOR_HALF_ARC {
             continue;
         }
-        let face = if distance < ROOM_WALL_RADIUS { inner_face } else { outer_face };
+        let face = if distance < ROOM_WALL_RADIUS {
+            inner_face
+        } else {
+            outer_face
+        };
         position = centre + (to_player / distance) * face;
     }
     position
@@ -715,7 +735,10 @@ mod tests {
         }
         // Evenly spaced around the circle.
         let step = museum_bay_bearing(1) - museum_bay_bearing(0);
-        assert!((step - TAU / 12.0).abs() < 1e-5, "chambers are {step} rad apart");
+        assert!(
+            (step - TAU / 12.0).abs() < 1e-5,
+            "chambers are {step} rad apart"
+        );
     }
 
     /// A work fitted to the chamber wall, sized from its own aspect, as
@@ -730,7 +753,11 @@ mod tests {
                 "aspect {aspect} came out {:.3}",
                 size.x / size.y
             );
-            assert!(size.x <= HANGING_MAX_WIDTH + 1e-4, "{aspect} is {:.2}m wide", size.x);
+            assert!(
+                size.x <= HANGING_MAX_WIDTH + 1e-4,
+                "{aspect} is {:.2}m wide",
+                size.x
+            );
             assert!(size.y <= HANGING_MAX_HEIGHT + 1e-4);
             // Wall-sized means wall-sized: the smallest fitted work still has to dominate a
             // 7.7m by 9.4m chamber wall rather than sit on it like a postcard.
@@ -974,7 +1001,10 @@ mod tests {
             // Public-stair riser limits sit near 180mm; nothing here may exceed that, and a
             // riser small enough to be a ramp is exactly the defect being replaced.
             assert!(riser <= 0.18, "level {level} riser {riser} is too tall");
-            assert!(riser >= 0.14, "level {level} riser {riser} is a ramp, not a stair");
+            assert!(
+                riser >= 0.14,
+                "level {level} riser {riser} is a ramp, not a stair"
+            );
 
             let comfort = blondel(level);
             assert!(
@@ -997,7 +1027,10 @@ mod tests {
         let old_run = 7.0 * TAU * 84.25;
         let old_pitch = (21.08_f32 / old_run).atan().to_degrees();
         assert!(old_riser < 0.02, "sanity: the old riser really was ~19mm");
-        assert!(old_pitch < 0.5, "sanity: the old pitch really was under half a degree");
+        assert!(
+            old_pitch < 0.5,
+            "sanity: the old pitch really was under half a degree"
+        );
         // Everything built now is an order of magnitude steeper than that.
         assert!(stair_pitch_degrees(1) > old_pitch * 50.0);
     }
@@ -1023,7 +1056,10 @@ mod tests {
         );
         // At the player's 6.5 m/s that is around two minutes of running.
         let seconds = metres / 6.5;
-        assert!((100.0..=140.0).contains(&seconds), "ascent takes {seconds}s");
+        assert!(
+            (100.0..=140.0).contains(&seconds),
+            "ascent takes {seconds}s"
+        );
     }
 
     #[test]
@@ -1039,7 +1075,10 @@ mod tests {
             assert_eq!(flight_base_y(level), flight_top_y(level - 1));
         }
         assert_eq!(flight_base_y(0), PROMENADE_Y);
-        assert_eq!(flight_top_y(GALLERY_LEVELS - 1), gallery_y(GALLERY_LEVELS - 1));
+        assert_eq!(
+            flight_top_y(GALLERY_LEVELS - 1),
+            gallery_y(GALLERY_LEVELS - 1)
+        );
     }
 
     #[test]
@@ -1048,7 +1087,10 @@ mod tests {
             assert!(stair_profile_y(level, 0.0) >= flight_base_y(level));
             assert!(stair_profile_y(level, 0.0) < flight_base_y(level) + 0.2);
             let top = stair_profile_y(level, stair_run_length());
-            assert!((top - flight_top_y(level)).abs() < 0.001, "level {level} tops out at {top}");
+            assert!(
+                (top - flight_top_y(level)).abs() < 0.001,
+                "level {level} tops out at {top}"
+            );
         }
     }
 
@@ -1143,7 +1185,10 @@ mod tests {
             stair_run_length()
         );
         let climbed = stair_flight_rise() * FLIGHTS_PER_LEVEL as f32;
-        assert!((climbed - GALLERY_RISE).abs() < 1e-4, "two flights climb {climbed}m");
+        assert!(
+            (climbed - GALLERY_RISE).abs() < 1e-4,
+            "two flights climb {climbed}m"
+        );
     }
 
     #[test]
@@ -1169,7 +1214,8 @@ mod tests {
         let on_the_landing = stair_profile_y(0, stair_flight_run() - 0.01);
         assert!((stair_flight_position(0, 1).y - on_the_landing).abs() < 0.01);
         assert!(
-            (stair_profile_y(0, stair_flight_run()) - on_the_landing - riser_height(0)).abs() < 1e-4
+            (stair_profile_y(0, stair_flight_run()) - on_the_landing - riser_height(0)).abs()
+                < 1e-4
         );
     }
 
@@ -1192,9 +1238,11 @@ mod tests {
         assert!((VAULT_RISE - 30.0).abs() < 0.001);
 
         // The dome is a spherical cap cut from this sphere; the script derives the same value.
-        let sphere_radius =
-            (castle_inner_face().powi(2) + VAULT_RISE.powi(2)) / (2.0 * VAULT_RISE);
-        assert!((sphere_radius - 231.6).abs() < 0.01, "sphere radius is {sphere_radius}");
+        let sphere_radius = (castle_inner_face().powi(2) + VAULT_RISE.powi(2)) / (2.0 * VAULT_RISE);
+        assert!(
+            (sphere_radius - 231.6).abs() < 0.01,
+            "sphere radius is {sphere_radius}"
+        );
         // Shallow enough to read as a painted saucer dome rather than foreshortening away.
         assert!(VAULT_RISE / castle_inner_face() < 0.35);
     }
@@ -1202,7 +1250,9 @@ mod tests {
     #[test]
     fn bays_close_the_ring_exactly() {
         let total = arcade_bay_width() * ARCADE_BAYS_PER_LEVEL as f32;
-        let polygon = 2.0 * GALLERY_OUTER_RADIUS * (PI / ARCADE_BAYS_PER_LEVEL as f32).sin()
+        let polygon = 2.0
+            * GALLERY_OUTER_RADIUS
+            * (PI / ARCADE_BAYS_PER_LEVEL as f32).sin()
             * ARCADE_BAYS_PER_LEVEL as f32;
         assert!((total - polygon).abs() < 0.001);
         // The inscribed polygon is a little shorter than the true circle, as it must be.
@@ -1270,22 +1320,34 @@ mod tests {
     }
 
     #[test]
-    fn the_grounded_rotunda_is_walkable_from_altar_to_arcade() {
+    fn the_rectilinear_hall_is_walkable_from_altar_to_every_wall() {
         assert_eq!(castle_surface_y(Vec2::ZERO, GROUND_Y), GROUND_Y);
-        for radius in [COUNCIL_RADIUS, 36.0, 74.0, 100.0, GALLERY_OUTER_RADIUS] {
-            let point = Vec2::new(radius, 0.0);
+        for point in [
+            Vec2::new(-LIVE_HALL_HALF_X, 0.0),
+            Vec2::new(LIVE_HALL_HALF_X, 0.0),
+            Vec2::new(0.0, -LIVE_HALL_HALF_Z),
+            Vec2::new(0.0, LIVE_HALL_HALF_Z),
+        ] {
             assert_eq!(
                 castle_surface_y(point, GROUND_Y),
                 GROUND_Y,
-                "radius {radius} is not on the continuous live floor"
+                "hall boundary {point:?} is not on the continuous live floor"
             );
         }
     }
 
     #[test]
+    fn live_hall_collision_is_rectangular() {
+        assert_eq!(clamp_inside_live_hall(Vec2::ZERO), Vec2::ZERO);
+        let clamped = clamp_inside_live_hall(Vec2::new(500.0, -500.0));
+        assert_eq!(clamped.x, LIVE_HALL_HALF_X - LIVE_HALL_WALL_CLEARANCE);
+        assert_eq!(clamped.y, -LIVE_HALL_HALF_Z + LIVE_HALL_WALL_CLEARANCE);
+    }
+
+    #[test]
     fn the_former_bridge_gap_is_now_part_of_the_walkable_room() {
         let bearing = -FRAC_PI_2 + LEVEL_ANGULAR_ADVANCE * 0.5;
-        let gap = Vec2::new(bearing.cos(), bearing.sin()) * 36.0;
+        let gap = Vec2::new(bearing.cos(), bearing.sin()) * 20.0;
         assert_eq!(castle_surface_y(gap, GROUND_Y), GROUND_Y);
     }
 
@@ -1305,7 +1367,10 @@ mod tests {
         let radial = centre.normalize();
         let bench = centre + radial * WORKSHOP_TABLE_RADIAL_OFFSET;
         let resolved = resolve_room_walls(bench);
-        assert!((resolved - bench).length() < 0.001, "the bench position was moved to {resolved:?}");
+        assert!(
+            (resolved - bench).length() < 0.001,
+            "the bench position was moved to {resolved:?}"
+        );
         assert!((resolved - centre).length() < ROOM_WALL_RADIUS);
     }
 

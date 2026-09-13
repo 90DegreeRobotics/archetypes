@@ -103,8 +103,12 @@ impl CameraController {
     pub fn locomotion_hud_text(&self) -> String {
         match self.mode {
             LocomotionMode::Walking => match self.sprint {
-                SprintState::Normal => "Walking | Shift: Sprint | 2x Space: Fly | Esc: Menu".to_string(),
-                SprintState::Sprinting => "Sprinting | Release Shift: Walk | 2x Space: Fly | Esc: Menu".to_string(),
+                SprintState::Normal => {
+                    "Walking | Shift: Sprint | 2x Space: Fly | Esc: Menu".to_string()
+                }
+                SprintState::Sprinting => {
+                    "Sprinting | Release Shift: Walk | 2x Space: Fly | Esc: Menu".to_string()
+                }
             },
             LocomotionMode::Flying => {
                 "Flying | Space: Ascend | Shift: Descend | 3x Space: Land | Esc: Menu".to_string()
@@ -118,15 +122,15 @@ impl Default for CameraController {
         Self {
             mode: LocomotionMode::Walking,
             sprint: SprintState::Normal,
-            eye_height: 2.85,     // Natural vantage standing above table and artifact pedestals
+            eye_height: 2.85, // Natural vantage standing above table and artifact pedestals
             walk_speed: 6.5,
-            sprint_multiplier: 1.8,  // 6.5 × 1.8 = 11.7 m/s — brisk run, not a blur
+            sprint_multiplier: 1.8, // 6.5 × 1.8 = 11.7 m/s — brisk run, not a blur
             flight_speed: 10.5,
             velocity_y: 0.0,
             gravity: 16.0,
             jump_impulse: 5.6,
-            sensitivity: 0.0013,  // Responsive, standard FPS mouse look
-            pitch: -0.18,         // Looking slightly downward at the objects (~10.3 degrees)
+            sensitivity: 0.0013, // Responsive, standard FPS mouse look
+            pitch: -0.18,        // Looking slightly downward at the objects (~10.3 degrees)
             yaw: 0.0,
             is_grounded: true,
             last_space_press_time: -100.0,
@@ -237,8 +241,12 @@ const STRIDE_LENGTH_SPRINT: f32 = 1.25;
 /// Pinned by test so that when satellite rooms are re-enabled or relocated, their positions
 /// match the world-builder contract.
 pub fn canonical_room_figure_obstacles() -> [(Vec2, f32); 6] {
-    castle::room_centres()
-        .map(|center| (center + center.normalize() * castle::EMBODIMENT_RADIAL_OFFSET, 1.5))
+    castle::room_centres().map(|center| {
+        (
+            center + center.normalize() * castle::EMBODIMENT_RADIAL_OFFSET,
+            1.5,
+        )
+    })
 }
 
 /// Pushes the player out of any standing obstacle they have walked into.
@@ -248,7 +256,11 @@ fn resolve_character_obstacles(position: Vec2) -> Vec2 {
         let to_player = position - obstacle;
         let distance = to_player.length();
         if distance < radius {
-            let push = if distance > 0.01 { to_player / distance } else { Vec2::Y };
+            let push = if distance > 0.01 {
+                to_player / distance
+            } else {
+                Vec2::Y
+            };
             position = obstacle + push * radius;
         }
     }
@@ -308,8 +320,6 @@ pub(super) fn player_locomotion(
             }
         }
     }
-
-
 
     let dt = time.delta_secs();
     let now = time.elapsed_secs();
@@ -415,10 +425,18 @@ pub(super) fn player_locomotion(
 
             // Standard FPS walking and strafing on horizontal plane
             let mut move_dir = Vec2::ZERO;
-            if keyboard.pressed(KeyCode::KeyW) { move_dir.y += 1.0; }
-            if keyboard.pressed(KeyCode::KeyS) { move_dir.y -= 1.0; }
-            if keyboard.pressed(KeyCode::KeyA) { move_dir.x -= 1.0; }
-            if keyboard.pressed(KeyCode::KeyD) { move_dir.x += 1.0; }
+            if keyboard.pressed(KeyCode::KeyW) {
+                move_dir.y += 1.0;
+            }
+            if keyboard.pressed(KeyCode::KeyS) {
+                move_dir.y -= 1.0;
+            }
+            if keyboard.pressed(KeyCode::KeyA) {
+                move_dir.x -= 1.0;
+            }
+            if keyboard.pressed(KeyCode::KeyD) {
+                move_dir.x += 1.0;
+            }
             move_dir += gamepad_input::combined_left_stick(&gamepads, settings.gamepad_deadzone);
 
             let forward = Vec3::new(-controller.yaw.sin(), 0.0, -controller.yaw.cos());
@@ -431,13 +449,10 @@ pub(super) fn player_locomotion(
                 transform.translation += horizontal_vel * dt;
             }
 
-
             // Center/room embodiment and active manifestation obstacles, then each outer
             // room's cobblestone wall.
             let before = Vec2::new(transform.translation.x, transform.translation.z);
-            let resolved = castle::clamp_inside_wall(castle::resolve_room_walls(
-                resolve_character_obstacles(before),
-            ));
+            let resolved = castle::clamp_inside_live_hall(resolve_character_obstacles(before));
             transform.translation.x = resolved.x;
             transform.translation.z = resolved.y;
 
@@ -460,7 +475,10 @@ pub(super) fn player_locomotion(
             }
 
             let current_feet_y = transform.translation.y - controller.eye_height;
-            let ground_y = castle::castle_surface_y(Vec2::new(transform.translation.x, transform.translation.z), current_feet_y);
+            let ground_y = castle::castle_surface_y(
+                Vec2::new(transform.translation.x, transform.translation.z),
+                current_feet_y,
+            );
 
             // Gravity & Vertical Position
             if !controller.is_grounded {
@@ -489,10 +507,18 @@ pub(super) fn player_locomotion(
         LocomotionMode::Flying => {
             // Free flight movement
             let mut move_dir = Vec2::ZERO;
-            if keyboard.pressed(KeyCode::KeyW) { move_dir.y += 1.0; }
-            if keyboard.pressed(KeyCode::KeyS) { move_dir.y -= 1.0; }
-            if keyboard.pressed(KeyCode::KeyA) { move_dir.x -= 1.0; }
-            if keyboard.pressed(KeyCode::KeyD) { move_dir.x += 1.0; }
+            if keyboard.pressed(KeyCode::KeyW) {
+                move_dir.y += 1.0;
+            }
+            if keyboard.pressed(KeyCode::KeyS) {
+                move_dir.y -= 1.0;
+            }
+            if keyboard.pressed(KeyCode::KeyA) {
+                move_dir.x -= 1.0;
+            }
+            if keyboard.pressed(KeyCode::KeyD) {
+                move_dir.x += 1.0;
+            }
             move_dir += gamepad_input::combined_left_stick(&gamepads, settings.gamepad_deadzone);
 
             let forward = Vec3::new(-controller.yaw.sin(), 0.0, -controller.yaw.cos());
@@ -519,7 +545,10 @@ pub(super) fn player_locomotion(
                 || gamepad_input::any_pressed(&gamepads, GamepadButton::LeftTrigger2);
 
             let current_feet_y = transform.translation.y - controller.eye_height;
-            let ground_y = castle::castle_surface_y(Vec2::new(transform.translation.x, transform.translation.z), current_feet_y);
+            let ground_y = castle::castle_surface_y(
+                Vec2::new(transform.translation.x, transform.translation.z),
+                current_feet_y,
+            );
             let floor_level = ground_y + controller.eye_height;
 
             if shift_pressed {
@@ -529,12 +558,17 @@ pub(super) fn player_locomotion(
                 }
             }
 
-            // Flight stays inside the shell: the wall is a circle, and the ceiling is just
-            // under the wall head so the top gallery is reachable but the vault is not a door.
-            let inside = castle::clamp_inside_wall(Vec2::new(transform.translation.x, transform.translation.z));
+            // Flight stays inside the rectangular hall and below its flat ceiling.
+            let inside = castle::clamp_inside_live_hall(Vec2::new(
+                transform.translation.x,
+                transform.translation.z,
+            ));
             transform.translation.x = inside.x;
             transform.translation.z = inside.y;
-            transform.translation.y = transform.translation.y.clamp(floor_level, castle::flight_ceiling());
+            transform.translation.y = transform
+                .translation
+                .y
+                .clamp(floor_level, castle::live_hall_flight_ceiling());
         }
     }
 }
@@ -551,7 +585,10 @@ mod tests {
         for (index, centre) in castle::room_centres().iter().enumerate() {
             let (obstacle, radius) = obstacles[index];
             let expected = *centre + centre.normalize() * castle::EMBODIMENT_RADIAL_OFFSET;
-            assert!((obstacle - expected).length() < 0.001, "room {index} obstacle is misplaced");
+            assert!(
+                (obstacle - expected).length() < 0.001,
+                "room {index} obstacle is misplaced"
+            );
             assert!(
                 obstacle.length() > centre.length(),
                 "room {index} figure must sit further from the hub than its room centre"
