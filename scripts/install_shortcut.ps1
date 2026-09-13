@@ -49,6 +49,17 @@ if (Test-Path $RendersDst) {
     Copy-Item (Join-Path $RendersDst "*") -Destination $RendersBackup -Recurse -Force -ErrorAction SilentlyContinue
 }
 New-Item -ItemType Directory -Force -Path $AssetsDst | Out-Null
+# Explorer can mark copied desktop.ini files as System/Hidden. PowerShell's
+# Copy-Item -Force still cannot overwrite a System destination, so normalize
+# only those metadata files before the recursive restage.
+Get-ChildItem -LiteralPath $AssetsDst -Filter "desktop.ini" -File -Force -Recurse -ErrorAction SilentlyContinue |
+    ForEach-Object {
+        $_.Attributes = $_.Attributes -band (-bnot (
+            [System.IO.FileAttributes]::System -bor
+            [System.IO.FileAttributes]::Hidden -bor
+            [System.IO.FileAttributes]::ReadOnly
+        ))
+    }
 Get-ChildItem $AssetsSrc | Copy-Item -Destination $AssetsDst -Recurse -Force
 New-Item -ItemType Directory -Force -Path $RendersDst | Out-Null
 if (Test-Path $RendersBackup) {

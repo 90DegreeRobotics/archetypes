@@ -50,6 +50,17 @@ if ($liveInstalledProcesses.Count -gt 0) {
     throw "Archetypes is still running from $InstallRoot ($details). Exit the game and launcher, then rerun this deployment. No files were copied."
 }
 
+# Explorer may promote desktop.ini to a protected System file after install.
+# Copy-Item -Force cannot replace that destination on a later upgrade, so
+# normalize only this metadata filename before syncing the new product tree.
+Get-ChildItem -LiteralPath $InstallRoot -Filter "desktop.ini" -File -Force -Recurse -ErrorAction SilentlyContinue |
+    ForEach-Object {
+        $_.Attributes = $_.Attributes -band (-bnot (
+            [System.IO.FileAttributes]::System -bor
+            [System.IO.FileAttributes]::Hidden -bor
+            [System.IO.FileAttributes]::ReadOnly
+        ))
+    }
 Copy-Item (Join-Path $SourceRoot "*") -Destination $InstallRoot -Recurse -Force
 
 # A successful Copy-Item is not deployment proof.  The two executables that

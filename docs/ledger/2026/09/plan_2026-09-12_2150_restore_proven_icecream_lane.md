@@ -58,15 +58,27 @@ Restore the exact conservative reconstruction and shading configuration that pro
   vertices and 39,854 faces; the removed EdgeSplit path had inflated the same mesh to 24,234
   vertices.
 - `python tools\test_triposr_mesh_emitter.py`: 5 passed.
-- Focused manifestation tests: 13 passed.
-- `cargo test --workspace`: 284 engine + 19 launcher + 5 Windows identity = 308 passed.
+- Focused manifestation tests: 15 passed.
+- `cargo test --workspace`: rerun after repository recovery and after both installer repairs;
+  284 engine + 19 launcher + 5 Windows identity = 308 passed on the final source tree.
 - `cargo fmt --all -- --check` remains red on broad inherited formatting drift outside this unit;
   no formatter rewrite was applied.
-- `pwsh -File scripts\install_shortcut.ps1`: completed; installed engine SHA256
-  `02D91CD94155B6B4D73DE96F2FC6FC89A52043AE1B61F84156133560305AE7FB`; Taskbar target verified
+- `pwsh -File scripts\install_shortcut.ps1`: completed after the protected-metadata repairs;
+  installed engine SHA256 `A52086970168B9613026E63F2F5FE84441AFE393E70D774848917EFF53DEC273`;
+  installed launcher SHA256 `D45E3CF72C96144DB47E5E66E86147EA5B9C1A6A38B496CDAA3EC0F651A49A65`;
+  Taskbar target verified
   as `%LOCALAPPDATA%\Programs\Archetypes\launcher.exe`.
 - Manus reported isolated-clone commits `d68626a` and `cfc4d59f`, but neither object exists in
   the Windows repository and `git fetch origin main` confirmed that `origin/main` remains at
   `1e1096f`. The mounted work also truncated EOF content from dozens of tracked files; all
   truncation-only damage was identified byte-for-byte as a strict prefix of `HEAD` and restored
   from Git history before the intentional repair was reapplied.
+- The recovered repair was ultimately published from the authenticated Windows checkout as
+  commit `6de3258bc54f68e82b5b8bae45f0cdda741925d9`; `git ls-remote` confirmed it on `origin/main`.
+- The first post-recovery Desktop restage built both release binaries but stopped because an
+  existing `dist\assets\aura\desktop.ini` carried the Windows System attribute. The staging
+  script now clears System/Hidden/ReadOnly only from destination `desktop.ini` metadata before
+  copying assets, preventing that repeatable buyer-build failure.
+- The next sync reached the installed Programs tree and exposed the same protected-metadata
+  condition there. `install_product.ps1` now applies the same narrowly scoped normalization to
+  installed `desktop.ini` files before upgrade copying.
