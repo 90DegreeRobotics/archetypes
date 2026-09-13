@@ -65,7 +65,7 @@ pub const EMBODIMENT_RADIAL_OFFSET: f32 = 7.0;
 pub const WORKSHOP_TABLE_RADIAL_OFFSET: f32 = 12.0;
 
 pub const GROUND_Y: f32 = 0.4;
-pub const PROMENADE_Y: f32 = 0.5;
+pub const PROMENADE_Y: f32 = GROUND_Y;
 pub const BRIDGE_Y: f32 = 0.31;
 pub const ABYSS_Y: f32 = -19.8;
 
@@ -89,6 +89,9 @@ pub const GALLERY_RISE: f32 = 12.0;
 pub const FIRST_GALLERY_Y: f32 = 12.0;
 pub const GALLERY_INNER_RADIUS: f32 = 102.0;
 pub const GALLERY_OUTER_RADIUS: f32 = 114.0;
+/// The reset live rotunda is one continuous walking surface from its centre to the arcade.
+/// Keeping this equal to the arcade face makes the architecture reachable without flight.
+pub const LIVE_ROTUNDA_FLOOR_RADIUS: f32 = GALLERY_OUTER_RADIUS;
 
 pub const STAIR_CENTRE_RADIUS: f32 = 108.0;
 pub const STAIR_WIDTH: f32 = 8.0;
@@ -620,23 +623,23 @@ fn choose_surface(candidates: &[f32], feet_y: f32) -> Option<f32> {
 
 /// The top surface beneath a player, anywhere in the castle.
 ///
-/// Stepping off a circle, a bridge or a gallery is a real fall into the under-castle floor,
-/// not an invisible plane disguised as an abyss.
+/// The grounded live rotunda has one continuous floor from the altar to the arcade. Legacy
+/// gallery, stair and museum candidates remain so the preserved multi-storey implementation can
+/// still be exercised in tests without controlling the buyer-facing ground path.
 pub fn castle_surface_y(position: Vec2, feet_y: f32) -> f32 {
-    if position.length() <= COUNCIL_RADIUS {
-        return GROUND_Y;
+    let radius = position.length();
+    let mut candidates: Vec<f32> = Vec::new();
+    if radius <= LIVE_ROTUNDA_FLOOR_RADIUS {
+        candidates.push(GROUND_Y);
     }
     for centre in room_centres() {
         if (position - centre).length() <= OUTER_ROOM_RADIUS {
-            return GROUND_Y;
+            candidates.push(GROUND_Y);
         }
     }
     if let Some(y) = bridge_surface_y(position) {
-        return y;
+        candidates.push(y);
     }
-
-    let radius = position.length();
-    let mut candidates: Vec<f32> = Vec::new();
     if (PROMENADE_INNER_RADIUS..=GALLERY_OUTER_RADIUS).contains(&radius) {
         candidates.push(PROMENADE_Y);
     }
@@ -1267,22 +1270,23 @@ mod tests {
     }
 
     #[test]
-    fn the_council_rooms_and_bridges_still_have_ground_under_them() {
+    fn the_grounded_rotunda_is_walkable_from_altar_to_arcade() {
         assert_eq!(castle_surface_y(Vec2::ZERO, GROUND_Y), GROUND_Y);
-        for centre in room_centres() {
-            assert_eq!(castle_surface_y(centre, GROUND_Y), GROUND_Y);
+        for radius in [COUNCIL_RADIUS, 36.0, 74.0, 100.0, GALLERY_OUTER_RADIUS] {
+            let point = Vec2::new(radius, 0.0);
+            assert_eq!(
+                castle_surface_y(point, GROUND_Y),
+                GROUND_Y,
+                "radius {radius} is not on the continuous live floor"
+            );
         }
-        let bridge = Vec2::new(0.0, -(COUNCIL_RADIUS + BRIDGE_LENGTH * 0.5));
-        assert_eq!(castle_surface_y(bridge, GROUND_Y), BRIDGE_Y);
     }
 
     #[test]
-    fn stepping_off_a_bridge_into_the_gap_is_a_real_fall() {
-        // Midway between two room bearings, out past the council circle: open air, no bridge,
-        // no room, no promenade.
+    fn the_former_bridge_gap_is_now_part_of_the_walkable_room() {
         let bearing = -FRAC_PI_2 + LEVEL_ANGULAR_ADVANCE * 0.5;
         let gap = Vec2::new(bearing.cos(), bearing.sin()) * 36.0;
-        assert_eq!(castle_surface_y(gap, GROUND_Y), ABYSS_Y);
+        assert_eq!(castle_surface_y(gap, GROUND_Y), GROUND_Y);
     }
 
     #[test]

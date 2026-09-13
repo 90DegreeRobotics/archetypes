@@ -1,10 +1,20 @@
 # Archetypes Status
 
-**Last Updated: 2026-09-13 (Proven Manifester baseline restored)**
+**Last Updated: 2026-09-13 (Grounded rotunda reset installed)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
+- **Grounded rotunda reset installed (2026-09-13):** a live buyer-path walkthrough proved the
+  reported floor corruption. `spawn_castle_platform` placed the cylinder top and flagstone top
+  at the exact same `GROUND_Y`, producing z-fighting, broad rectangular interference bands,
+  ghosted joints and motion shimmer. The live shell also stacked seven gallery levels, 504
+  arcade scenes, 672 balusters and 42 huge point lights above an intentional unwalkable void.
+  The installed Taskbar build now uses one opaque matte floor from altar to arcade, one grounded
+  arcade ring, one 12.4m wall, the seated fresco vault and eight bounded lamps. Collision follows
+  the same continuous floor, so the arcade is reachable without flight. The prior multi-storey
+  implementation remains in source as non-live history. This is a clean architectural baseline,
+  not a claim that final environment art direction is complete.
 - **Proven Manifester baseline restored (2026-09-13):** the surviving real `ice cream cone`
   bundle at `%TEMP%\segfix_proto\live_test2` establishes the last acceptable configuration:
   Chronos2's default compact Flux 768px reference lane, TripoSR MC 256, decoder chunk 65,536,

@@ -13,6 +13,8 @@ use bevy::render::render_resource::{Extent3d, PrimitiveTopology, TextureDimensio
 /// decals. Keeping them deterministic makes the chamber self-contained while the material
 /// still travels through Bevy's normal-map lighting path.
 const FLOOR_TEXTURE_SIZE: usize = 256;
+const GROUNDED_ROTUNDA_WALL_HEIGHT: f32 = 12.4;
+const GROUNDED_ROTUNDA_STONE_LEVEL: usize = 4;
 
 /// Operator directive, 2026-09-12: there is no table. The spinning vortex lies on the Council
 /// floor and the manifestation altar stands on the floor in the middle of it.
@@ -255,13 +257,11 @@ fn setup_inner_world(
     museum: Option<Res<super::museum::Museum>>,
 ) {
     clear.0 = Color::srgb(0.012, 0.014, 0.020);
-    // A hall 240m across and 126m to the vault cannot be lit the way a single room was: the
-    // old ambient was tuned for a small chamber and left the far wall black. Ambient is raised
-    // enough to read masonry at distance, but deliberately not so far that everything flattens
-    // out — the shape still comes from the directional key below and from the tiered lamps.
+    // The live room is one grounded rotunda. Keep enough ambient to read the far arcade without
+    // flattening the entire scene into the washed tan field the seven-storey shell produced.
     commands.insert_resource(GlobalAmbientLight {
         color: Color::srgb(0.80, 0.73, 0.63),
-        brightness: 2_400.0,
+        brightness: 900.0,
         ..default()
     });
     commands.spawn((
@@ -282,26 +282,15 @@ fn setup_inner_world(
     // normal map is the part that matters most, because nothing in this hall casts a shadow and
     // surface normals are therefore the only thing carrying relief.
     let palette = build_palette(&asset_server, &mut materials);
-    let stone = palette.floor.clone();
-    let masonry = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.13, 0.12, 0.12),
-        perceptual_roughness: 0.94,
+    let floor = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.055, 0.063, 0.078),
+        perceptual_roughness: 0.90,
+        metallic: 0.0,
         ..default()
     });
-    let trim = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.30, 0.25, 0.18),
-        metallic: 0.25,
-        perceptual_roughness: 0.52,
-        ..default()
-    });
-    // The perimeter architecture is matched to the Blender kit's limestone (0.62, 0.58, 0.51).
-    // The decks, promenade and stairs were sharing the dark basalt floor material at 0.34, which
-    // is roughly half the value of the arcade standing on them — so from any gallery the walkway
-    // read as a black slab hung under a pale building.
-    let pale_stone = palette.floor.clone();
-    // Cornices and rails are stone, not metal. At 0.25 metallic and a brown base they read as
-    // copper pipework threaded through the hall.
-    let pale_trim = palette.floor_trim.clone();
+    let legacy_room_stone = palette.floor.clone();
+    let masonry = palette.level(GROUNDED_ROTUNDA_STONE_LEVEL).face.clone();
+    let trim = palette.level(GROUNDED_ROTUNDA_STONE_LEVEL).trim.clone();
     // Handed to the world so `bind_kit_stone` can dress each module as its scene finishes
     // loading; the palette owns every material the kit can wear.
     commands.insert_resource(palette);
@@ -311,42 +300,21 @@ fn setup_inner_world(
         ..default()
     });
 
-    // The deep void is geometry, not a black clear-color trick: the rooms visibly
-    // hang above a lower circular floor and broken concentric foundation rings.
-    commands.spawn((
-        Mesh3d(meshes.add(Cylinder::new(CASTLE_RADIUS + 16.0, 0.8))),
-        MeshMaterial3d(abyss),
-        Transform::from_xyz(0.0, -20.2, 0.0),
-        InnerWorldElement,
-        Name::new("UnderCastle_AbyssFloor"),
-    ));
-    for (i, radius) in [28.0_f32, 54.0, 82.0].iter().enumerate() {
-        commands.spawn((
-            Mesh3d(meshes.add(Torus::new(*radius - 0.28, *radius + 0.28))),
-            MeshMaterial3d(masonry.clone()),
-            Transform::from_xyz(0.0, -18.8 - i as f32 * 0.75, 0.0),
-            InnerWorldElement,
-            Name::new(format!("UnderCastle_FoundationRing_{i}")),
-        ));
-    }
-    commands.spawn((
-        PointLight {
-            intensity: 42_000.0,
-            range: 112.0,
-            color: Color::srgb(0.10, 0.18, 0.30),
-            shadows_enabled: false,
-            ..default()
-        },
-        Transform::from_xyz(0.0, -17.0, 0.0),
-        InnerWorldElement,
-        Name::new("UnderCastle_AbyssGlow"),
-    ));
+    let _preserved_legacy_abyss_material = abyss;
+
+    spawn_grounded_rotunda_shell(
+        &mut commands,
+        &mut meshes,
+        &asset_server,
+        floor,
+        masonry.clone(),
+        trim.clone(),
+    );
 
     // Center Council circle: the vortex disc lies in the floor and the manifestation altar
     // stands on the floor at its centre. `Stargate_Portal` is bound and animated by
     // `PortalPlugin`; do not replace it with a procedural stand-in or the real vortex
     // disappears from the live castle again, which is exactly what happened once before.
-    spawn_castle_platform(&mut commands, &mut meshes, stone.clone(), trim.clone(), Vec3::ZERO, COUNCIL_RADIUS, "Council");
     commands.spawn((
         SceneRoot(asset_server.load("scenes/portal_disc.glb#Scene0")),
         Transform::from_xyz(0.0, COUNCIL_PORTAL_DISC_Y, 0.0),
@@ -400,18 +368,11 @@ fn setup_inner_world(
             SeedRoom { name: "Oracle", title: "NoctisVeil", angle: 7.0 * std::f32::consts::FRAC_PI_6, stone: Color::srgb(0.13, 0.09, 0.22), light: Color::srgb(0.48, 0.34, 0.86), asset: Some("scenes/oracle.glb#Scene0"), furniture: FurnitureKind::Observatory },
         ];
         for room in rooms {
-            spawn_seed_room(&mut commands, &mut meshes, &mut materials, &asset_server, stone.clone(), trim.clone(), room);
+            spawn_seed_room(&mut commands, &mut meshes, &mut materials, &asset_server, legacy_room_stone.clone(), trim.clone(), room);
         }
     }
 
-    spawn_castle_ascent(&mut commands, &mut meshes, &mut materials, &asset_server, museum.as_deref(), pale_stone.clone(), pale_trim.clone());
-
-    // One enclosing wall contains the castle without restoring a flat arena floor.
-    commands.spawn((
-        Mesh3d(meshes.add(build_wall_ring_mesh(CASTLE_RADIUS, CASTLE_WALL_HEIGHT, CASTLE_WALL_THICKNESS, 288, 0.0, 0.0))),
-        MeshMaterial3d(masonry), Transform::IDENTITY, InnerWorldElement,
-        Name::new("InnerCastle_EnclosingCobbleDrum"),
-    ));
+    let _preserved_museum = museum;
 
     // --- Bottom-left status HUD ---
     commands.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(24.0), bottom: Val::Px(24.0), padding: UiRect::axes(Val::Px(18.0), Val::Px(12.0)), max_width: Val::Px(780.0), ..default() }, BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.88)), GlobalZIndex(920), InnerWorldElement))
@@ -520,6 +481,96 @@ fn spawn_museum_chambers(commands: &mut Commands, asset_server: &AssetServer) {
             ),
             InnerWorldElement,
             Name::new(format!("MuseumChamber_{chamber:02}_Light")),
+        ));
+    }
+}
+
+/// Buyer-facing architectural reset: one floor, one arcade, one vault.
+///
+/// The previous live shell put a raised flagstone mesh directly on the top face of a cylinder,
+/// then repeated seven gallery decks and 504 arcade scenes above an unwalkable void. Besides
+/// being expensive, the coplanar floor faces produced the broad crawling interference bands the
+/// operator saw. This shell deliberately has exactly one opaque floor surface.
+fn spawn_grounded_rotunda_shell(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    asset_server: &AssetServer,
+    floor: Handle<StandardMaterial>,
+    masonry: Handle<StandardMaterial>,
+    trim: Handle<StandardMaterial>,
+) {
+    const FLOOR_THICKNESS: f32 = 0.50;
+
+    commands.spawn((
+        Mesh3d(meshes.add(Cylinder::new(LIVE_ROTUNDA_FLOOR_RADIUS, FLOOR_THICKNESS))),
+        MeshMaterial3d(floor),
+        Transform::from_xyz(0.0, GROUND_Y - FLOOR_THICKNESS * 0.5, 0.0),
+        InnerWorldElement,
+        Name::new("GroundedRotunda_SingleSurfaceFloor"),
+    ));
+
+    commands.spawn((
+        Mesh3d(meshes.add(build_wall_ring_mesh(
+            CASTLE_RADIUS,
+            GROUNDED_ROTUNDA_WALL_HEIGHT,
+            CASTLE_WALL_THICKNESS,
+            288,
+            0.0,
+            0.0,
+        ))),
+        MeshMaterial3d(masonry),
+        Transform::from_xyz(0.0, GROUND_Y, 0.0),
+        InnerWorldElement,
+        Name::new("GroundedRotunda_EnclosingWall"),
+    ));
+
+    for index in 0..ARCADE_BAYS_PER_LEVEL {
+        let bearing = arcade_bay_bearing(index);
+        let radial = Vec3::new(bearing.cos(), 0.0, bearing.sin());
+        commands.spawn((
+            SceneRoot(asset_server.load("scenes/arcade_bay.glb#Scene0")),
+            Transform::from_translation(
+                radial * GALLERY_OUTER_RADIUS + Vec3::Y * GROUND_Y,
+            )
+            .with_rotation(Quat::from_rotation_y(wall_module_yaw(bearing))),
+            KitStone::at(GROUNDED_ROTUNDA_STONE_LEVEL),
+            InnerWorldElement,
+            Name::new(format!("GroundedRotunda_ArcadeBay_{index:02}")),
+        ));
+    }
+
+    commands.spawn((
+        Mesh3d(meshes.add(Torus::new(
+            GALLERY_OUTER_RADIUS - 0.40,
+            GALLERY_OUTER_RADIUS + 0.18,
+        ))),
+        MeshMaterial3d(trim),
+        Transform::from_xyz(0.0, GROUND_Y + 0.06, 0.0),
+        InnerWorldElement,
+        Name::new("GroundedRotunda_WallFootCourse"),
+    ));
+
+    commands.spawn((
+        SceneRoot(asset_server.load("scenes/vault_fresco.glb#Scene0")),
+        Transform::from_xyz(0.0, GROUND_Y + GROUNDED_ROTUNDA_WALL_HEIGHT, 0.0),
+        InnerWorldElement,
+        Name::new("GroundedRotunda_Vault"),
+    ));
+
+    for lamp in 0..8 {
+        let theta = lamp as f32 * std::f32::consts::TAU / 8.0;
+        let radial = Vec3::new(theta.cos(), 0.0, theta.sin());
+        commands.spawn((
+            PointLight {
+                intensity: 1_100_000.0,
+                range: 52.0,
+                color: Color::srgb(1.0, 0.78, 0.52),
+                shadows_enabled: false,
+                ..default()
+            },
+            Transform::from_translation(radial * 92.0 + Vec3::Y * 7.0),
+            InnerWorldElement,
+            Name::new(format!("GroundedRotunda_Lamp_{lamp}")),
         ));
     }
 }
@@ -744,6 +795,7 @@ fn joint_angle(metres: f32, radius: f32) -> f32 {
 /// feet on cannot drift apart again.
 pub(super) const FLAGSTONE_THICKNESS: f32 = 0.052;
 
+#[allow(dead_code)]
 fn spawn_castle_ascent(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -2198,6 +2250,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn live_shell_has_one_floor_and_does_not_spawn_the_seven_storey_ascent() {
+        assert_eq!(LIVE_ROTUNDA_FLOOR_RADIUS, GALLERY_OUTER_RADIUS);
+        assert!(
+            GROUNDED_ROTUNDA_WALL_HEIGHT >= 12.0 && GROUNDED_ROTUNDA_WALL_HEIGHT < 20.0,
+            "the live wall must seat the 12m arcade without rebuilding the 96m tower"
+        );
+        let source = std::fs::read_to_string("src/modes/inner_chambers/world.rs")
+            .expect("world source readable");
+        assert_eq!(
+            source.matches("spawn_castle_ascent(").count(),
+            2,
+            "only the preserved definition and this contract string may mention spawn_castle_ascent; a live call adds a third occurrence"
+        );
+        assert!(source.contains("GroundedRotunda_SingleSurfaceFloor"));
+    }
+
+    #[test]
     fn chamber_floor_has_a_linear_normal_map_for_lit_relief() {
         let (albedo, normal) = chamber_floor_textures();
         assert_eq!(
@@ -2243,6 +2312,8 @@ mod tests {
         );
     }
 
+    /// Preserved legacy mesh contract. The reset live floor no longer spawns this mesh over a
+    /// coplanar cylinder; it remains tested for the archived room/platform path.
     /// The Council paving had both of the defects the gallery decks were fixed for on
     /// 2026-09-11 and was never checked. The joint is specified as an angle by the mesh
     /// builder, so at 24m the old 0.055 rad gap was a 1.32m hole, and the stones sat proud of
