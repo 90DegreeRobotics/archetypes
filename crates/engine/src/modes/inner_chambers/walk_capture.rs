@@ -107,7 +107,10 @@ impl WalkCaptureRun {
             (8.5, Beat::Shot("01b_standing_on_the_vortex_disc")),
             // Turn toward the Jester Council host at (10.2, 0.42, 6.2)
             (9.5, Beat::Place(Vec3::new(6.0, 3.25, 9.0), -0.85)),
-            (10.3, Beat::Shot("02_facing_jester_council_host")),
+            (10.0, Beat::Shot("02_facing_jester_council_host")),
+            // Same stance, no input, Jester in frame: any pixel difference from 02 is the
+            // skinned idle playing.
+            (10.7, Beat::Shot("02b_jester_idle_0p7s_later")),
             // Walk up to the Jester
             (10.8, Beat::Hold(&[KeyCode::KeyW])),
             (12.5, Beat::Hold(&[])),

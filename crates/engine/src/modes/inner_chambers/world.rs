@@ -373,14 +373,20 @@ fn setup_inner_world(
             Name::new("AURA_CentralEmbodiment"),
         ));
     }
-    commands.spawn((
-        SceneRoot(asset_server.load("scenes/nebula_jester.glb#Scene0")),
-        Transform::from_xyz(10.2, 0.42, 6.2)
-            .with_rotation(Quat::from_rotation_y(-2.35))
-            .with_scale(Vec3::splat(1.82)),
-        InnerWorldElement,
-        Name::new("Jester_CouncilHost"),
-    ));
+    commands
+        .spawn((
+            super::avatar::avatar_scene(
+                &asset_server,
+                super::avatar::JESTER_RIGGED,
+                super::avatar::IDLE_CLIP,
+            ),
+            Transform::from_xyz(10.2, 0.42, 6.2)
+                .with_rotation(Quat::from_rotation_y(-2.35))
+                .with_scale(Vec3::splat(1.82)),
+            InnerWorldElement,
+            Name::new("Jester_CouncilHost"),
+        ))
+        .observe(super::avatar::start_avatar_animation);
 
     if SPAWN_OUTER_ROOMS {
         let rooms = [

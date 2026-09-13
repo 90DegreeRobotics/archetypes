@@ -1,0 +1,27 @@
+2026-09-13T12:11:50.285583Z  INFO bevy_diagnostic::system_information_diagnostics_plugin::internal: SystemInfo { os: "Windows 11 Pro", kernel: "26200", cpu: "AMD Ryzen 7 2700 Eight-Core Processor", core_count: "8", memory: "31.9 GiB" }
+2026-09-13T12:11:50.970332Z  INFO bevy_render::renderer: AdapterInfo { name: "NVIDIA GeForce RTX 3060", vendor: 4318, device: 9475, device_type: DiscreteGpu, driver: "NVIDIA", driver_info: "610.88", backend: Vulkan }
+2026-09-13T12:11:51.268130Z  INFO bevy_render::batching::gpu_preprocessing: GPU preprocessing is fully supported on this device.
+2026-09-13T12:11:51.270829Z  INFO bevy_winit::system: Creating new window Archetypes 1.0.5 (build 6) — Council Chamber (0v0)
+2026-09-13T12:11:51.448473Z  WARN gilrs::gamepad: No mapping found for UUID 00000000-0000-0000-0000-000000000000
+	Default mapping will be used.
+2026-09-13T12:11:51.449438Z  INFO bevy_input::gamepad: Gamepad 31v0 connected.
+2026-09-13T12:11:52.707939Z  WARN engine::modes::inner_chambers::objects: objects: quarantined 13 unreviewed placement(s); ledger preserved
+2026-09-13T12:11:56.891976Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\00_council_entrance_standing.png
+2026-09-13T12:11:59.692381Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\01_approaching_center_portal.png
+2026-09-13T12:12:01.389771Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\01b_standing_on_the_vortex_disc.png
+2026-09-13T12:12:02.887753Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\02_facing_jester_council_host.png
+2026-09-13T12:12:03.588788Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\02b_jester_idle_0p7s_later.png
+2026-09-13T12:12:06.085124Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\03_standing_before_jester.png
+2026-09-13T12:12:07.881715Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\04_foot_of_the_ascent.png
+2026-09-13T12:12:14.092712Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\05_one_storey_climbed.png
+2026-09-13T12:12:15.683606Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\06_settings_menu_open.png
+2026-09-13T12:12:18.267737Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\07_settings_menu_slider_moved.png
+2026-09-13T12:12:19.880385Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\08_museum_arch_from_the_gallery.png
+2026-09-13T12:12:21.893716Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\09_standing_inside_the_chamber.png
+2026-09-13T12:12:23.095594Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\10_chamber_vault.png
+2026-09-13T12:12:25.090224Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\11_object_standing_in_the_hall.png
+2026-09-13T12:12:26.290937Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\12_object_in_hand.png
+2026-09-13T12:12:30.486450Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\13_duplicated_and_placed.png
+2026-09-13T12:12:31.877567Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\14_creation_library_open.png
+2026-09-13T12:12:32.153385Z  INFO engine::modes::inner_chambers::library: library: summoned retained artifact 60aa276b-515c-41d2-91ea-d63b81de0159
+2026-09-13T12:12:33.092454Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:/archetypes/artifacts/visual-proof/jester_rig/walk\15_summoned_from_the_library.png

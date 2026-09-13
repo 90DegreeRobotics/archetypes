@@ -5,6 +5,7 @@
 
 use bevy::prelude::*;
 
+pub mod avatar;
 pub mod camera;
 pub mod castle;
 pub mod capture;
