@@ -415,7 +415,7 @@ fn setup_inner_world(
 
     // --- Bottom-left status HUD ---
     commands.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(24.0), bottom: Val::Px(24.0), padding: UiRect::axes(Val::Px(18.0), Val::Px(12.0)), max_width: Val::Px(780.0), ..default() }, BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.88)), GlobalZIndex(920), InnerWorldElement))
-        .with_children(|parent| { parent.spawn((Text::new("Walking  \u{00b7}  Shift: Sprint  \u{00b7}  2\u{00d7}Space: Fly  \u{00b7}  Esc: Menu"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::srgb(0.92, 0.93, 0.88)), InnerChambersHint)); });
+        .with_children(|parent| { parent.spawn((Text::new("Walking | Shift: Sprint | 2x Space: Fly | Esc: Menu"), TextFont { font_size: 18.0, ..default() }, TextColor(Color::srgb(0.92, 0.93, 0.88)), InnerChambersHint)); });
 
     // --- Crosshair reticle at screen centre ---
     commands.spawn((

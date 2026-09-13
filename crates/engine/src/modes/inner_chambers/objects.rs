@@ -183,16 +183,18 @@ fn spawn_one_placement(
 }
 
 /// Everything the player has put down in previous sessions, back where they left it.
-fn spawn_standing_placements(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn spawn_standing_placements() {
     let standing = artifacts::load_placements();
-    for placement in &standing {
-        spawn_one_placement(&mut commands, &asset_server, placement);
-    }
     if !standing.is_empty() {
-        info!(
-            "objects: restored {} placed object(s) from the ledger",
+        // The current generator has no all-around quality verdict. Restoring its historical
+        // placements turns the player's first view of the repaired castle into a field of
+        // rejected blobs. Preserve the append-only ledger and library rows, but keep these
+        // objects out of the live world until the multi-angle review lane can approve them.
+        warn!(
+            "objects: quarantined {} unreviewed placement(s); ledger preserved",
             standing.len()
         );
+        return;
     }
 }
 

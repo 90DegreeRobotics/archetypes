@@ -103,11 +103,11 @@ impl CameraController {
     pub fn locomotion_hud_text(&self) -> String {
         match self.mode {
             LocomotionMode::Walking => match self.sprint {
-                SprintState::Normal => "Walking  ·  Shift: Sprint  ·  2×Space: Fly  ·  Esc: Menu".to_string(),
-                SprintState::Sprinting => "Sprinting  ·  Release Shift: Walk  ·  2×Space: Fly  ·  Esc: Menu".to_string(),
+                SprintState::Normal => "Walking | Shift: Sprint | 2x Space: Fly | Esc: Menu".to_string(),
+                SprintState::Sprinting => "Sprinting | Release Shift: Walk | 2x Space: Fly | Esc: Menu".to_string(),
             },
             LocomotionMode::Flying => {
-                "Flying  ·  Space: Ascend  ·  Shift: Descend  ·  3×Space: Land  ·  Esc: Menu".to_string()
+                "Flying | Space: Ascend | Shift: Descend | 3x Space: Land | Esc: Menu".to_string()
             }
         }
     }

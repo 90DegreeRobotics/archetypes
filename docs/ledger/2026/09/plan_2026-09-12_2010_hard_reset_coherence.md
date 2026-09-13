@@ -69,3 +69,12 @@ full-volume generation path separately."*
 - Enabled 8x anisotropic sampling on tiled masonry material inputs to reduce oblique-angle
   crawling. This is a targeted stability improvement, not a claim that it solves every source
   of shimmer; the installed visual witness still has to judge that.
+
+### 2026-09-12 — installed visual witness findings
+
+- Ran `ARCHETYPES_WALK_CAPTURE` through the installed executable. It proved the climb and museum
+  doorway are physically traversed by the real walking system, but also exposed old placements
+  still polluting the Council floor and unsupported HUD glyphs rendering as boxes.
+- Replaced the HUD glyphs with ASCII and quarantined historical placed meshes from automatic
+  world restore. Their placement/library ledgers are retained unchanged; they are withheld from
+  the live scene until the required multi-angle quality review exists.
