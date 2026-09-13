@@ -1,4 +1,9 @@
-"""Review Object Gate: Automated & Deterministic Full-Volume All-Angle Quality Gate.
+"""REJECTED EXPERIMENT — render utility, not an acceptance gate.
+
+This script is preserved as audit evidence. Its silhouette-area checks do not
+measure semantic identity or believable all-angle quality, its receipt is not
+bound to the model hash, and an existing receipt can survive a failed worker.
+It must not be packaged or used to approve a Manifester object.
 
 Evaluates 3D models (GLB/OBJ) against strict video-game quality criteria:
 1. Watertightness (Manifold geometry, zero open boundary edges).

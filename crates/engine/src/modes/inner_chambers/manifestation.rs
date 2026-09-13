@@ -33,14 +33,11 @@ use std::time::Duration;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Marching-cubes resolution handed to TripoSR through Chronos2's own env knob.
-///
-/// Its default is 256. Measured on the same cached reference so nothing else varied
-/// (`artifacts/visual-proof/quality-2026-09-12/mc_resolution_256_vs_384.png`): 256 produced
-/// 141,269 faces, 384 produced 320,670 in five seconds more, and after both were decimated to
-/// the same 75k game budget the finer source kept the knurled case rim and the dial face that
-/// 256 rounded away. Decimating from a finer surface chooses better collapses than
-/// reconstructing coarsely in the first place.
-const TRIPOSR_MC_RESOLUTION: &str = "384";
+/// The last visually accepted real witness (`ice cream cone`, 2026-09-10) used
+/// TripoSR's stock 256 grid and produced 39,854 faces without downstream
+/// decimation. 384 generated excess marching-cubes noise and then threw most of
+/// it away at the 75k game budget; it was not an all-angle quality improvement.
+const TRIPOSR_MC_RESOLUTION: &str = "256";
 
 /// The altar stands on the Council floor at the exact centre of the spinning vortex disc, which
 /// lies in the floor around it. `castle::GROUND_Y` is the floor top, and the base plinth's own
@@ -1159,17 +1156,13 @@ fn dispatch_manifestation_worker(
             .arg(&bundle)
             .args(["--geometry-forge", "--void"]);
 
-        // The installed 6.6 GB Juggernaut SDXL checkpoint stays inside the
-        // Forge's 12 GB VRAM while producing materially better literal-subject
-        // references than SD 1.5. A live Einstein probe completed the complete
-        // governed path in the same sub-minute latency class. ComfyUI is
-        // unloaded before TripoSR, so these engines do not residency-stack.
-        if std::env::var("CHRONOS_FORGE_REFERENCE_CKPT").is_err() {
-            command.env(
-                "CHRONOS_FORGE_REFERENCE_CKPT",
-                MANIFESTATION_REFERENCE_CHECKPOINT,
-            );
-        }
+        // Use Chronos2's default compact Flux reference lane. The accepted
+        // ice-cream witness came from its clean 768px isolated product view.
+        // Forcing the legacy Juggernaut SDXL lane selected a different 512px
+        // cached image with a floor, cast shadow and disconnected silhouette.
+        // Remove even a process-level override so the game and the witnessed
+        // direct Chronos command cannot silently diverge again.
+        command.env_remove("CHRONOS_FORGE_REFERENCE_CKPT");
         command.env("CHRONOS_FLUX_PROFILE", "lowvram");
         // Marching-cubes grid for the reconstruction. Chronos2 defaults to 256; this is the one
         // geometry-fidelity knob it exposes, and a finer grid recovers detail that 256 rounds
@@ -1354,39 +1347,6 @@ fn dispatch_manifestation_worker(
                         .map(|m| m.len() > 1024)
                         .unwrap_or(false) =>
             {
-                // Validate the full-volume quality gate receipt.
-                // An artifact that fails the review gate (e.g. flat slab, open non-manifold mesh)
-                // is rejected honestly with exact defects rather than placed as slop on the altar.
-                let inspection_path = primary_output
-                    .parent()
-                    .map(|p| p.join("inspection.json"))
-                    .unwrap_or_else(|| primary_output.with_extension("inspection.json"));
-
-                if inspection_path.is_file() {
-                    if let Ok(content) = std::fs::read_to_string(&inspection_path) {
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                            if val.get("verdict").and_then(|v| v.as_str()) != Some("PASS") {
-                                let defects = val
-                                    .get("defects")
-                                    .and_then(|d| d.as_array())
-                                    .map(|arr| {
-                                        arr.iter()
-                                            .filter_map(|v| v.as_str())
-                                            .collect::<Vec<_>>()
-                                            .join("; ")
-                                    })
-                                    .unwrap_or_else(|| "Unknown defect".into());
-                                let _ = sender.send(ManifestationEvent::Failure {
-                                    prompt,
-                                    stage_id: Some("review_gate".into()),
-                                    detail: format!("Object failed full-volume review gate: {defects}"),
-                                });
-                                return;
-                            }
-                        }
-                    }
-                }
-
                 for other in &target_paths[1..] {
                     if let Some(p) = other.parent() {
                         let _ = std::fs::create_dir_all(p);
@@ -1802,9 +1762,6 @@ fn update_manifestation_hud(
 
 const ACTIVE_FRAME_INTERVAL: Duration = Duration::from_nanos(16_666_667);
 const MANIFESTING_FRAME_INTERVAL: Duration = Duration::from_nanos(66_666_667);
-const MANIFESTATION_REFERENCE_CHECKPOINT: &str =
-    "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors";
-
 fn manifestation_frame_interval(phase: &ManifestationPhase) -> Duration {
     if *phase == ManifestationPhase::Manifesting {
         MANIFESTING_FRAME_INTERVAL
@@ -1935,10 +1892,36 @@ mod tests {
     }
 
     #[test]
-    fn manifestation_uses_the_measured_sdxl_reference_engine_for_every_prompt() {
+    fn manifestation_uses_the_visually_accepted_chronos_reference_lane() {
+        let source = std::fs::read_to_string("src/modes/inner_chambers/manifestation.rs")
+            .expect("manifestation source readable");
+        assert!(source.contains("command.env_remove(\"CHRONOS_FORGE_REFERENCE_CKPT\")"));
+        assert!(
+            !source.contains("command.env(\"CHRONOS_FORGE_REFERENCE_CKPT\""),
+            "the game must not force a legacy checkpoint over Chronos2's accepted default lane"
+        );
+    }
+
+    #[test]
+    fn manifestation_uses_the_last_visually_accepted_reconstruction_density() {
         assert_eq!(
-            MANIFESTATION_REFERENCE_CHECKPOINT,
-            "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
+            TRIPOSR_MC_RESOLUTION, "256",
+            "the accepted ice-cream witness used mc=256; do not raise density without a better all-angle witness"
+        );
+    }
+
+    #[test]
+    fn importer_preserves_triposr_surface_shading_without_edge_split() {
+        let source = std::fs::read_to_string("../../scripts/import_chronos_object.py")
+            .expect("import script readable");
+        assert!(source.contains("bpy.ops.object.shade_smooth()"));
+        assert!(
+            !source.contains("EDGE_SPLIT"),
+            "splitting noisy marching-cubes angles creates hard seams and extra vertices"
+        );
+        assert!(
+            !source.contains("inspection.json"),
+            "the rejected unbound builder receipt must not return to the buyer path"
         );
     }
 

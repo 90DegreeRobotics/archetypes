@@ -65,8 +65,6 @@ Copy-Item (Join-Path $RepoRoot "scripts\uninstall_product.ps1") (Join-Path $Scri
 # tree needs it too or uninstall throws instead of removing the shortcut.
 Copy-Item (Join-Path $RepoRoot "scripts\neurocognica_start_menu.ps1") (Join-Path $ScriptsDst "neurocognica_start_menu.ps1") -Force
 Copy-Item (Join-Path $RepoRoot "scripts\import_chronos_object.py") (Join-Path $ScriptsDst "import_chronos_object.py") -Force
-Copy-Item (Join-Path $RepoRoot "scripts\review_object_gate.py") (Join-Path $ScriptsDst "review_object_gate.py") -Force
-Copy-Item (Join-Path $RepoRoot "scripts\full_volume_generator.py") (Join-Path $ScriptsDst "full_volume_generator.py") -Force
 
 $HelpSrc = Join-Path $RepoRoot "assets\help"
 $HelpDst = Join-Path $DistRoot "help"

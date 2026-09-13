@@ -1,4 +1,8 @@
-"""Full-Volume Object Generator & Post-Processing Pipeline.
+"""REJECTED EXPERIMENT — not part of the Archetypes Manifester runtime.
+
+This script is preserved as audit evidence. Its CLI selects one of three
+hard-coded primitive recipes; it is not an arbitrary prompt-to-3D generator and
+must not be packaged or described as the product's full-volume lane.
 
 Builds genuine 3D video game objects using true multi-view visual hull geometry:
 1. Reconstructs full 360-degree volume by intersecting orthogonal visual silhouettes:

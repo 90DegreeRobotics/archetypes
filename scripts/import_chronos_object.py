@@ -1,6 +1,5 @@
 """Generic, no-recipe Chronos Object-mode OBJ -> GLB handoff for Archetypes."""
 import argparse
-import math
 import os
 import sys
 import bpy
@@ -8,10 +7,6 @@ from mathutils import Vector
 
 MAX_GAME_TRIANGLES = 75_000
 
-# Faces meeting at more than this angle keep a hard edge; anything shallower is smoothed.
-# 30 degrees is the usual hard-surface threshold: it holds a box corner crisp while letting a
-# cylinder or an organic curve read as continuous.
-SHARP_EDGE_DEGREES = 30.0
 CHRONOS_FORWARD_AXIS = "NEGATIVE_Y"
 CHRONOS_UP_AXIS = "Z"
 
@@ -59,24 +54,12 @@ def main():
     repaired_mesh = obj.data.validate(verbose=True, clean_customdata=False)
     obj.data.update(calc_edges=True, calc_edges_loose=True)
 
-    # Smooth the curves, keep the corners.
-    #
-    # Every polygon used to be forced smooth, which rounds off every hard edge in the mesh - a
-    # plinth, a camera body, a machined rim all came out looking melted, on top of whatever
-    # softness marching cubes had already introduced. Smoothing everything and smoothing
-    # nothing are both wrong; the rule is the angle between faces.
-    #
-    # EdgeSplit rather than Blender's auto-smooth modifier because this has to survive a glTF
-    # export: splitting the geometry at sharp edges bakes the discontinuity into the mesh
-    # itself, so the normals are correct in any engine that loads it, with no dependence on
-    # smoothing metadata the format may not carry.
-    for polygon in obj.data.polygons:
-        polygon.use_smooth = True
-    split = obj.modifiers.new(name="SharpEdges", type="EDGE_SPLIT")
-    split.split_angle = math.radians(SHARP_EDGE_DEGREES)
-    split.use_edge_angle = True
-    split.use_edge_sharp = True
-    bpy.ops.object.modifier_apply(modifier=split.name)
+    # Preserve the smooth surface used by the last accepted real witness. A
+    # marching-cubes reconstruction is not authored hard-surface topology:
+    # splitting every incidental angle above 30 degrees turns sampling noise
+    # into visible seams, adds vertices, and shimmers as the camera moves.
+    # This changes normals only; it does not remesh or move the source geometry.
+    bpy.ops.object.shade_smooth()
 
     # An explicit material carrying the reconstruction's own vertex colour.
     #
@@ -104,7 +87,7 @@ def main():
     obj.data.calc_loop_triangles()
     game_triangles = len(obj.data.loop_triangles)
     print(
-        f"[archetypes-import] sharp-edge threshold {SHARP_EDGE_DEGREES} deg; "
+        f"[archetypes-import] topology-preserving smooth shading; "
         f"vertex colour {'carried' if colours else 'absent'}"
     )
     print(
@@ -116,48 +99,6 @@ def main():
     bpy.ops.export_scene.gltf(filepath=ns.output, export_format="GLB", use_selection=True, export_apply=True, export_yup=True)
     if not os.path.isfile(ns.output) or os.path.getsize(ns.output) < 1024:
         raise RuntimeError("GLB export was absent or implausibly small")
-
-    # Reviewed full-volume quality gate receipt
-    import bmesh
-    import json
-    out_dir = os.path.dirname(os.path.abspath(ns.output))
-    inspection_path = os.path.join(out_dir, "inspection.json")
-
-    defects = []
-    bm = bmesh.new()
-    bm.from_mesh(obj.data)
-    bm.edges.ensure_lookup_table()
-    edge_count = len(bm.edges)
-    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0005)
-    boundary_edges = sum(1 for e in bm.edges if e.is_boundary)
-    boundary_ratio = boundary_edges / max(1, edge_count)
-    if boundary_ratio > 0.005:
-        defects.append(f"Non-manifold mesh: {boundary_edges} open boundary edges ({boundary_ratio:.2%})")
-
-    dims = hi - lo
-    min_dim = min(dims.x, dims.y, dims.z)
-    max_dim = max(dims.x, dims.y, dims.z)
-    thickness_ratio = min_dim / max(0.0001, max_dim)
-    if thickness_ratio < 0.05:
-        defects.append(f"Degenerate 2D flat slab: thickness ratio {thickness_ratio:.4f} < 0.05")
-
-    bm.free()
-
-    verdict = "PASS" if len(defects) == 0 else "FAIL"
-    receipt = {
-        "verdict": verdict,
-        "model_path": ns.output,
-        "metrics": {
-            "vertices": len(obj.data.vertices),
-            "triangles": game_triangles,
-            "boundary_edges": boundary_edges,
-            "thickness_ratio": round(thickness_ratio, 4)
-        },
-        "defects": defects
-    }
-    with open(inspection_path, "w", encoding="utf-8") as f:
-        json.dump(receipt, f, indent=2)
-    print(f"[archetypes-import] review gate verdict: {verdict}")
 
 if __name__ == "__main__":
     main()

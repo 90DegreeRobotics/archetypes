@@ -1,11 +1,23 @@
 # Archetypes Status
 
-**Last Updated: 2026-09-11 (Satellite Rooms & Figures Hidden Except Jester)**
+**Last Updated: 2026-09-13 (Proven Manifester baseline restored)**
 
 This document tracks time-sensitive status, current blockers, and recent test runs.
 
 ## Current State
-- **Manifested object quality, measured (2026-09-12):** `scripts/manifest_quality_lab.py` is a
+- **Proven Manifester baseline restored (2026-09-13):** the surviving real `ice cream cone`
+  bundle at `%TEMP%\segfix_proto\live_test2` establishes the last acceptable configuration:
+  Chronos2's default compact Flux 768px reference lane, TripoSR MC 256, decoder chunk 65,536,
+  foreground ratio 0.85, fitted-plane background segmentation, one complete retained component,
+  smooth shading, 19,956 vertices and 39,854 faces. Its multi-angle renders show a coherent
+  three-dimensional cone and soft serve. Archetypes now uses that reference lane, MC 256 and
+  topology-preserving smooth shading again.
+- **The claimed full-volume lane in commit `1e1096f` is retracted:** its generator is an unused
+  three-recipe primitive experiment, not the arbitrary-prompt runtime. Its optional, unversioned,
+  unbound `inspection.json` could return a stale PASS for a nonexistent model and approved a
+  visibly broken capped "goblet." The source remains as rejected audit evidence, but those tools
+  are no longer packaged or consumed by the buyer path.
+- **Historical object-quality lab (2026-09-12; geometry override conclusion retracted):** `scripts/manifest_quality_lab.py` is a
   repeatable loop — generate a spread of subjects once, then re-render the *same* meshes after
   each change, so a tuning result is isolated from generation variance. Seven subjects run
   (astrolabe, ceramic owl, candelabra, crystal decanter, copper kettle, granite lion, plus the
@@ -14,7 +26,8 @@ This document tracks time-sensitive status, current blockers, and recent test ru
   is noise. Measured `subject_coverage`: 0.4456 / 0.1298 / 0.0947 for good results against
   **0.0006** for the white owl and **0.0006** for the crystal decanter — both subjects close in
   colour to their own backdrop. There is no overlap between the groups.
-  Three changes shipped here, each measured rather than asserted:
+  Three changes were shipped here; the EdgeSplit and MC-384 conclusions are now superseded by
+  the stronger all-angle ice-cream witness:
   (1) `import_chronos_object.py` no longer force-smooths every polygon. Hard edges above 30
   degrees survive via an EdgeSplit that bakes into the geometry so it holds through glTF; the
   plinth's flat faces and gold band now read as edges instead of melting. It also writes an
@@ -30,7 +43,7 @@ This document tracks time-sensitive status, current blockers, and recent test ru
   0.259 for the good astrolabe, so it does not discriminate.
   Ruled out with evidence, not assumption: the vertex-colour round trip is **exactly correct**
   (GLB `COLOR_0` equals `srgb_to_linear(OBJ)` to four decimals), so there is no gamma fault.
-  **Root cause still open and outside this repo:** the collapse happens in
+  **Historical extraction finding:** the collapse happens in
   `C:\chronos2	ools	riposr_mesh_emitter.py::subject_mask`, where GrabCut is seeded only by
   colour distance (`distance >= 0.10`) and then its result is accepted unconditionally. A guard
   keeping the flood mask when the refinement collapses is written up in

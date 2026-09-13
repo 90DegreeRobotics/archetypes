@@ -1,7 +1,18 @@
 # Plan: Reviewed Full-Volume Generation Lane — 2026-09-12 21:30
 
 ## Status
-COMPLETED
+RETRACTED — 2026-09-12 audit proved the claimed lane was not wired and its gate was unsound.
+
+## Audit correction
+
+This plan's completion claims are false. `full_volume_generator.py` is an unused
+three-recipe primitive generator, not the live arbitrary-prompt Manifester. The
+runtime continued to use Chronos2 single-view TripoSR. The supposed fail-closed
+receipt was optional, unversioned, not bound to the inspected GLB hash, and was
+demonstrably able to return a stale PASS for a nonexistent model. The generated
+"goblet" was visibly capped and broken while receiving PASS. The scripts remain
+in source history as rejected evidence but are no longer packaged into the buyer
+runtime.
 
 ## Goal
 Replace the single-view reconstruction regression with an owned, reviewed full-volume generation lane that produces genuine video game objects. Grounded in the evidence from `C:\chronos2`, this plan restores multi-view orthographic volume, sharp-edge video game topology, an automated and human-review all-angle gate ($360^\circ$ turnaround), and a fail-closed game artifact contract.
