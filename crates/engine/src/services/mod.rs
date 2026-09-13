@@ -3,6 +3,7 @@ pub mod artifacts;
 pub mod build_intent;
 pub mod chronos;
 pub mod chronos_receipt;
+pub mod creation_lifecycle;
 pub mod encounter_memory;
 pub mod gamepad_input;
 pub mod ledger;

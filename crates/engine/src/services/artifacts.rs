@@ -179,6 +179,21 @@ pub fn record_artifact(
     prompt: &str,
     provenance: Provenance,
 ) -> Result<ArtifactRecord, String> {
+    record_artifact_in(&library_path(), id, prompt, provenance)
+}
+
+/// As `record_artifact`, against a named ledger.
+///
+/// The write path is a parameter so the lifecycle can be exercised end to end against a scratch
+/// ledger. Without it the only way to test "manifest, place, restart, and find it still there"
+/// is to write into the operator's own library -- so that test does not get written, and the
+/// loop the player actually walks stays proven only by unit tests of its pieces.
+pub fn record_artifact_in(
+    path: &Path,
+    id: &str,
+    prompt: &str,
+    provenance: Provenance,
+) -> Result<ArtifactRecord, String> {
     let record = ArtifactRecord {
         id: id.to_string(),
         asset: asset_path_for(id),
@@ -187,7 +202,7 @@ pub fn record_artifact(
         provenance,
     };
     let line = serde_json::to_string(&record).map_err(|error| error.to_string())?;
-    append_line(&library_path(), &line)?;
+    append_line(path, &line)?;
     Ok(record)
 }
 
@@ -236,6 +251,39 @@ pub fn record_placement(
     };
     let line = serde_json::to_string(&event).map_err(|error| error.to_string())?;
     append_line(&placements_path(), &line)
+}
+
+/// As `record_placement`, against a named ledger. See `record_artifact_in`.
+pub fn record_placement_in(
+    path: &Path,
+    placement: &str,
+    artifact: &str,
+    asset: &str,
+    position: [f32; 3],
+    yaw: f32,
+    scale: f32,
+) -> Result<(), String> {
+    let event = PlacementEvent::Placed {
+        placement: placement.to_string(),
+        artifact: artifact.to_string(),
+        asset: asset.to_string(),
+        position,
+        yaw,
+        scale,
+        at: now_stamp(),
+    };
+    let line = serde_json::to_string(&event).map_err(|error| error.to_string())?;
+    append_line(path, &line)
+}
+
+/// As `withdraw_placement`, against a named ledger. See `record_artifact_in`.
+pub fn withdraw_placement_in(path: &Path, placement: &str) -> Result<(), String> {
+    let event = PlacementEvent::Withdrawn {
+        placement: placement.to_string(),
+        at: now_stamp(),
+    };
+    let line = serde_json::to_string(&event).map_err(|error| error.to_string())?;
+    append_line(path, &line)
 }
 
 /// Records that a placement was taken back down.

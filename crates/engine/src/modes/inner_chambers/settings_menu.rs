@@ -331,6 +331,27 @@ fn toggle_settings_menu(
     }
 }
 
+/// What confirming a row actually does.
+///
+/// Extracted from `drive_settings_menu` so it can be reached by a test. Inline in the system it
+/// could not be, and the test that claimed to cover Reset built a modified `GameSettings`,
+/// overwrote it with `GameSettings::default()`, and asserted that equalled the default -- a
+/// tautology that could never fail, reading as coverage of a path it never touched. The compiler
+/// had been pointing at it the whole time as an unused assignment.
+fn confirm_row(row: SettingsRow, settings: &mut GameSettings, menu: &mut SettingsMenuState) {
+    match row {
+        SettingsRow::ResetDefaults => *settings = GameSettings::default(),
+        SettingsRow::Resume => menu.open = false,
+        SettingsRow::LeaveCastle => {
+            menu.leave_requested = true;
+            menu.open = false;
+        }
+        // Confirming a slider does nothing rather than jumping it somewhere: the player is
+        // already adjusting it with left/right and a surprise jump loses their setting.
+        _ => {}
+    }
+}
+
 fn drive_settings_menu(
     keyboard: Res<ButtonInput<KeyCode>>,
     gamepads: Query<&Gamepad>,
@@ -387,17 +408,7 @@ fn drive_settings_menu(
 
     if confirm {
         sfx.write(PlaySfx::new(Sfx::MenuConfirm));
-        match row {
-            SettingsRow::ResetDefaults => *settings = GameSettings::default(),
-            SettingsRow::Resume => menu.open = false,
-            SettingsRow::LeaveCastle => {
-                menu.leave_requested = true;
-                menu.open = false;
-            }
-            // Confirming a slider does nothing rather than jumping it somewhere: the player is
-            // already adjusting it with left/right and a surprise jump loses their setting.
-            _ => {}
-        }
+        confirm_row(row, &mut settings, &mut menu);
     }
 }
 
@@ -585,6 +596,7 @@ mod tests {
         }
     }
 
+    /// Drives the real confirm path, so a Reset that stopped resetting would fail this.
     #[test]
     fn resetting_restores_every_default() {
         let mut settings = GameSettings {
@@ -592,7 +604,41 @@ mod tests {
             mouse_sensitivity: 0.005,
             ..GameSettings::default()
         };
-        settings = GameSettings::default();
+        assert_ne!(settings, GameSettings::default(), "the fixture must start off-default");
+
+        let mut menu = SettingsMenuState::default();
+        confirm_row(SettingsRow::ResetDefaults, &mut settings, &mut menu);
+
         assert_eq!(settings, GameSettings::default());
+        assert!(menu.open == SettingsMenuState::default().open, "Reset must not close the menu");
+    }
+
+    /// Leaving is the one row with a consequence outside this menu, and `extraction.rs` consumes
+    /// the flag. A Leave that stopped requesting it would strand the player in the castle.
+    #[test]
+    fn leaving_requests_extraction_and_closes_the_menu() {
+        let mut settings = GameSettings::default();
+        let mut menu = SettingsMenuState { open: true, ..Default::default() };
+        confirm_row(SettingsRow::LeaveCastle, &mut settings, &mut menu);
+        assert!(menu.leave_requested);
+        assert!(!menu.open);
+        assert_eq!(settings, GameSettings::default(), "leaving must not disturb settings");
+    }
+
+    /// Confirming a slider must do nothing: the player is adjusting it with left/right, and a
+    /// jump on Enter would lose the value they just set.
+    #[test]
+    fn confirming_a_slider_leaves_it_exactly_where_the_player_put_it() {
+        let mut settings = GameSettings { volume_music: 0.37, ..GameSettings::default() };
+        let mut menu = SettingsMenuState { open: true, ..Default::default() };
+        let slider = SETTINGS_ROWS
+            .iter()
+            .copied()
+            .find(|row| row.is_slider())
+            .expect("the menu has at least one slider");
+
+        confirm_row(slider, &mut settings, &mut menu);
+        assert_eq!(settings.volume_music, 0.37);
+        assert!(menu.open, "confirming a slider must not close the menu");
     }
 }
