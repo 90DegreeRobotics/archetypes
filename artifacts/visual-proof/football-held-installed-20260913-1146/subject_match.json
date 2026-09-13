@@ -1,0 +1,12 @@
+{
+  "checked": true,
+  "covered": 0.8596698045730591,
+  "invented": 0.23047149181365967,
+  "matches": true,
+  "reason": "The built object matches the view it was made from (68% agreement).",
+  "reference": "reference_input.png",
+  "schema": "chronos.subject_match.v1",
+  "score": 0.6836511492729187,
+  "version": "subject_match_v0.1",
+  "witness": "renders/reconstruction_axis.png"
+}

@@ -1,0 +1,5 @@
+prompt=football
+carrying=true
+artifact_id=bb63bb94-190c-4b95-ac16-3f5633018b3c
+asset=manifested/bb63bb94-190c-4b95-ac16-3f5633018b3c.glb
+carried_visuals=1

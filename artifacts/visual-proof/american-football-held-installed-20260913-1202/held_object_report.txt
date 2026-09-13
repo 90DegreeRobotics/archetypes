@@ -1,0 +1,5 @@
+prompt=American football
+carrying=true
+artifact_id=838b4a2b-3acc-4c89-8fde-d23586280881
+asset=manifested/838b4a2b-3acc-4c89-8fde-d23586280881.glb
+carried_visuals=1

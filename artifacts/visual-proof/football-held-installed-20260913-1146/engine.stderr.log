@@ -1,0 +1,7 @@
+2026-09-13T16:51:45.148157Z  WARN gilrs::gamepad: No mapping found for UUID 00000000-0000-0000-0000-000000000000
+	Default mapping will be used.
+2026-09-13T16:51:46.549306Z  WARN engine::modes::inner_chambers::objects: objects: quarantined 13 unreviewed placement(s); ledger preserved
+[manifest-capture] prompt submitted at 4.1s; Chronos2 is running. Stage lines follow.
+[Chronos stderr] [weaver] ComfyUI still owns f5fb4575-3062-43ed-aa4f-2712ff51ea55 (queued or generating); holding the 180s budget rather than calling it a timeout
+[manifest-capture] pickup E pressed at 397.5s
+[manifest-capture] carried state and camera-child visual seen at 397.5s

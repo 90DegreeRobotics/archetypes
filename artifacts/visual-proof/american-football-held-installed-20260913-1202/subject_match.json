@@ -1,0 +1,12 @@
+{
+  "checked": true,
+  "covered": 0.9036789536476135,
+  "invented": 0.4691551923751831,
+  "matches": false,
+  "reason": "The built object is fatter than the drawing — 47% of it is not in the outline. Carving from too few views leaves material that no view refused.",
+  "reference": "reference_input.png",
+  "schema": "chronos.subject_match.v1",
+  "score": 0.502417266368866,
+  "version": "subject_match_v0.1",
+  "witness": "renders/reconstruction_axis.png"
+}

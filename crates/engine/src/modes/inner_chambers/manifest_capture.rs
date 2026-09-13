@@ -6,8 +6,10 @@
 //! camera or the boot-skip sequence. This one exercises the real "walk up,
 //! press E, submit" manifestation flow end to end — including the live
 //! Chronos2 subprocess — and screenshots the pedestal once the reference
-//! floor panel and the summoned object are both real, staged assets. It is
-//! never on during normal play.
+//! floor panel and the summoned object are both real, staged assets. With
+//! `ARCHETYPES_MANIFEST_CAPTURE_HELD`, it then presses the real pickup control,
+//! verifies both carried state and the camera-child visual, and captures the
+//! object in hand. It is never on during normal play.
 
 use super::camera::{CameraController, LocomotionMode, PlayerCamera};
 use super::castle::GROUND_Y;
@@ -15,6 +17,7 @@ use super::manifestation::{
     ManifestationChannels, ManifestationEvent, ManifestationPhase, ManifestationState,
     MANIFESTATION_CUSHION_HEIGHT, MANIFESTATION_OBJECT_LIFT, MANIFESTATION_PEDESTAL_POS,
 };
+use super::objects::{Carried, CarriedVisual};
 use super::{InnerChambersState, TriggerInnerChambers};
 use crate::chamber::boot::MainMenuUi;
 use crate::chamber::ChamberState;
@@ -74,6 +77,11 @@ pub struct ManifestCaptureRun {
     manifesting_seen: bool,
     settle_shot_at: Option<f32>,
     shot_taken: bool,
+    capture_held: bool,
+    pickup_at: Option<f32>,
+    pickup_pressed: bool,
+    held_seen_at: Option<f32>,
+    held_shot_taken: bool,
     exit_at: Option<f32>,
     timeout_at: f32,
     prompt: String,
@@ -108,6 +116,11 @@ impl ManifestCaptureRun {
             manifesting_seen: false,
             settle_shot_at: None,
             shot_taken: false,
+            capture_held: std::env::var_os("ARCHETYPES_MANIFEST_CAPTURE_HELD").is_some(),
+            pickup_at: None,
+            pickup_pressed: false,
+            held_seen_at: None,
+            held_shot_taken: false,
             // A real manifestation is a live Chronos2/ComfyUI/TripoSR/Blender
             // pipeline run, not a mock. Give it real time rather than fail
             // a slow-but-honest run.
@@ -140,6 +153,8 @@ pub(crate) fn drive_manifest_capture(
     manifest_state: Option<ResMut<ManifestationState>>,
     channels: Res<ManifestationChannels>,
     scene: Query<(&Name, &GlobalTransform)>,
+    carried: Res<Carried>,
+    carried_visual: Query<Entity, With<CarriedVisual>>,
     mut player: Query<(&mut Transform, &mut CameraController), With<PlayerCamera>>,
 ) {
     let now = time.elapsed_secs();
@@ -322,6 +337,56 @@ pub(crate) fn drive_manifest_capture(
             );
             let _ = fs::write(run.dir.join("manifest_report.txt"), report);
             run.shot_taken = true;
+            if run.capture_held && outcome == "completed" {
+                // Opening the prompt left E in ButtonInput's pressed set. A second call to
+                // `press` would therefore not create a new `just_pressed` edge, and the real
+                // interaction resolver would correctly ignore it. Release now, then press on
+                // a later frame exactly as a player would between the two actions.
+                keyboard.release(KeyCode::KeyE);
+                run.pickup_at = Some(now + 1.0);
+            } else {
+                run.exit_at = Some(now + 12.0);
+            }
+        }
+    }
+
+    // Optional end-to-end held-object witness. This does not write `Carried` directly: it
+    // synthesizes the normal E edge, lets interaction::resolve_actions and
+    // objects::take_from_altar perform the transfer, and only proceeds after both the carried
+    // resource and its camera-child visual confirm the real gameplay state.
+    if let Some(pickup_at) = run.pickup_at {
+        if now >= pickup_at && !run.pickup_pressed {
+            aim_at(&mut transform, &mut controller, stand_pose(), altar_focus());
+            keyboard.press(KeyCode::KeyE);
+            run.pickup_pressed = true;
+            eprintln!("[manifest-capture] pickup E pressed at {now:.1}s");
+        }
+    }
+
+    if run.pickup_pressed
+        && run.held_seen_at.is_none()
+        && carried.is_carrying()
+        && !carried_visual.is_empty()
+    {
+        run.held_seen_at = Some(now);
+        eprintln!("[manifest-capture] carried state and camera-child visual seen at {now:.1}s");
+    }
+
+    if let Some(held_seen_at) = run.held_seen_at {
+        if now >= held_seen_at + 2.0 && !run.held_shot_taken {
+            let path = run.dir.join("01_object_held_in_hand.png");
+            commands.spawn(Screenshot::primary_window()).observe(save_to_disk(path));
+            let artifact = carried.artifact.as_ref();
+            let held_report = format!(
+                "prompt={}\ncarrying={}\nartifact_id={}\nasset={}\ncarried_visuals={}\n",
+                run.prompt,
+                carried.is_carrying(),
+                artifact.map(|record| record.id.as_str()).unwrap_or("none"),
+                artifact.map(|record| record.asset.as_str()).unwrap_or("none"),
+                carried_visual.iter().count(),
+            );
+            let _ = fs::write(run.dir.join("held_object_report.txt"), held_report);
+            run.held_shot_taken = true;
             run.exit_at = Some(now + 12.0);
         }
     }
