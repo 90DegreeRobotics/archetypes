@@ -34,7 +34,7 @@
 [Chronos stdout] [chronos-decision] kind=guard id=subject_match verdict=chosen msg=The built object is fatter than the drawing — 47% of it is not in the outline. Carving from too few views leaves material that no view refused.
 [Chronos stdout] [object] subject match sealed -> C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\838b4a2b-3acc-4c89-8fde-d23586280881\subject_match.json
 [Chronos stdout] [chronos-stage] id=bundle pct=97 state=begin msg=Writing your artifact bundle
-[Chronos stdout] 
+[Chronos stdout]
 [Chronos stdout] === Undeniable Artifact Run I ===
 [Chronos stdout]   bundle:            C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\838b4a2b-3acc-4c89-8fde-d23586280881
 [Chronos stdout]   render dispatched: true

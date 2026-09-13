@@ -34,7 +34,7 @@
 [Chronos stdout] [chronos-decision] kind=guard id=subject_match verdict=chosen msg=The built object matches the view it was made from (68% agreement).
 [Chronos stdout] [object] subject match sealed -> C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\bb63bb94-190c-4b95-ac16-3f5633018b3c\subject_match.json
 [Chronos stdout] [chronos-stage] id=bundle pct=97 state=begin msg=Writing your artifact bundle
-[Chronos stdout] 
+[Chronos stdout]
 [Chronos stdout] === Undeniable Artifact Run I ===
 [Chronos stdout]   bundle:            C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\bb63bb94-190c-4b95-ac16-3f5633018b3c
 [Chronos stdout]   render dispatched: true
