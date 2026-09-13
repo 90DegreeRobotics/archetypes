@@ -23,3 +23,7 @@ installer/signing/azure-metadata.json
 artifacts/quality-lab/bundles/
 artifacts/quality-lab/glb/
 artifacts/quality-lab/renders/
+artifacts/test_full_volume/
+artifacts/test_review_gate/
+__pycache__/
+*.pyc

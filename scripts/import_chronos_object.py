@@ -117,5 +117,47 @@ def main():
     if not os.path.isfile(ns.output) or os.path.getsize(ns.output) < 1024:
         raise RuntimeError("GLB export was absent or implausibly small")
 
+    # Reviewed full-volume quality gate receipt
+    import bmesh
+    import json
+    out_dir = os.path.dirname(os.path.abspath(ns.output))
+    inspection_path = os.path.join(out_dir, "inspection.json")
+
+    defects = []
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.edges.ensure_lookup_table()
+    edge_count = len(bm.edges)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0005)
+    boundary_edges = sum(1 for e in bm.edges if e.is_boundary)
+    boundary_ratio = boundary_edges / max(1, edge_count)
+    if boundary_ratio > 0.005:
+        defects.append(f"Non-manifold mesh: {boundary_edges} open boundary edges ({boundary_ratio:.2%})")
+
+    dims = hi - lo
+    min_dim = min(dims.x, dims.y, dims.z)
+    max_dim = max(dims.x, dims.y, dims.z)
+    thickness_ratio = min_dim / max(0.0001, max_dim)
+    if thickness_ratio < 0.05:
+        defects.append(f"Degenerate 2D flat slab: thickness ratio {thickness_ratio:.4f} < 0.05")
+
+    bm.free()
+
+    verdict = "PASS" if len(defects) == 0 else "FAIL"
+    receipt = {
+        "verdict": verdict,
+        "model_path": ns.output,
+        "metrics": {
+            "vertices": len(obj.data.vertices),
+            "triangles": game_triangles,
+            "boundary_edges": boundary_edges,
+            "thickness_ratio": round(thickness_ratio, 4)
+        },
+        "defects": defects
+    }
+    with open(inspection_path, "w", encoding="utf-8") as f:
+        json.dump(receipt, f, indent=2)
+    print(f"[archetypes-import] review gate verdict: {verdict}")
+
 if __name__ == "__main__":
     main()

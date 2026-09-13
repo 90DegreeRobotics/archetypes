@@ -1354,6 +1354,39 @@ fn dispatch_manifestation_worker(
                         .map(|m| m.len() > 1024)
                         .unwrap_or(false) =>
             {
+                // Validate the full-volume quality gate receipt.
+                // An artifact that fails the review gate (e.g. flat slab, open non-manifold mesh)
+                // is rejected honestly with exact defects rather than placed as slop on the altar.
+                let inspection_path = primary_output
+                    .parent()
+                    .map(|p| p.join("inspection.json"))
+                    .unwrap_or_else(|| primary_output.with_extension("inspection.json"));
+
+                if inspection_path.is_file() {
+                    if let Ok(content) = std::fs::read_to_string(&inspection_path) {
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                            if val.get("verdict").and_then(|v| v.as_str()) != Some("PASS") {
+                                let defects = val
+                                    .get("defects")
+                                    .and_then(|d| d.as_array())
+                                    .map(|arr| {
+                                        arr.iter()
+                                            .filter_map(|v| v.as_str())
+                                            .collect::<Vec<_>>()
+                                            .join("; ")
+                                    })
+                                    .unwrap_or_else(|| "Unknown defect".into());
+                                let _ = sender.send(ManifestationEvent::Failure {
+                                    prompt,
+                                    stage_id: Some("review_gate".into()),
+                                    detail: format!("Object failed full-volume review gate: {defects}"),
+                                });
+                                return;
+                            }
+                        }
+                    }
+                }
+
                 for other in &target_paths[1..] {
                     if let Some(p) = other.parent() {
                         let _ = std::fs::create_dir_all(p);

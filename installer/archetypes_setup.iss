@@ -59,6 +59,8 @@ Source: "..\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubd
 Source: "..\dist\speech\*"; DestDir: "{app}\speech"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\scripts\dependencies.json"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "..\scripts\import_chronos_object.py"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "..\scripts\review_object_gate.py"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "..\scripts\full_volume_generator.py"; DestDir: "{app}\scripts"; Flags: ignoreversion
 ; Repository ledgers and internal audits are deliberately not customer payload.
 ; Player help already ships beneath assets\help with the runtime asset tree.
 Source: "version.json"; DestDir: "{app}\installer"; Flags: ignoreversion
