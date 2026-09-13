@@ -58,10 +58,17 @@ impl Plugin for CouncilChamberPlugin {
         app.init_state::<ChamberState>()
             .init_resource::<CurrentFocus>();
 
-        if legacy_chamber_visuals_enabled() {
-            app.add_systems(Startup, load_authoritative_chamber);
-        } else {
-            app.add_systems(Startup, load_lore_chamber);
+        match startup_chamber_visuals(
+            legacy_chamber_visuals_enabled(),
+            lore_chamber_visuals_enabled(),
+        ) {
+            StartupChamberVisuals::Authoritative => {
+                app.add_systems(Startup, load_authoritative_chamber);
+            }
+            StartupChamberVisuals::LoreArchive => {
+                app.add_systems(Startup, load_lore_chamber);
+            }
+            StartupChamberVisuals::None => {}
         }
 
         // Council visual systems are always registered. They no-op until
@@ -84,6 +91,30 @@ impl Plugin for CouncilChamberPlugin {
 
 fn legacy_chamber_visuals_enabled() -> bool {
     std::env::var_os("ARCHETYPES_LEGACY_CHAMBER").is_some()
+}
+
+/// The retired circular lore chamber is preserved as an explicit visual archive, never loaded
+/// by the buyer-facing default path. Keeping the opt-in protects repository history without
+/// paying its geometry, material, lighting, or texture cost underneath the rectilinear hall.
+fn lore_chamber_visuals_enabled() -> bool {
+    std::env::var_os("ARCHETYPES_LORE_CHAMBER").is_some()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StartupChamberVisuals {
+    None,
+    Authoritative,
+    LoreArchive,
+}
+
+fn startup_chamber_visuals(legacy: bool, lore_archive: bool) -> StartupChamberVisuals {
+    if legacy {
+        StartupChamberVisuals::Authoritative
+    } else if lore_archive {
+        StartupChamberVisuals::LoreArchive
+    } else {
+        StartupChamberVisuals::None
+    }
 }
 
 const LORE_CHAMBER_SCENE: &str = "scenes/lore_chamber.glb#Scene0";
@@ -154,6 +185,20 @@ pub(crate) fn despawn_council_runtime(
 
 #[cfg(test)]
 mod tests {
+    use super::{startup_chamber_visuals, StartupChamberVisuals};
+
+    #[test]
+    fn buyer_default_loads_no_round_council_building() {
+        assert_eq!(
+            startup_chamber_visuals(false, false),
+            StartupChamberVisuals::None
+        );
+        assert_eq!(
+            startup_chamber_visuals(false, true),
+            StartupChamberVisuals::LoreArchive
+        );
+    }
+
     #[test]
     fn lore_chamber_asset_exists_in_workspace_assets() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

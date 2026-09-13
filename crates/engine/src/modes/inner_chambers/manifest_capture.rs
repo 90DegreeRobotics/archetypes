@@ -76,6 +76,8 @@ pub struct ManifestCaptureRun {
     shot_taken: bool,
     exit_at: Option<f32>,
     timeout_at: f32,
+    prompt: String,
+    prompt_injected: bool,
     /// Skip the live Chronos2/ComfyUI subprocess and reveal the assets the **last real run**
     /// already staged, so the presentation layer can be photographed when the image backend
     /// is not up.
@@ -119,6 +121,9 @@ impl ManifestCaptureRun {
                 .ok()
                 .and_then(|raw| raw.parse::<f32>().ok())
                 .unwrap_or(240.0),
+            prompt: std::env::var("ARCHETYPES_MANIFEST_CAPTURE_PROMPT")
+                .unwrap_or_else(|_| "sword".to_string()),
+            prompt_injected: false,
         })
     }
 }
@@ -132,7 +137,7 @@ pub(crate) fn drive_manifest_capture(
     mut next_chamber_state: ResMut<NextState<ChamberState>>,
     main_menu: Query<Entity, With<MainMenuUi>>,
     mut keyboard: ResMut<ButtonInput<KeyCode>>,
-    manifest_state: Option<Res<ManifestationState>>,
+    manifest_state: Option<ResMut<ManifestationState>>,
     channels: Res<ManifestationChannels>,
     scene: Query<(&Name, &GlobalTransform)>,
     mut player: Query<(&mut Transform, &mut CameraController), With<PlayerCamera>>,
@@ -159,7 +164,7 @@ pub(crate) fn drive_manifest_capture(
         return;
     }
 
-    let Some(manifest_state) = manifest_state else {
+    let Some(mut manifest_state) = manifest_state else {
         return;
     };
 
@@ -219,7 +224,14 @@ pub(crate) fn drive_manifest_capture(
         run.pressed_e = true;
     }
 
-    if run.pressed_e && run.pressed_enter_at.is_none() && manifest_state.phase == ManifestationPhase::Prompting {
+    if run.pressed_e
+        && run.pressed_enter_at.is_none()
+        && manifest_state.phase == ManifestationPhase::Prompting
+    {
+        if !run.prompt_injected {
+            manifest_state.prompt_buffer.clone_from(&run.prompt);
+            run.prompt_injected = true;
+        }
         run.pressed_enter_at = Some(now + 0.5);
     }
     if let Some(t) = run.pressed_enter_at {

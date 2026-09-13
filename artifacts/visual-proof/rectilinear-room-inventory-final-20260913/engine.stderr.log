@@ -1,0 +1,4 @@
+2026-09-13T15:47:23.782076Z  WARN gilrs::gamepad: No mapping found for UUID 00000000-0000-0000-0000-000000000000
+	Default mapping will be used.
+2026-09-13T15:47:24.961425Z  WARN engine::modes::inner_chambers::objects: objects: quarantined 13 unreviewed placement(s); ledger preserved
+2026-09-13T15:47:27.856450Z ERROR bevy_asset::server: Path not found: C:\Users\m\AppData\Local\Programs\Archetypes\assets\manifested/legacy.reference.png

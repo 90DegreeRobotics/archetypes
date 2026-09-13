@@ -1,0 +1,5 @@
+2026-09-13T15:40:53.877792Z  WARN gilrs::gamepad: No mapping found for UUID 00000000-0000-0000-0000-000000000000
+	Default mapping will be used.
+2026-09-13T15:40:55.166153Z  WARN engine::modes::inner_chambers::objects: objects: quarantined 13 unreviewed placement(s); ledger preserved
+[manifest-capture] prompt submitted at 4.0s; Chronos2 is running. Stage lines follow.
+[Chronos stderr] [weaver] reference cache hit  concept "sword" → db3fee535a0239c75f447c6712953ba4

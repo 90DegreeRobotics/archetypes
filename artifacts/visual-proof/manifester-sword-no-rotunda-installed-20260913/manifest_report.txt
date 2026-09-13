@@ -1,0 +1,58 @@
+outcome=completed
+                 eye=(0.000, 3.250, 2.200)
+                 yaw=-0.000 pitch=-0.506
+                 altar_focus=(0.000, 2.030, 0.000)
+                 eye_to_focus=2.516m
+                 pedestal=Vec3(0.0, 0.4, 0.0)
+                 cushion_y=1.740
+                 object_y=2.320
+                 panel_y=1.745
+                 nearby_meshes:
+  RitualUiCamera at (0.00,0.00,0.00) scale (1.00,1.00,1.00) dist 3.92
+  RuntimeWitnessCamera at (0.00,2.05,7.40) scale (1.00,1.00,1.00) dist 5.34
+  ManifestationPedestal_FillLight at (2.00,3.40,1.20) scale (1.00,1.00,1.00) dist 2.24
+  ManifestationPedestal_KeySpotlight at (-2.10,5.60,2.00) scale (1.00,1.00,1.00) dist 3.16
+  ManifesterHall_WorkLight_1 at (-6.00,9.90,2.00) scale (1.00,1.00,1.00) dist 8.96
+  ManifesterHall_WorkLight_2 at (6.00,9.90,2.00) scale (1.00,1.00,1.00) dist 8.96
+  CouncilPortalLight at (0.00,1.81,0.00) scale (1.00,1.00,1.00) dist 2.63
+  ManifestationPedestal_Underglow at (0.00,2.20,0.00) scale (1.00,1.00,1.00) dist 2.44
+  ManifesterHall_SingleSurfaceFloor at (0.00,0.15,0.00) scale (1.00,1.00,1.00) dist 3.80
+  ManifesterHall_FlatCeiling at (0.00,13.40,0.00) scale (1.00,1.00,1.00) dist 10.39
+  ManifesterHall_CeilingBeam_0 at (0.00,12.78,0.00) scale (1.00,1.00,1.00) dist 9.78
+  ManifestationPedestal_Base at (0.00,0.50,0.00) scale (1.00,1.00,1.00) dist 3.52
+  ManifestationPedestal_Shaft at (0.00,1.05,0.00) scale (1.00,1.00,1.00) dist 3.11
+  ManifestationPedestal_Capital at (0.00,1.57,0.00) scale (1.00,1.00,1.00) dist 2.77
+  ManifestationPedestal_GoldTrim at (0.00,1.67,0.00) scale (1.00,1.00,1.00) dist 2.71
+  ManifestationPedestal_Cushion at (0.00,1.72,0.00) scale (1.00,1.00,1.00) dist 2.68
+  ManifestationReferencePanel at (0.00,1.75,0.00) scale (1.00,1.00,1.00) dist 2.67
+  mesh at (0.00,2.32,0.00) scale (1.14,1.14,1.14) dist 2.39
+  CouncilFloorPortalDisc at (0.00,0.41,0.00) scale (1.00,1.00,1.00) dist 3.59
+  Circle.Stargate_Portal_Mat at (0.00,0.41,0.00) scale (1.00,1.00,1.00) dist 3.59
+  mesh.ChronosArtifact at (0.00,2.32,0.00) scale (1.14,1.14,1.14) dist 2.39
+  Stargate_Portal at (0.00,0.41,0.00) scale (1.00,1.00,1.00) dist 3.59
+  foot.R at (10.35,0.63,6.04) scale (1.82,1.82,1.82) dist 11.35
+  Avatar_Mesh at (10.20,0.42,6.20) scale (1.82,1.82,1.82) dist 11.32
+  hips at (10.20,2.05,6.20) scale (1.82,1.82,1.82) dist 11.02
+  spine at (10.20,2.38,6.20) scale (1.82,1.82,1.82) dist 10.99
+  chest at (10.19,2.70,6.21) scale (1.82,1.82,1.82) dist 10.96
+  neck at (10.17,3.25,6.20) scale (1.82,1.82,1.82) dist 10.93
+  clavicle.L at (10.13,3.04,6.26) scale (1.82,1.82,1.82) dist 10.91
+  upper_arm.L at (9.99,3.03,6.40) scale (1.82,1.82,1.82) dist 10.84
+  forearm.L at (9.85,2.41,6.56) scale (1.82,1.82,1.82) dist 10.81
+  clavicle.R at (10.23,3.04,6.15) scale (1.82,1.82,1.82) dist 10.97
+  upper_arm.R at (10.37,3.04,6.02) scale (1.82,1.82,1.82) dist 11.05
+  forearm.R at (10.55,2.43,5.86) scale (1.82,1.82,1.82) dist 11.20
+  thigh.L at (10.07,1.98,6.33) scale (1.82,1.82,1.82) dist 10.96
+  shin.L at (10.08,1.26,6.32) scale (1.82,1.82,1.82) dist 11.07
+  foot.L at (10.09,0.62,6.32) scale (1.82,1.82,1.82) dist 11.21
+  thigh.R at (10.33,1.99,6.06) scale (1.82,1.82,1.82) dist 11.11
+  shin.R at (10.35,1.26,6.05) scale (1.82,1.82,1.82) dist 11.22
+  Mesh_0.Material_0 at (10.20,0.42,6.20) scale (1.82,1.82,1.82) dist 11.32
+  Jester_CouncilHost at (10.20,0.42,6.20) scale (1.82,1.82,1.82) dist 11.32
+  Avatar_Rig at (10.20,0.42,6.20) scale (1.82,1.82,1.82) dist 11.32
+  head at (10.16,3.42,6.20) scale (1.82,1.82,1.82) dist 10.92
+  hand.L at (9.80,1.94,6.74) scale (1.82,1.82,1.82) dist 10.88
+  hand.R at (10.74,1.97,5.79) scale (1.82,1.82,1.82) dist 11.40
+  toe.L at (9.99,0.45,6.22) scale (1.82,1.82,1.82) dist 11.13
+  toe.R at (10.26,0.46,5.95) scale (1.82,1.82,1.82) dist 11.27
+  ManifestedChronosArtifact at (0.00,2.32,0.00) scale (1.14,1.14,1.14) dist 2.39
