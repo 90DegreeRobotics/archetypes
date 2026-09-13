@@ -34,6 +34,7 @@ use std::path::{Path, PathBuf};
 /// fields must be met with a visible refusal, not with Archetypes silently reading v2 numbers
 /// under v1 assumptions.
 pub const TRIPOSR_RECEIPT_SCHEMA: &str = "chronosophia.triposr-mesh.v1";
+pub const MULTIVIEW_RECEIPT_SCHEMA: &str = "chronosophia.multiview-mesh.v1";
 
 /// Below this share of the reference image, subject extraction has collapsed and TripoSR was
 /// handed a nearly blank frame.
@@ -49,10 +50,10 @@ pub const TRIPOSR_RECEIPT_SCHEMA: &str = "chronosophia.triposr-mesh.v1";
 /// rarely fire -- but a floor that rarely fires is exactly the one worth keeping, because what
 /// it catches is noise being handed to the player as their own work.
 ///
-/// **Deliberately not `subject_match.json`.** Chronos2 emits that guard in the same bundle and
-/// it is the obvious thing to gate on, so the measurement is recorded here to stop it being
-/// reached for again: it scored **0.260** for the destroyed figure and **0.259** for a good
-/// astrolabe. It does not discriminate, and gating on it would reject good work and pass noise.
+/// This is independent of `subject_match.json`: coverage catches a missing silhouette, while
+/// subject match catches a completed reconstruction that Chronos2 itself judged to be the wrong
+/// object. Both have to pass. A weak historical scorer is a reason to improve the scorer, not a
+/// reason to import an artifact whose machine-readable verdict is explicitly `matches=false`.
 pub const MIN_SUBJECT_COVERAGE: f64 = 0.02;
 
 /// A verified Chronos2 bundle: what was asked for, what governed it, and what was built.
@@ -88,6 +89,13 @@ pub enum ReceiptFault {
     DigestMismatch { what: &'static str, declared: String, measured: String },
     IntegrityBroken { detail: String },
     SubjectLost { coverage: f64 },
+    SubjectRejected {
+        checked: bool,
+        matches: bool,
+        score: Option<f64>,
+        reason: String,
+    },
+    ReconstructionContract { detail: String },
 }
 
 impl ReceiptFault {
@@ -95,7 +103,7 @@ impl ReceiptFault {
     pub fn stage_id(&self) -> &'static str {
         match self {
             ReceiptFault::SentinelRefused { .. } | ReceiptFault::GovernanceMissing => "sentinel",
-            ReceiptFault::SubjectLost { .. } => "subject",
+            ReceiptFault::SubjectLost { .. } | ReceiptFault::SubjectRejected { .. } => "subject",
             _ => "geometry_forge",
         }
     }
@@ -118,7 +126,7 @@ impl fmt::Display for ReceiptFault {
             ReceiptFault::SchemaMismatch { found } => write!(
                 formatter,
                 "This Chronos2 speaks receipt version '{found}', and this build understands \
-                 '{TRIPOSR_RECEIPT_SCHEMA}'. Refusing rather than reading its numbers under the \
+                 '{TRIPOSR_RECEIPT_SCHEMA}' and '{MULTIVIEW_RECEIPT_SCHEMA}'. Refusing rather than reading its numbers under the \
                  wrong assumptions."
             ),
             ReceiptFault::SentinelRefused { verdict, message } => write!(
@@ -152,6 +160,23 @@ impl fmt::Display for ReceiptFault {
                  reference survived, so the reconstruction was built from a nearly blank frame. \
                  This usually means the subject was close in colour to its backdrop.",
                 coverage * 100.0
+            ),
+            ReceiptFault::SubjectRejected {
+                checked,
+                matches,
+                score,
+                reason,
+            } => write!(
+                formatter,
+                "Chronos2 rejected its own reconstruction: checked={checked}, matches={matches}, \
+                 score={}. {reason} Nothing was imported or saved to your object library.",
+                score
+                    .map(|value| format!("{value:.4}"))
+                    .unwrap_or_else(|| "not recorded".to_string())
+            ),
+            ReceiptFault::ReconstructionContract { detail } => write!(
+                formatter,
+                "Chronos2 did not prove a complete three-view reconstruction: {detail}"
             ),
         }
     }
@@ -320,11 +345,58 @@ pub fn verify(bundle: &Path, asked_prompt: &str) -> Result<GameArtifact, Receipt
         check_digest("recorded prompt", &prompt_path, declared, Digest::Blake3)?;
     }
 
-    // 4. The reconstruction receipt, and the bytes it speaks for.
-    let receipt_path = bundle.join("engine_mesh").join("triposr_artifact.json");
-    let receipt = read_json(&receipt_path, "TripoSR receipt")?;
+    // 4. The finished-object judgment. Generation is still attempted for every Sentinel-cleared
+    //    prompt; this is a post-generation acceptance gate. `matches=false` used to be advisory,
+    //    which allowed an artifact Chronos2 had explicitly rejected to enter the permanent game
+    //    library. Missing or unchecked evidence fails closed for the same reason: absence of a
+    //    passing judgment is not evidence of a passing object.
+    let subject_match = read_json(&bundle.join("subject_match.json"), "subject-match judgment")?;
+    if let Some(declared) = manifest
+        .get("bundle_files")
+        .and_then(|files| files.get("subject_match.json"))
+        .and_then(|value| value.as_str())
+    {
+        check_digest(
+            "subject-match judgment",
+            &bundle.join("subject_match.json"),
+            declared,
+            Digest::Blake3,
+        )?;
+    }
+    let checked = subject_match
+        .get("checked")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    let matches = subject_match
+        .get("matches")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    if !checked || !matches {
+        return Err(ReceiptFault::SubjectRejected {
+            checked,
+            matches,
+            score: subject_match.get("score").and_then(|value| value.as_f64()),
+            reason: subject_match
+                .get("reason")
+                .and_then(|value| value.as_str())
+                .unwrap_or("No passing subject-match reason was recorded.")
+                .to_string(),
+        });
+    }
+
+    // 5. The reconstruction receipt, and the bytes it speaks for.
+    let multiview_path = bundle.join("engine_mesh").join("multiview_artifact.json");
+    let (receipt_path, receipt_name) = if multiview_path.is_file() {
+        (multiview_path, "multi-view reconstruction receipt")
+    } else {
+        (
+            bundle.join("engine_mesh").join("triposr_artifact.json"),
+            "legacy TripoSR receipt",
+        )
+    };
+    let receipt = read_json(&receipt_path, receipt_name)?;
     let schema = receipt.get("schema").and_then(|value| value.as_str()).unwrap_or_default();
-    if schema != TRIPOSR_RECEIPT_SCHEMA {
+    if schema != TRIPOSR_RECEIPT_SCHEMA && schema != MULTIVIEW_RECEIPT_SCHEMA {
         return Err(ReceiptFault::SchemaMismatch { found: schema.to_string() });
     }
 
@@ -337,33 +409,99 @@ pub fn verify(bundle: &Path, asked_prompt: &str) -> Result<GameArtifact, Receipt
         .and_then(|value| value.get("sha256"))
         .and_then(|value| value.as_str())
         .ok_or(ReceiptFault::Unreadable {
-            what: "TripoSR receipt",
+            what: receipt_name,
             detail: "no mesh digest recorded".to_string(),
         })?;
     let mesh_sha256 = check_digest("reconstructed mesh", &mesh, declared_mesh, Digest::Sha256)?;
 
-    let source_image = bundle.join("reference_input.png");
-    let declared_image = receipt
-        .get("source_image")
-        .and_then(|value| value.get("sha256"))
-        .and_then(|value| value.as_str())
-        .ok_or(ReceiptFault::Unreadable {
-            what: "TripoSR receipt",
-            detail: "no source-image digest recorded".to_string(),
-        })?;
-    if !source_image.is_file() {
-        return Err(ReceiptFault::Missing { what: "reference image", path: source_image });
-    }
-    let source_image_sha256 =
-        check_digest("reference image", &source_image, declared_image, Digest::Sha256)?;
+    let (source_image, source_image_sha256, subject_coverage) =
+        if schema == MULTIVIEW_RECEIPT_SCHEMA {
+            let view_count = receipt.get("view_count").and_then(|value| value.as_u64());
+            let consumed = receipt
+                .get("consumed_view_count")
+                .and_then(|value| value.as_u64());
+            let closed = receipt
+                .get("mesh")
+                .and_then(|value| value.get("closed"))
+                .and_then(|value| value.as_bool());
+            let boundary_edges = receipt
+                .get("mesh")
+                .and_then(|value| value.get("boundary_edges"))
+                .and_then(|value| value.as_u64());
+            if view_count != Some(3)
+                || consumed != Some(3)
+                || closed != Some(true)
+                || boundary_edges != Some(0)
+            {
+                return Err(ReceiptFault::ReconstructionContract {
+                    detail: format!(
+                        "view_count={view_count:?}, consumed_view_count={consumed:?}, closed={closed:?}, boundary_edges={boundary_edges:?}"
+                    ),
+                });
+            }
+            let mut minimum_coverage = 1.0_f64;
+            let mut front = None;
+            for name in ["front", "right", "top"] {
+                let view = receipt
+                    .get("source_views")
+                    .and_then(|views| views.get(name))
+                    .ok_or_else(|| ReceiptFault::ReconstructionContract {
+                        detail: format!("the {name} source view is absent from the receipt"),
+                    })?;
+                let declared = view
+                    .get("sha256")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| ReceiptFault::ReconstructionContract {
+                        detail: format!("the {name} source view has no digest"),
+                    })?;
+                let path = bundle.join(format!("reference_{name}.png"));
+                let measured = check_digest(
+                    match name {
+                        "front" => "front reconstruction view",
+                        "right" => "right reconstruction view",
+                        _ => "top reconstruction view",
+                    },
+                    &path,
+                    declared,
+                    Digest::Sha256,
+                )?;
+                minimum_coverage = minimum_coverage.min(
+                    view.get("subject_coverage")
+                        .and_then(|value| value.as_f64())
+                        .unwrap_or(0.0),
+                );
+                if name == "front" {
+                    front = Some((path, measured));
+                }
+            }
+            let (path, digest) = front.expect("front is one of the fixed reconstruction views");
+            (path, digest, minimum_coverage)
+        } else {
+            let source_image = bundle.join("reference_input.png");
+            let declared_image = receipt
+                .get("source_image")
+                .and_then(|value| value.get("sha256"))
+                .and_then(|value| value.as_str())
+                .ok_or(ReceiptFault::Unreadable {
+                    what: receipt_name,
+                    detail: "no source-image digest recorded".to_string(),
+                })?;
+            let digest = check_digest(
+                "reference image",
+                &source_image,
+                declared_image,
+                Digest::Sha256,
+            )?;
+            let coverage = receipt
+                .get("preparation")
+                .and_then(|value| value.get("subject_coverage"))
+                .and_then(|value| value.as_f64())
+                .unwrap_or(1.0);
+            (source_image, digest, coverage)
+        };
 
-    // 5. Quality, last: a real object built badly is a different failure from no object, and the
+    // 6. Quality, last: a real object built badly is a different failure from no object, and the
     //    player is owed the distinction.
-    let subject_coverage = receipt
-        .get("preparation")
-        .and_then(|value| value.get("subject_coverage"))
-        .and_then(|value| value.as_f64())
-        .unwrap_or(1.0);
     if subject_coverage < MIN_SUBJECT_COVERAGE {
         return Err(ReceiptFault::SubjectLost { coverage: subject_coverage });
     }
@@ -413,6 +551,11 @@ mod tests {
             let root = &self.root;
             fs::write(root.join("integrity_report.json"), r#"{"valid":true,"broken_links":0,"corrupted_count":0}"#).unwrap();
             fs::write(root.join("decisions.json"), r#"{"decisions":[{"id":"village_protection","kind":"governance","msg":"cleared","verdict":"allowed"}]}"#).unwrap();
+            fs::write(
+                root.join("subject_match.json"),
+                r#"{"schema":"chronos.subject_match.v1","checked":true,"matches":true,"score":0.88,"reason":"all reconstruction views passed"}"#,
+            )
+            .unwrap();
 
             fs::write(root.join("human_prompt.txt"), prompt).unwrap();
             // The manifest's bundle_files map is blake3 on the real thing, so the fixture
@@ -558,6 +701,50 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_completed_artifact_with_matches_false_is_never_imported() {
+        let bundle = Bundle::new("subject-false");
+        bundle.put(
+            "subject_match.json",
+            r#"{"schema":"chronos.subject_match.v1","checked":true,"matches":false,"score":0.5024,"reason":"render did not preserve the requested subject"}"#,
+        );
+        let fault = verify(bundle.path(), "a brass astrolabe").unwrap_err();
+        assert!(
+            matches!(
+                &fault,
+                ReceiptFault::SubjectRejected {
+                    checked: true,
+                    matches: false,
+                    score: Some(score),
+                    ..
+                } if (*score - 0.5024).abs() < f64::EPSILON
+            ),
+            "{fault:?}"
+        );
+        assert_eq!(fault.stage_id(), "subject");
+        assert!(fault.to_string().contains("Nothing was imported or saved"));
+    }
+
+    #[test]
+    fn an_unchecked_or_missing_subject_judgment_fails_closed() {
+        let unchecked = Bundle::new("subject-unchecked");
+        unchecked.put(
+            "subject_match.json",
+            r#"{"schema":"chronos.subject_match.v1","checked":false,"matches":true}"#,
+        );
+        assert!(matches!(
+            verify(unchecked.path(), "a brass astrolabe").unwrap_err(),
+            ReceiptFault::SubjectRejected { checked: false, .. }
+        ));
+
+        let missing = Bundle::new("subject-missing");
+        fs::remove_file(missing.path().join("subject_match.json")).unwrap();
+        assert!(matches!(
+            verify(missing.path(), "a brass astrolabe").unwrap_err(),
+            ReceiptFault::Missing { what: "subject-match judgment", .. }
+        ));
+    }
+
     /// Reading v2 numbers under v1 assumptions is the silent failure this pin exists to prevent.
     #[test]
     fn an_unknown_receipt_version_is_refused_rather_than_guessed_at() {
@@ -641,6 +828,14 @@ mod tests {
                 Err(ReceiptFault::SubjectLost { coverage }) => {
                     assert!(coverage < MIN_SUBJECT_COVERAGE);
                 }
+                // Historical bundles that already recorded `matches=false` are now expected
+                // rejections. Keeping them in the lab proves this gate closes the exact hole
+                // that used to import them.
+                Err(ReceiptFault::SubjectRejected {
+                    checked: true,
+                    matches: false,
+                    ..
+                }) => {}
                 Err(fault) => panic!("{}: {fault:?}", bundle.display()),
             }
             checked += 1;
