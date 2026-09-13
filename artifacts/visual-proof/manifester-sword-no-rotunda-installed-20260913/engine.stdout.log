@@ -34,7 +34,7 @@
 [Chronos stdout] [chronos-decision] kind=guard id=subject_match verdict=chosen msg=The built object is not the shape that was drawn — it covers only 40% of the outline and 49% of what was built is not in the drawing at all.
 [Chronos stdout] [object] subject match sealed -> C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\024f8556-a2c9-455f-8a5e-da8982c3a06f\subject_match.json
 [Chronos stdout] [chronos-stage] id=bundle pct=97 state=begin msg=Writing your artifact bundle
-[Chronos stdout] 
+[Chronos stdout]
 [Chronos stdout] === Undeniable Artifact Run I ===
 [Chronos stdout]   bundle:            C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\024f8556-a2c9-455f-8a5e-da8982c3a06f
 [Chronos stdout]   render dispatched: true
