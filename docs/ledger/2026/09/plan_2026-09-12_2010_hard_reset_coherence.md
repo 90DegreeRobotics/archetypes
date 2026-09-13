@@ -61,3 +61,11 @@ full-volume generation path separately."*
 - Gate: `cargo test --workspace` passed: 282 engine, 19 launcher, 5 Windows-identity tests.
 - Remaining work in this plan is deliberately still open: visual-quality quarantine, traversal
   witness, UI pass, geometry gates, and full-volume research are not represented as done here.
+
+### 2026-09-12 — exhibition and texture containment
+
+- Quarantined the unreviewed staged museum collection from the live arcade without deleting its
+  files or manifest. The rooms remain architecture until a curated replacement set is approved.
+- Enabled 8x anisotropic sampling on tiled masonry material inputs to reduce oblique-angle
+  crawling. This is a targeted stability improvement, not a claim that it solves every source
+  of shimmer; the installed visual witness still has to judge that.

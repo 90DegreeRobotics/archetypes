@@ -137,6 +137,12 @@ const PLACARD_HEIGHT: f32 = PLACARD_WIDTH * 168.0 / 512.0;
 /// Below the frame's lower edge, to the placard's centre.
 const PLACARD_DROP: f32 = 0.30;
 
+/// The staged 2026-09-12 batch is preserved as source evidence but is not approved exhibition
+/// material. It made the arcade buyer-facing before its images met the object-quality bar.
+/// A curator raises this only after a reviewed replacement set exists; the archive is never
+/// deleted or overwritten to make that happen.
+const CURATED_EXHIBIT_LIMIT: usize = 0;
+
 pub struct MuseumPlugin;
 
 impl Plugin for MuseumPlugin {
@@ -181,7 +187,13 @@ pub fn spawn_hung_works(
         ..default()
     });
 
-    for (index, exhibit) in museum.manifest.exhibits.iter().enumerate() {
+    for (index, exhibit) in museum
+        .manifest
+        .exhibits
+        .iter()
+        .take(CURATED_EXHIBIT_LIMIT)
+        .enumerate()
+    {
         let Some((position, yaw)) = positions.get(index).copied() else {
             // More staged works than walls to hang them on. Not an error: the staging script can
             // be run with a larger limit, and the extras wait for more chambers.

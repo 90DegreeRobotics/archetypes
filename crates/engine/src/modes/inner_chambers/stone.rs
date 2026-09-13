@@ -128,12 +128,17 @@ impl StonePalette {
 fn load_tiling(asset_server: &AssetServer, path: String, is_srgb: bool) -> Handle<Image> {
     asset_server.load_with_settings(path, move |settings: &mut ImageLoaderSettings| {
         settings.is_srgb = is_srgb;
-        settings.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        let mut sampler = ImageSamplerDescriptor {
             address_mode_u: ImageAddressMode::Repeat,
             address_mode_v: ImageAddressMode::Repeat,
             address_mode_w: ImageAddressMode::Repeat,
             ..ImageSamplerDescriptor::linear()
-        });
+        };
+        // At the oblique angles of a long arcade, single-sample texture filtering aliases into
+        // the crawling brick shimmer the player reported. Anisotropic filtering is cheap on the
+        // RTX 3060 and keeps the same authored maps stable during camera motion.
+        sampler.set_anisotropic_filter(8);
+        settings.sampler = ImageSampler::Descriptor(sampler);
     })
 }
 
