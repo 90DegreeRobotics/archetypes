@@ -12,6 +12,23 @@
 //! castle, the resulting frames and the written report would show it.
 //!
 //! Enabled by `ARCHETYPES_WALK_CAPTURE`; never on during normal play.
+//!
+//! **Run the INSTALLED build, not `target/release/engine.exe`.** Bevy resolves the asset root
+//! against the executable's directory, and nothing stages `assets/` into `target/release/`. Run
+//! from there and every texture, every glTF and every manifested object silently fails to load;
+//! the castle photographs as bare grey shells and objects that exist in the report as
+//! `objects_standing=N` appear nowhere in the frame. It looks exactly like a rendering bug in
+//! the thing you just changed. It is not: it is a harness pointed at a tree with no assets.
+//!
+//! ```text
+//! cd "$env:LOCALAPPDATA\Programs\Archetypes"
+//! $env:ARCHETYPES_WALK_CAPTURE = "1"
+//! $env:ARCHETYPES_CAPTURE_DIR = "C:/archetypes/artifacts/visual-proof/<topic>"
+//! .\engine.exe
+//! ```
+//!
+//! Run `scripts\install_shortcut.ps1` first so the installed tree is the build under test. The
+//! engine's stderr is the check: a correct run logs zero `Path not found` lines.
 
 use super::camera::{CameraController, LocomotionMode, PlayerCamera};
 use super::castle;
@@ -150,7 +167,18 @@ impl WalkCaptureRun {
             (36.45, Beat::Hold(&[])),
             (36.8, Beat::Aim(-0.55)),
             (37.6, Beat::Shot("13_duplicated_and_placed")),
-            (38.2, Beat::Finish),
+            // The Creation Library. Hands are empty here -- the F at 35.8 set the held object
+            // down -- which matters, because summoning refuses while carrying, and a frame of
+            // that refusal would look identical to a library that does not work.
+            //
+            // `carrying=` in the report is what separates the two: it must read "no" at the
+            // open frame and "yes" after Enter. A photograph of a panel proves the panel draws;
+            // only the carry state proves the summon reached the hand.
+            (38.2, Beat::Tap(KeyCode::KeyL)),
+            (39.0, Beat::Shot("14_creation_library_open")),
+            (39.4, Beat::Tap(KeyCode::Enter)),
+            (40.2, Beat::Shot("15_summoned_from_the_library")),
+            (40.8, Beat::Finish),
         ];
 
         Some(Self {

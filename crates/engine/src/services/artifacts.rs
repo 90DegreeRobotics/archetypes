@@ -114,14 +114,18 @@ pub fn placements_path() -> PathBuf {
 /// existed, and the object silently never loaded. That is invisible from an installed build,
 /// which is the only way the operator tests, so it could sit here indefinitely.
 pub fn asset_roots() -> Vec<PathBuf> {
-    let mut roots = Vec::new();
+    // Exactly what the asset server was configured with. Anything else is a guess, and a guess
+    // that happens to find the file is worse than one that does not: it reports the artifact as
+    // present while the asset server cannot open it.
+    let mut roots = vec![super::paths::asset_root()];
+    // A debug build reads the repository, so a manifestation must also be written beside the
+    // executable for the installed layout to have it.
     if let Some(beside_exe) =
         std::env::current_exe().ok().and_then(|exe| exe.parent().map(|dir| dir.join("assets")))
     {
-        roots.push(beside_exe);
-    }
-    if cfg!(debug_assertions) {
-        roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("assets"));
+        if !roots.contains(&beside_exe) {
+            roots.push(beside_exe);
+        }
     }
     roots
 }

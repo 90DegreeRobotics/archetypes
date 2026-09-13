@@ -65,12 +65,11 @@ fn maximize_primary_window(mut windows: Query<&mut Window, With<PrimaryWindow>>)
     }
 }
 
+/// Delegates to `services::paths::asset_root`, which is the single source of truth: the ledger's
+/// asset resolver has to agree with whatever this returns, and when the decision lived in two
+/// places they disagreed.
 fn asset_root() -> String {
-    if cfg!(debug_assertions) {
-        format!("{}/../../assets", env!("CARGO_MANIFEST_DIR"))
-    } else {
-        "assets".to_owned()
-    }
+    services::paths::asset_root().to_string_lossy().into_owned()
 }
 
 #[cfg(test)]

@@ -16,6 +16,21 @@ use super::objects::Carried;
 use super::world::{HintPriority, HintRequest, InnerHintSet, InnerWorldElement};
 use super::InnerChambersState;
 
+/// The hint shown while the library is open.
+///
+/// ASCII only. The castle font has no em-dash glyph, so a fancy dash renders as a missing-glyph
+/// box -- which is exactly what the first capture of this panel photographed.
+const LIBRARY_HINT: &str = "Creation Library - choose something you made";
+
+/// Shown when a row's file is not on this machine.
+///
+/// A library row records that something *was* created; it is not proof the file survived a
+/// reinstall, a fresh machine, or a profile switch. Held as a constant so the wording is pinned
+/// by a test and cannot pick up a run of indentation from a wrapped source line.
+const MISSING_ASSET_MESSAGE: &str =
+    "That creation is in your record, but its file is no longer on this machine. \
+Nothing was summoned.";
+
 #[derive(Resource, Default)]
 pub struct LibraryState {
     open: bool,
@@ -130,7 +145,7 @@ fn drive_library(
     if !state.open {
         return;
     }
-    hint.request(HintPriority::Modal, "Creation Library — choose something you made");
+    hint.request(HintPriority::Modal, LIBRARY_HINT);
     if keyboard.just_pressed(KeyCode::Escape) {
         state.open = false;
         set_modal_cursor(&mut cursor, false);
@@ -168,11 +183,7 @@ fn drive_library(
     // asset is gone. Summoning one of those puts an invisible object in the player's hand,
     // which reads as the game being broken rather than as a file being missing.
     if artifacts::resolve_asset(&record.asset).is_none() {
-        state.status = format!(
-            "\"{}\" is in your record, but its file is no longer on this machine ({}). Nothing              was summoned.",
-            record.prompt.trim(),
-            record.asset
-        );
+        state.status = format!("{MISSING_ASSET_MESSAGE} ({})", record.asset);
         return;
     }
     carried.artifact = Some(record.clone());
@@ -216,7 +227,7 @@ fn provenance_line(record: &ArtifactRecord) -> String {
 }
 
 fn library_body(state: &LibraryState) -> String {
-    let mut body = String::from("CREATION LIBRARY — objects you manifested and kept locally\n\n");
+    let mut body = String::from("CREATION LIBRARY - objects you manifested and kept locally\n\n");
     if state.records.is_empty() {
         body.push_str("No creations are recorded yet. Manifest an object at the altar; it will stay here for later use.");
     } else {
@@ -285,6 +296,37 @@ mod tests {
         assert!(line.contains("44.6%"), "{line}");
         // Truncated: a full 64-character digest would push the prompt off the row.
         assert!(line.contains("aabbccddeeff") && !line.contains("aabbccddeeff0011"), "{line}");
+    }
+
+    /// The castle font has no em-dash glyph, so a fancy dash renders as a missing-glyph box --
+    /// which is what the first capture of this panel photographed. `settings_menu` already pins
+    /// this rule for the same reason; every surface the player reads has to keep it.
+    #[test]
+    fn every_rendered_string_is_ascii() {
+        let state = LibraryState {
+            open: true,
+            records: vec![ArtifactRecord {
+                id: "kept-1".to_owned(),
+                asset: "manifested/kept-1.glb".to_owned(),
+                prompt: "a brass astrolabe".to_owned(),
+                ..Default::default()
+            }],
+            selected: 0,
+            status: "a status line".to_owned(),
+        };
+        for body in [library_body(&state), library_body(&LibraryState::default()), LIBRARY_HINT.to_owned()] {
+            assert!(
+                body.is_ascii(),
+                "non-ASCII renders as a missing-glyph box in this font: {:?}",
+                body.chars().filter(|character| !character.is_ascii()).collect::<String>()
+            );
+        }
+    }
+
+    /// A wrapped message must not carry the source's indentation into the panel.
+    #[test]
+    fn the_missing_file_message_has_no_run_of_spaces_in_it() {
+        assert!(!MISSING_ASSET_MESSAGE.contains("  "), "{MISSING_ASSET_MESSAGE}");
     }
 
     #[test]
