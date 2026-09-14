@@ -504,7 +504,10 @@ fn object_hint(
         return;
     }
     let altar_holds_something = manifestation
-        .map(|state| state.active_artifact.is_some())
+        // Both, because `take_from_altar` needs both: an object under operator review stands on
+        // the altar (`active_artifact`) but has no id until it is kept, so `E` cannot take it and
+        // must not be offered. Seen 2026-09-13 in `00b_object_review.png`.
+        .map(|state| state.active_artifact.is_some() && state.active_artifact_id.is_some())
         .unwrap_or(false);
     if carried.is_carrying() {
         hint.request(
