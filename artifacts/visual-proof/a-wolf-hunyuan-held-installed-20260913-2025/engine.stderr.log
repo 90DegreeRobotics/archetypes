@@ -1,0 +1,18 @@
+2026-09-14T01:25:59.879007Z  INFO bevy_diagnostic::system_information_diagnostics_plugin::internal: SystemInfo { os: "Windows 11 Pro", kernel: "26200", cpu: "AMD Ryzen 7 2700 Eight-Core Processor", core_count: "8", memory: "31.9 GiB" }
+2026-09-14T01:26:00.610134Z  INFO bevy_render::renderer: AdapterInfo { name: "NVIDIA GeForce RTX 3060", vendor: 4318, device: 9475, device_type: DiscreteGpu, driver: "NVIDIA", driver_info: "610.88", backend: Vulkan }
+2026-09-14T01:26:00.899119Z  INFO bevy_render::batching::gpu_preprocessing: GPU preprocessing is fully supported on this device.
+2026-09-14T01:26:00.904386Z  INFO bevy_winit::system: Creating new window Archetypes 1.0.5 (build 6) — Council Chamber (0v0)
+2026-09-14T01:26:01.116546Z  WARN gilrs::gamepad: No mapping found for UUID 00000000-0000-0000-0000-000000000000
+	Default mapping will be used.
+2026-09-14T01:26:01.117570Z  INFO bevy_input::gamepad: Gamepad 30v0 connected.
+2026-09-14T01:26:02.478446Z  WARN engine::modes::inner_chambers::objects: objects: quarantined 13 unreviewed placement(s); ledger preserved
+[manifest-capture] prompt submitted at 4.1s; Chronos2 is running. Stage lines follow.
+[Chronos stderr] [weaver] reference cache hit  concept "a wolf" → 13d33edd394c92fdf2c466ed4488ea1c
+[manifest-capture] reference ready for review at 4.2s
+2026-09-14T01:26:09.259382Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:\archetypes\artifacts\visual-proof\a-wolf-hunyuan-held-installed-20260913-2025\00a_reference_review.png
+[manifest-capture] object ready for review at 285.8s
+2026-09-14T01:30:54.490658Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:\archetypes\artifacts\visual-proof\a-wolf-hunyuan-held-installed-20260913-2025\00b_object_review.png
+2026-09-14T01:31:02.316776Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:\archetypes\artifacts\visual-proof\a-wolf-hunyuan-held-installed-20260913-2025\00_pedestal_and_reference_panel_completed.png
+[manifest-capture] pickup E pressed at 301.3s
+[manifest-capture] carried state and camera-child visual seen at 301.3s
+2026-09-14T01:31:05.346053Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:\archetypes\artifacts\visual-proof\a-wolf-hunyuan-held-installed-20260913-2025\01_object_held_in_hand.png

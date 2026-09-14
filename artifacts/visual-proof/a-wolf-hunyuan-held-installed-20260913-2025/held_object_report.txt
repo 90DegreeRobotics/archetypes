@@ -1,0 +1,5 @@
+prompt=a wolf
+carrying=true
+artifact_id=6757eb0f-0a47-4e8a-994d-833476b1116e
+asset=manifested/6757eb0f-0a47-4e8a-994d-833476b1116e.glb
+carried_visuals=1

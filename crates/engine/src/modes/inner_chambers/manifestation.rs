@@ -1993,6 +1993,12 @@ fn update_manifestation_reveal_smoke(
     }
 }
 
+/// Whether the "Staged upon the sacred altar" banner is true right now: a kept creation is
+/// standing on the altar. False once it has been taken into the hand.
+fn completed_banner_visible(state: &ManifestationState) -> bool {
+    state.phase == ManifestationPhase::Completed && state.active_artifact.is_some()
+}
+
 fn update_manifestation_hud(
     state: Res<ManifestationState>,
     mut banner_query: Query<&mut Visibility, With<ManifestationStatusBanner>>,
@@ -2065,12 +2071,19 @@ fn update_manifestation_hud(
             color.0 = Color::srgb(1.0, 0.25, 0.30); // Warning red
         }
         ManifestationPhase::Completed => {
-            *banner_vis = Visibility::Visible;
-            text.0 = format!(
-                "✨ MANIFESTED: \"{}\" — Staged upon the sacred altar!",
-                state.active_prompt
-            );
-            color.0 = Color::srgb(0.40, 1.0, 0.70); // Radiant celestial green
+            // "Staged upon the sacred altar" is only true while the object is still there. Once it
+            // is taken into the hand the banner would be describing something that no longer is
+            // (seen in the installed wolf witness, 01_object_held_in_hand.png).
+            if completed_banner_visible(&state) {
+                *banner_vis = Visibility::Visible;
+                text.0 = format!(
+                    "✨ MANIFESTED: \"{}\" — Staged upon the sacred altar!",
+                    state.active_prompt
+                );
+                color.0 = Color::srgb(0.40, 1.0, 0.70); // Radiant celestial green
+            } else {
+                *banner_vis = Visibility::Hidden;
+            }
         }
         ManifestationPhase::Idle | ManifestationPhase::Prompting => {
             *banner_vis = Visibility::Hidden;
@@ -2311,6 +2324,31 @@ mod tests {
     /// Whatever the player asks for, TripoSR hands back a mesh with no inherent scale; the
     /// import script normalises it, and the spawn scale has to respect the plinth it lands on.
     /// At the previous 1.15 a 1.4m authored mesh came out at 1.61m on a 1.60m cushion.
+    /// The kept creation's banner says it is staged on the altar. That must stop being said the
+    /// moment the object is taken into the hand (installed wolf witness, 2026-09-13).
+    #[test]
+    fn the_staged_banner_only_shows_while_the_object_is_on_the_altar() {
+        let mut state = ManifestationState {
+            phase: ManifestationPhase::Completed,
+            active_artifact: Some(Entity::PLACEHOLDER),
+            ..Default::default()
+        };
+        assert!(completed_banner_visible(&state), "kept object on the altar");
+
+        state.active_artifact = None;
+        assert!(
+            !completed_banner_visible(&state),
+            "object taken into the hand: the altar is empty"
+        );
+
+        state.active_artifact = Some(Entity::PLACEHOLDER);
+        state.phase = ManifestationPhase::ReviewingObject;
+        assert!(
+            !completed_banner_visible(&state),
+            "an object under review is not a staged creation yet"
+        );
+    }
+
     #[test]
     fn the_manifested_object_fits_the_cushion_it_stands_on() {
         let widest = MANIFESTATION_AUTHORED_MAX_DIMENSION * MANIFESTATION_OBJECT_SCALE;
