@@ -1,0 +1,12 @@
+2026-09-14T00:23:22.612363Z  INFO bevy_diagnostic::system_information_diagnostics_plugin::internal: SystemInfo { os: "Windows 11 Pro", kernel: "26200", cpu: "AMD Ryzen 7 2700 Eight-Core Processor", core_count: "8", memory: "31.9 GiB" }
+2026-09-14T00:23:23.524774Z  INFO bevy_render::renderer: AdapterInfo { name: "NVIDIA GeForce RTX 3060", vendor: 4318, device: 9475, device_type: DiscreteGpu, driver: "NVIDIA", driver_info: "610.88", backend: Vulkan }
+2026-09-14T00:23:24.024286Z  INFO bevy_render::batching::gpu_preprocessing: GPU preprocessing is fully supported on this device.
+2026-09-14T00:23:24.028651Z  INFO bevy_winit::system: Creating new window Archetypes 1.0.5 (build 6) — Council Chamber (0v0)
+2026-09-14T00:23:24.276998Z  WARN gilrs::gamepad: No mapping found for UUID 00000000-0000-0000-0000-000000000000
+	Default mapping will be used.
+2026-09-14T00:23:24.278101Z  INFO bevy_input::gamepad: Gamepad 30v0 connected.
+2026-09-14T00:23:25.744809Z  WARN engine::modes::inner_chambers::objects: objects: quarantined 13 unreviewed placement(s); ledger preserved
+[manifest-capture] prompt submitted at 4.1s; Chronos2 is running. Stage lines follow.
+[Chronos stderr] [weaver] ComfyUI still owns 36f03b9c-d929-4f14-ba84-e13794de1967 (queued or generating); holding the 180s budget rather than calling it a timeout
+[ManifestationSystem] Manifestation Failed: Chronos2 rejected its own reconstruction: checked=true, matches=false, score=0.4563. At least one reconstruction-aligned view failed; weakest score 0.456. Nothing was imported or saved to your object library. Bundle kept at C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\0d31e22d-c1d0-4c7b-90b3-405455db5a59
+2026-09-14T00:32:53.554270Z  INFO bevy_render::view::window::screenshot: Screenshot saved to C:\archetypes\artifacts\visual-proof\football-hunyuan-held-installed-20260913-1923\00_pedestal_and_reference_panel_failed.png

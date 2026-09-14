@@ -25,3 +25,14 @@ newly generated football is created through the Manifester, picked up with `E`, 
   capture the held frame with the walking capture harness, and record hashes.
 - Files touched: evidence under `artifacts/visual-proof/`, this plan.
 - Expected outcome: a held-football frame shown to the operator; verdict is theirs.
+
+## Run log
+
+- 2026-09-13 19:23, prompt `football`, installed engine `D0DF1B61…`: pipeline completed in
+  585.7 s, Hunyuan3D-2 built a watertight soccer ball, Chronos2 sealed `matches=false` (0.4563),
+  and the game refused the import with the full reason on screen. Gate behaved as designed;
+  nothing held. Cause was the seal's reference outline (floor shadow counted as subject), not the
+  body; replica score against the consumed silhouette is 0.9228. Evidence:
+  `artifacts/visual-proof/football-hunyuan-held-installed-20260913-1923/`.
+- Next: prompt `American football` after Chronos2 seals single-image bodies against the consumed
+  silhouette.
