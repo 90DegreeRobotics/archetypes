@@ -7,7 +7,10 @@ from mathutils import Vector
 
 MAX_GAME_TRIANGLES = 75_000
 
-CHRONOS_FORWARD_AXIS = "NEGATIVE_Y"
+# Chronos2 Object-mode meshes are Z-up with their front facing -Y. Blender imports that unturned only
+# as forward "Y". "NEGATIVE_Y" turned every object 180 degrees about Z (measured 2026-09-13 on the
+# Hunyuan wolf), so the side the reference picture shows faced away from the player.
+CHRONOS_FORWARD_AXIS = "Y"
 CHRONOS_UP_AXIS = "Z"
 
 def main():

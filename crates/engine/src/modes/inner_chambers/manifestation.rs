@@ -2363,6 +2363,21 @@ mod tests {
         );
     }
 
+    /// Chronos2 meshes are Z-up with their front facing -Y; Blender imports that unturned only as
+    /// forward "Y". "NEGATIVE_Y" turned every object 180 degrees, so the painted picture side faced
+    /// away from the player on the altar and in the hand (measured 2026-09-13).
+    #[test]
+    fn the_import_script_keeps_the_chronos_front_facing_the_front() {
+        let source = std::fs::read_to_string("../../scripts/import_chronos_object.py")
+            .expect("import script readable");
+        assert!(
+            source.contains("CHRONOS_FORWARD_AXIS = \"Y\""),
+            "import_chronos_object.py must import Chronos meshes unturned (forward Y, up Z)"
+        );
+        assert!(source.contains("CHRONOS_UP_AXIS = \"Z\""));
+        assert!(!source.contains("CHRONOS_FORWARD_AXIS = \"NEGATIVE_Y\""));
+    }
+
     /// The import script is the only thing that gives a TripoSR mesh a size, so the engine's
     /// assumption about it has to be checked against the script itself.
     #[test]
