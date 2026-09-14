@@ -95,6 +95,12 @@ pub struct ManifestCaptureRun {
     /// geometry, never presented as a live manifestation.
     stage_only: bool,
     staged_at: Option<f32>,
+    /// When the reference review opened, and whether its frame was taken.
+    reference_review_at: Option<f32>,
+    reference_shot_taken: bool,
+    /// When the object review opened, and whether its frame was taken.
+    object_review_at: Option<f32>,
+    object_shot_taken: bool,
 }
 
 impl ManifestCaptureRun {
@@ -127,6 +133,10 @@ impl ManifestCaptureRun {
             exit_at: None,
             stage_only: std::env::var_os("ARCHETYPES_MANIFEST_STAGE_ONLY").is_some(),
             staged_at: None,
+            reference_review_at: None,
+            reference_shot_taken: false,
+            object_review_at: None,
+            object_shot_taken: false,
             // A cold run is SDXL through ComfyUI, then TripoSR, then Blender, in series. 240s
             // was not generous, it was optimistic: a slow-but-honest run was being reported as
             // a timeout. Overridable so a long run can be waited out without a rebuild.
@@ -255,7 +265,11 @@ pub(crate) fn drive_manifest_capture(
         }
     }
 
-    if manifest_state.phase == ManifestationPhase::Manifesting && !run.manifesting_seen {
+    if matches!(
+        manifest_state.phase,
+        ManifestationPhase::DrawingReference | ManifestationPhase::Manifesting
+    ) && !run.manifesting_seen
+    {
         run.manifesting_seen = true;
         eprintln!(
             "[manifest-capture] prompt submitted at {now:.1}s; Chronos2 is running. Stage lines \
@@ -263,14 +277,60 @@ pub(crate) fn drive_manifest_capture(
         );
     }
 
-    // Once real Manifesting was observed and the phase later leaves it
-    // (Completed or Failed), settle a moment for the reveal VFX/GPU upload,
-    // then take the proof shots.
+    // The two operator reviews. The harness photographs what the operator would be looking at,
+    // then answers the way the operator asked for this witness: build from the picture, keep the
+    // object. It presses the real keys, so the same input handler a player uses makes the call.
+    if !run.stage_only {
+        match manifest_state.phase {
+            ManifestationPhase::ReviewingReference => {
+                if run.reference_review_at.is_none() {
+                    run.reference_review_at = Some(now);
+                    eprintln!("[manifest-capture] reference ready for review at {now:.1}s");
+                }
+                let seen = run.reference_review_at.unwrap_or(now);
+                if !run.reference_shot_taken && now >= seen + 3.0 {
+                    aim_at(&mut transform, &mut controller, stand_pose(), altar_focus());
+                    let path = run.dir.join("00a_reference_review.png");
+                    commands.spawn(Screenshot::primary_window()).observe(save_to_disk(path));
+                    run.reference_shot_taken = true;
+                }
+                if run.reference_shot_taken && now >= seen + 5.0 {
+                    keyboard.release(KeyCode::Enter);
+                    keyboard.press(KeyCode::Enter);
+                }
+            }
+            ManifestationPhase::ReviewingObject => {
+                if run.object_review_at.is_none() {
+                    run.object_review_at = Some(now);
+                    eprintln!("[manifest-capture] object ready for review at {now:.1}s");
+                }
+                let seen = run.object_review_at.unwrap_or(now);
+                // The reveal smoke needs about six seconds to clear before the frame is of anything.
+                if !run.object_shot_taken && now >= seen + 6.5 {
+                    aim_at(&mut transform, &mut controller, stand_pose(), altar_focus());
+                    let path = run.dir.join("00b_object_review.png");
+                    commands.spawn(Screenshot::primary_window()).observe(save_to_disk(path));
+                    run.object_shot_taken = true;
+                }
+                if run.object_shot_taken && now >= seen + 8.5 {
+                    keyboard.release(KeyCode::Enter);
+                    keyboard.press(KeyCode::Enter);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Once a real run was observed and the phase reaches a final outcome (kept, or failed),
+    // settle a moment, then take the proof shots.
     if !run.stage_only
         && run.manifesting_seen
         && !run.shot_taken
         && run.settle_shot_at.is_none()
-        && manifest_state.phase != ManifestationPhase::Manifesting
+        && matches!(
+            manifest_state.phase,
+            ManifestationPhase::Completed | ManifestationPhase::Failed | ManifestationPhase::Idle
+        )
     {
         // Same reason as above: the reveal smoke has to clear before the frame is of anything.
         run.settle_shot_at = Some(now + 6.0);

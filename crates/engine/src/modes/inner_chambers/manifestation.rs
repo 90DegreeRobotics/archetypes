@@ -156,6 +156,22 @@ pub enum ManifestationEvent {
         stage_id: Option<String>,
         detail: String,
     },
+    /// Step one finished: Chronos2 drew the reference and stopped. The operator reviews it.
+    ReferenceReady {
+        prompt: String,
+        /// The picture itself, copied into the asset root so the altar panel can show it.
+        reference: PathBuf,
+        /// Asset-relative path the panel loads.
+        reference_asset: String,
+    },
+    /// Step two finished: the object is built, converted, and staged on disk, but NOT recorded
+    /// in the library. Nothing becomes a player creation until the operator keeps it.
+    ObjectReady {
+        prompt: String,
+        artifact_id: String,
+        provenance: crate::services::artifacts::Provenance,
+        judgment: crate::services::chronos_receipt::SubjectJudgment,
+    },
 }
 
 #[derive(Resource)]
@@ -182,6 +198,22 @@ pub struct ManifestationState {
     pub active_reference_panel: Option<Entity>,
     pub floating_symbol_entity: Option<Entity>,
     pub pedestal_charge: f32,
+    /// The picture awaiting the operator's go-ahead in `ReviewingReference`.
+    pub pending_reference: Option<PathBuf>,
+    /// Which Chronos2 reference attempt to draw next. `R` advances it so a redraw is a new
+    /// picture rather than the same seed painted again.
+    pub reference_attempt: u32,
+    /// The built object awaiting keep or discard in `ReviewingObject`.
+    pub pending_object: Option<PendingObject>,
+}
+
+/// A converted object staged on the altar but not yet in the library.
+#[derive(Clone, Debug)]
+pub struct PendingObject {
+    pub artifact_id: String,
+    pub prompt: String,
+    pub provenance: crate::services::artifacts::Provenance,
+    pub judgment: crate::services::chronos_receipt::SubjectJudgment,
 }
 
 #[derive(Default, PartialEq, Eq, Clone, Debug)]
@@ -189,7 +221,14 @@ pub enum ManifestationPhase {
     #[default]
     Idle,
     Prompting,
+    /// Step one: Chronos2 is drawing the reference picture.
+    DrawingReference,
+    /// The picture is on the altar; Enter builds, R redraws, Esc cancels.
+    ReviewingReference,
+    /// Step two: the object is being built from the approved picture.
     Manifesting,
+    /// The object is on the altar with Chronos2's advice; Enter keeps, X discards.
+    ReviewingObject,
     Completed,
     Failed,
 }
@@ -866,9 +905,17 @@ fn handle_manifestation_input(
     let is_near = dist <= 3.2;
 
     if let Ok(mut vis) = proximity_query.single_mut() {
+        // Hidden whenever the altar is busy or asking the operator something, so "Press [E]" never
+        // competes with the review keys.
         *vis = if is_near
-            && state.phase != ManifestationPhase::Prompting
-            && state.phase != ManifestationPhase::Manifesting
+            && !matches!(
+                state.phase,
+                ManifestationPhase::Prompting
+                    | ManifestationPhase::DrawingReference
+                    | ManifestationPhase::ReviewingReference
+                    | ManifestationPhase::Manifesting
+                    | ManifestationPhase::ReviewingObject
+            )
         {
             Visibility::Visible
         } else {
@@ -936,15 +983,10 @@ fn handle_manifestation_input(
                     state.prompt_buffer.trim().to_string()
                 };
 
-                state.phase = ManifestationPhase::Manifesting;
                 state.active_prompt = prompt.clone();
-                state.waiting_elapsed = 0.0;
-                state.current_stage_id = "start".into();
-                state.current_stage_pct = 0;
-                state.current_stage_state = "begin".into();
-                state.current_stage_msg = "Initiating Chronos2...".into();
-                state.pedestal_charge = 0.0;
-                state.error_message.clear();
+                // Attempt 2 is the reference seed the accepted ice-cream witness came from;
+                // each redraw moves to the next attempt so R really draws a different picture.
+                state.reference_attempt = 2;
 
                 if let Ok(mut vis) = modal_query.single_mut() {
                     *vis = Visibility::Hidden;
@@ -959,18 +1001,10 @@ fn handle_manifestation_input(
                     commands.entity(old_entity).despawn();
                 }
 
-                // Spawn floating 3D Hourglass that phases in and out
-                spawn_phasing_hourglass(&mut commands, &mut meshes, &mut materials, &mut state);
-
-                // Dispatch background render worker
-                dispatch_manifestation_worker(
-                    prompt,
-                    channels.sender.clone(),
-                    channels.active_pid.clone(),
-                );
+                begin_reference_draw(&mut commands, &mut meshes, &mut materials, &mut state, &channels);
             }
         }
-        ManifestationPhase::Manifesting => {
+        ManifestationPhase::DrawingReference | ManifestationPhase::Manifesting => {
             if let Ok(mut vis) = modal_query.single_mut() {
                 *vis = Visibility::Hidden;
             }
@@ -983,6 +1017,84 @@ fn handle_manifestation_input(
                 state.current_stage_state.clear();
                 state.current_stage_msg.clear();
                 state.pedestal_charge = 0.0;
+                state.pending_reference = None;
+                if let Some(panel) = state.active_reference_panel.take() {
+                    commands.entity(panel).despawn();
+                }
+                spawn_idle_symbol(&mut commands, &mut meshes, &mut materials, &mut state);
+            }
+        }
+        // Step one's picture is on the altar. The operator decides whether it is worth building.
+        ManifestationPhase::ReviewingReference => {
+            if keyboard.just_pressed(KeyCode::Enter) {
+                if let Some(reference) = state.pending_reference.take() {
+                    state.phase = ManifestationPhase::Manifesting;
+                    state.waiting_elapsed = 0.0;
+                    state.current_stage_id = "start".into();
+                    state.current_stage_pct = 0;
+                    state.current_stage_state = "begin".into();
+                    state.current_stage_msg = "Building the object from your approved picture...".into();
+                    state.pedestal_charge = 0.0;
+                    state.error_message.clear();
+                    spawn_phasing_hourglass(&mut commands, &mut meshes, &mut materials, &mut state);
+                    dispatch_manifestation_worker(
+                        state.active_prompt.clone(),
+                        reference,
+                        channels.sender.clone(),
+                        channels.active_pid.clone(),
+                    );
+                }
+            } else if keyboard.just_pressed(KeyCode::KeyR) {
+                state.reference_attempt += 1;
+                state.pending_reference = None;
+                if let Some(panel) = state.active_reference_panel.take() {
+                    commands.entity(panel).despawn();
+                }
+                begin_reference_draw(&mut commands, &mut meshes, &mut materials, &mut state, &channels);
+            } else if actions.cancel {
+                state.pending_reference = None;
+                if let Some(panel) = state.active_reference_panel.take() {
+                    commands.entity(panel).despawn();
+                }
+                state.phase = ManifestationPhase::Idle;
+                spawn_idle_symbol(&mut commands, &mut meshes, &mut materials, &mut state);
+            }
+        }
+        // The built object stands on the altar with Chronos2's automated check shown as advice.
+        // Nothing is a player creation until the operator keeps it.
+        ManifestationPhase::ReviewingObject => {
+            if keyboard.just_pressed(KeyCode::Enter) {
+                if let Some(pending) = state.pending_object.take() {
+                    match crate::services::artifacts::record_artifact(
+                        &pending.artifact_id,
+                        &pending.prompt,
+                        pending.provenance.clone(),
+                    ) {
+                        Ok(_) => {
+                            // Only now can `E` take it: `take_from_altar` needs this id.
+                            state.active_artifact_id = Some(pending.artifact_id);
+                            state.phase = ManifestationPhase::Completed;
+                        }
+                        Err(error) => {
+                            state.error_message = format!(
+                                "You kept the object, but its library record could not be written: {error}"
+                            );
+                            state.pending_object = Some(pending);
+                            state.phase = ManifestationPhase::Failed;
+                        }
+                    }
+                }
+            } else if keyboard.just_pressed(KeyCode::KeyX) {
+                if let Some(pending) = state.pending_object.take() {
+                    discard_staged_object(&pending.artifact_id);
+                }
+                if let Some(entity) = state.active_artifact.take() {
+                    commands.entity(entity).despawn();
+                }
+                if let Some(panel) = state.active_reference_panel.take() {
+                    commands.entity(panel).despawn();
+                }
+                state.phase = ManifestationPhase::Idle;
                 spawn_idle_symbol(&mut commands, &mut meshes, &mut materials, &mut state);
             }
         }
@@ -1097,8 +1209,198 @@ fn target_reference_image_paths(artifact_id: &str) -> Vec<PathBuf> {
     paths
 }
 
+/// Start step one: ask Chronos2 for the reference picture only.
+fn begin_reference_draw(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    state: &mut ManifestationState,
+    channels: &ManifestationChannels,
+) {
+    state.phase = ManifestationPhase::DrawingReference;
+    state.waiting_elapsed = 0.0;
+    state.current_stage_id = "start".into();
+    state.current_stage_pct = 0;
+    state.current_stage_state = "begin".into();
+    state.current_stage_msg = "Drawing the reference picture...".into();
+    state.pedestal_charge = 0.0;
+    state.error_message.clear();
+    spawn_phasing_hourglass(commands, meshes, materials, state);
+    dispatch_reference_worker(
+        state.active_prompt.clone(),
+        state.reference_attempt,
+        channels.sender.clone(),
+        channels.active_pid.clone(),
+    );
+}
+
+/// The env every Object-mode Chronos2 call shares. Kept in one place so the reference step and
+/// the build step cannot drift onto different image lanes or timeouts.
+fn object_mode_command(chronos: &std::path::Path) -> Command {
+    let mut command = Command::new(chronos);
+    // Use Chronos2's default compact Flux reference lane; never inherit a legacy SDXL override.
+    command.env_remove("CHRONOS_FORGE_REFERENCE_CKPT");
+    // The Forge has 12 GB VRAM: force the 768px object-reference workflow.
+    command.env("CHRONOS_FLUX_PROFILE", "normal");
+    // Object references have their own bounded budget; never inherit canvas timings.
+    command.env("CHRONOS_COMFY_REFERENCE_POLL_TIMEOUT_SECS", "180");
+    command.stdout(std::process::Stdio::piped());
+    command.stderr(std::process::Stdio::piped());
+    #[cfg(windows)]
+    {
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
+/// Run a Chronos2 command to completion, forwarding its stage lines. On failure returns the
+/// stage it reached and the most useful line it printed.
+fn run_chronos_streaming(
+    mut command: Command,
+    sender: &Sender<ManifestationEvent>,
+    active_pid: &Arc<Mutex<Option<u32>>>,
+) -> Result<(), (String, String)> {
+    let mut child = command
+        .spawn()
+        .map_err(|error| ("start".to_string(), format!("Failed to spawn Chronos2: {error}")))?;
+    if let Ok(mut slot) = active_pid.lock() {
+        *slot = Some(child.id());
+    }
+    let stderr = child.stderr.take();
+    let stderr_handle = std::thread::spawn(move || {
+        let mut lines = Vec::new();
+        if let Some(err) = stderr {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(err).lines().flatten() {
+                eprintln!("[Chronos stderr] {line}");
+                lines.push(line);
+            }
+        }
+        lines
+    });
+    let mut last_stage = ("start".to_string(), String::new());
+    if let Some(out) = child.stdout.take() {
+        use std::io::BufRead;
+        for line in std::io::BufReader::new(out).lines().flatten() {
+            println!("[Chronos stdout] {line}");
+            if let Some((id, pct, stage_state, msg)) = parse_chronos_stage(&line) {
+                last_stage = (id.clone(), msg.clone());
+                let _ = sender.send(ManifestationEvent::Stage {
+                    stage_id: id,
+                    pct,
+                    state: stage_state,
+                    message: msg,
+                });
+            }
+        }
+    }
+    let status = child.wait();
+    let err_lines = stderr_handle.join().unwrap_or_default();
+    if let Ok(mut slot) = active_pid.lock() {
+        *slot = None;
+    }
+    match status {
+        Ok(exit) if exit.success() => Ok(()),
+        Ok(exit) => Err((
+            last_stage.0,
+            err_lines
+                .last()
+                .cloned()
+                .filter(|line| !line.trim().is_empty())
+                .unwrap_or_else(|| {
+                    if last_stage.1.is_empty() {
+                        format!("Chronos2 exited with {exit}")
+                    } else {
+                        last_stage.1
+                    }
+                }),
+        )),
+        Err(error) => Err((last_stage.0, format!("Chronos2 process wait failed: {error}"))),
+    }
+}
+
+/// Step one worker: Chronos2 clears Sentinel, draws the reference, and stops. The picture is
+/// staged under its own id so the altar panel can show it while the operator decides.
+fn dispatch_reference_worker(
+    prompt: String,
+    attempt: u32,
+    sender: Sender<ManifestationEvent>,
+    active_pid: Arc<Mutex<Option<u32>>>,
+) {
+    std::thread::spawn(move || {
+        let chronos = PathBuf::from(r"C:\chronos2\target\release\chronos.exe");
+        if !chronos.is_file() {
+            let _ = sender.send(ManifestationEvent::Failure {
+                prompt,
+                stage_id: Some("init".into()),
+                detail: "Chronos2 Object-mode executable is unavailable; no reference can be drawn.".into(),
+            });
+            return;
+        }
+        let reference_id = uuid::Uuid::new_v4().to_string();
+        let bundle = std::env::temp_dir()
+            .join("NeuroCognica")
+            .join("Archetypes")
+            .join("references")
+            .join(&reference_id);
+        let mut command = object_mode_command(&chronos);
+        command
+            .args(["first-light", "--prompt"])
+            .arg(&prompt)
+            .arg("--out-dir")
+            .arg(&bundle)
+            .arg("--intent-json")
+            .arg(format!("{{\"attempt\":{attempt}}}"))
+            .args(["--geometry-forge", "--void", "--reference-only"]);
+        if let Err((stage_id, detail)) = run_chronos_streaming(command, &sender, &active_pid) {
+            let _ = sender.send(ManifestationEvent::Failure {
+                prompt,
+                stage_id: Some(stage_id),
+                detail,
+            });
+            return;
+        }
+        let reference = bundle.join("reference_input.png");
+        if !reference.is_file() {
+            let _ = sender.send(ManifestationEvent::Failure {
+                prompt,
+                stage_id: Some("reference".into()),
+                detail: format!(
+                    "Chronos2 finished the reference step but wrote no picture at {}.",
+                    reference.display()
+                ),
+            });
+            return;
+        }
+        for target in target_reference_image_paths(&reference_id) {
+            if let Some(parent) = target.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::copy(&reference, &target);
+        }
+        let _ = sender.send(ManifestationEvent::ReferenceReady {
+            prompt,
+            reference,
+            reference_asset: reference_asset_path(&reference_id),
+        });
+    });
+}
+
+/// Remove an unkept object's staged files. It was never recorded, so no library row points at it.
+fn discard_staged_object(artifact_id: &str) {
+    for dir in crate::services::artifacts::manifested_asset_dirs() {
+        let _ = std::fs::remove_file(dir.join(format!("{artifact_id}.glb")));
+    }
+    for target in target_reference_image_paths(artifact_id) {
+        let _ = std::fs::remove_file(target);
+    }
+}
+
+/// Step two worker: build the object from the picture the operator approved, convert and stage
+/// it, and hand it back for review. It does not record a library row; keeping does that.
 fn dispatch_manifestation_worker(
     prompt: String,
+    reference: PathBuf,
     sender: Sender<ManifestationEvent>,
     active_pid: Arc<Mutex<Option<u32>>>,
 ) {
@@ -1145,131 +1447,23 @@ fn dispatch_manifestation_worker(
             message: "Initiating Chronos2 Object mode...".into(),
         });
 
-        let mut command = Command::new(&chronos);
+        // Build from the exact picture the operator approved. Chronos2 re-checks the request with
+        // the Sentinel and binds this file's digest into the receipt, so the pairing on the altar
+        // (picture under the object it became) stays true.
+        let mut command = object_mode_command(&chronos);
         command
             .args(["first-light", "--prompt"])
             .arg(&prompt)
-            .args(["--out-dir"])
+            .arg("--out-dir")
             .arg(&bundle)
-            .args([
-                "--intent-json",
-                "{\"attempt\":2}",
-                "--geometry-forge",
-                "--void",
-            ]);
-
-        // Use Chronos2's default compact Flux reference lane. The accepted
-        // ice-cream witness came from its clean 768px isolated product view.
-        // Forcing the legacy Juggernaut SDXL lane selected a different 512px
-        // cached image with a floor, cast shadow and disconnected silhouette.
-        // Remove even a process-level override so the game and the witnessed
-        // direct Chronos command cannot silently diverge again.
-        command.env_remove("CHRONOS_FORGE_REFERENCE_CKPT");
-        // The Forge has 12 GB VRAM. Force the accepted 768px object-reference workflow rather
-        // than inheriting a stale low-VRAM profile that silently drops it to 512px.
-        command.env("CHRONOS_FLUX_PROFILE", "normal");
-        // A machine-wide override left tonight's failed sword run apparently frozen for 420s.
-        // Object references have their own bounded budget and must not inherit canvas timings.
-        command.env("CHRONOS_COMFY_REFERENCE_POLL_TIMEOUT_SECS", "180");
-        // Marching-cubes grid for the reconstruction. Chronos2 defaults to 256; this is the one
-        // geometry-fidelity knob it exposes, and a finer grid recovers detail that 256 rounds
-        // away. Overridable, so a slower machine can put it back without a rebuild.
-        if std::env::var("CHRONOS_TRIPOSR_MC_RESOLUTION").is_err() {
-            command.env("CHRONOS_TRIPOSR_MC_RESOLUTION", TRIPOSR_MC_RESOLUTION);
-        }
-        command.stdout(std::process::Stdio::piped());
-        command.stderr(std::process::Stdio::piped());
-
-        #[cfg(windows)]
-        {
-            command.creation_flags(CREATE_NO_WINDOW);
-        }
-
-        let mut child = match command.spawn() {
-            Ok(c) => c,
-            Err(e) => {
-                let _ = sender.send(ManifestationEvent::Failure {
-                    prompt,
-                    stage_id: Some("start".into()),
-                    detail: format!("Failed to spawn Chronos2: {e}"),
-                });
-                return;
-            }
-        };
-
-        let child_id = child.id();
-        if let Ok(mut slot) = active_pid.lock() {
-            *slot = Some(child_id);
-        }
-
-        let stdout = child.stdout.take();
-        let stderr = child.stderr.take();
-
-        let stderr_handle = std::thread::spawn(move || {
-            let mut err_lines = Vec::new();
-            if let Some(err) = stderr {
-                let reader = std::io::BufReader::new(err);
-                use std::io::BufRead;
-                for line in reader.lines().flatten() {
-                    eprintln!("[Chronos stderr] {line}");
-                    err_lines.push(line);
-                }
-            }
-            err_lines
-        });
-
-        let mut last_stage_id = "start".to_string();
-        let mut last_stage_msg = "Initiating".to_string();
-
-        if let Some(out) = stdout {
-            let reader = std::io::BufReader::new(out);
-            use std::io::BufRead;
-            for line in reader.lines().flatten() {
-                println!("[Chronos stdout] {line}");
-                if let Some((id, pct, state, msg)) = parse_chronos_stage(&line) {
-                    last_stage_id = id.clone();
-                    last_stage_msg = msg.clone();
-                    let _ = sender.send(ManifestationEvent::Stage {
-                        stage_id: id,
-                        pct,
-                        state,
-                        message: msg,
-                    });
-                }
-            }
-        }
-
-        let status = child.wait();
-        let err_lines = stderr_handle.join().unwrap_or_default();
-
-        if let Ok(mut slot) = active_pid.lock() {
-            *slot = None;
-        }
-
-        let Ok(exit_status) = status else {
+            .arg("--reference-image")
+            .arg(&reference)
+            .args(["--geometry-forge", "--void"]);
+        if let Err((stage_id, detail)) = run_chronos_streaming(command, &sender, &active_pid) {
             let _ = sender.send(ManifestationEvent::Failure {
                 prompt,
-                stage_id: Some(last_stage_id),
-                detail: "Chronos process wait failed".into(),
-            });
-            return;
-        };
-
-        if !exit_status.success() {
-            let err_summary = if !err_lines.is_empty() {
-                err_lines
-                    .last()
-                    .cloned()
-                    .unwrap_or_else(|| format!("Chronos exited with code {exit_status}"))
-            } else if !last_stage_msg.is_empty() {
-                last_stage_msg
-            } else {
-                format!("Chronos failed with exit code {exit_status}")
-            };
-            let _ = sender.send(ManifestationEvent::Failure {
-                prompt,
-                stage_id: Some(last_stage_id),
-                detail: err_summary,
+                stage_id: Some(stage_id),
+                detail,
             });
             return;
         }
@@ -1369,7 +1563,6 @@ fn dispatch_manifestation_worker(
                     .file_name()
                     .map(|name| name.to_string_lossy().to_string())
                     .unwrap_or_else(|| "artifact".to_string());
-                let mut staged_id = None;
                 // Written to every assets root this build might read from. A debug build reads
                 // the repository's assets/ while an installed build reads the one beside the
                 // executable, and writing only the second left dev builds unable to load their
@@ -1383,42 +1576,26 @@ fn dispatch_manifestation_worker(
                         staged_copy.get_or_insert(own);
                     }
                 }
-                {
-                    if let Some(own) = staged_copy {
-                        // Our own digest of the finished GLB. Chronos2 cannot supply this --
-                        // the GLB is produced by the Blender import above, after its bundle was
-                        // sealed -- so if Archetypes does not measure it here nothing ever does,
-                        // and the bundle is a temp directory that will not survive.
-                        let provenance = crate::services::artifacts::Provenance {
-                            sentinel_verdict: artifact.sentinel_verdict.clone(),
-                            mesh_sha256: artifact.mesh_sha256.clone(),
-                            source_image_sha256: artifact.source_image_sha256.clone(),
-                            glb_sha256: crate::services::chronos_receipt::sha256_file(&own)
-                                .unwrap_or_default(),
-                            subject_coverage: artifact.subject_coverage,
-                        };
-                        match crate::services::artifacts::record_artifact(
-                            &artifact_id,
-                            &prompt,
-                            provenance,
-                        ) {
-                            Ok(_) => staged_id = Some(artifact_id.clone()),
-                            Err(error) => {
-                                // A GLB that is not durably recorded is not a player creation:
-                                // after restart it cannot be summoned. Keep the staged file for
-                                // recovery, but fail visibly instead of declaring false success.
-                                let _ = sender.send(ManifestationEvent::Failure {
-                                    prompt,
-                                    stage_id: Some("library".into()),
-                                    detail: format!(
-                                        "Object converted, but its permanent library record could not be written: {error}. The staged file was kept for recovery."
-                                    ),
-                                });
-                                return;
-                            }
-                        }
-                    }
-                }
+                let Some(own) = staged_copy else {
+                    let _ = sender.send(ManifestationEvent::Failure {
+                        prompt,
+                        stage_id: Some("conversion".into()),
+                        detail: "The object was converted but could not be staged into any assets folder.".into(),
+                    });
+                    return;
+                };
+                // Our own digest of the finished GLB. Chronos2 cannot supply this -- the GLB is
+                // produced by the Blender import above, after its bundle was sealed -- so if
+                // Archetypes does not measure it here nothing ever does. It travels with the review
+                // and becomes the library row only if the operator keeps the object.
+                let provenance = crate::services::artifacts::Provenance {
+                    sentinel_verdict: artifact.sentinel_verdict.clone(),
+                    mesh_sha256: artifact.mesh_sha256.clone(),
+                    source_image_sha256: artifact.source_image_sha256.clone(),
+                    glb_sha256: crate::services::chronos_receipt::sha256_file(&own)
+                        .unwrap_or_default(),
+                    subject_coverage: artifact.subject_coverage,
+                };
 
                 // Stage the exact 2D reference the mesh was reconstructed from,
                 // for the floor panel at the pedestal's foot. Best-effort: the
@@ -1439,13 +1616,14 @@ fn dispatch_manifestation_worker(
                     stage_id: "placement".into(),
                     pct: 100,
                     state: "done".into(),
-                    message: "Placing artifact upon altar...".into(),
+                    message: "Placing the object on the altar for your review...".into(),
                 });
 
-                let _ = sender.send(ManifestationEvent::Success {
+                let _ = sender.send(ManifestationEvent::ObjectReady {
                     prompt,
-                    detail: "Manifestation completed successfully".into(),
-                    artifact_id: staged_id,
+                    artifact_id,
+                    provenance,
+                    judgment: artifact.judgment.clone(),
                 });
             }
             Ok(out) => {
@@ -1527,20 +1705,134 @@ fn poll_manifestation_results(
                 state.current_stage_msg = message;
                 state.pedestal_charge = (pct as f32 / 100.0).clamp(0.0, 1.0);
             }
+            ManifestationEvent::ReferenceReady {
+                prompt,
+                reference,
+                reference_asset,
+            } => {
+                if let Some(symbol) = state.floating_symbol_entity.take() {
+                    commands.entity(symbol).despawn();
+                }
+                // Only the picture goes on the altar: no object exists yet, and nothing has been
+                // spent on geometry. The operator decides whether it is worth building.
+                let p = MANIFESTATION_PEDESTAL_POS;
+                let cushion_y = p.y + 1.34;
+                if let Some(old_panel) = state.active_reference_panel.take() {
+                    commands.entity(old_panel).despawn();
+                }
+                let panel_material = materials.add(StandardMaterial {
+                    base_color_texture: Some(asset_server.load(reference_asset)),
+                    perceptual_roughness: 0.55,
+                    metallic: 0.0,
+                    ..default()
+                });
+                let panel_entity = commands
+                    .spawn((
+                        Mesh3d(meshes.add(Plane3d::default().mesh().size(
+                            MANIFESTATION_REFERENCE_PANEL_SIZE,
+                            MANIFESTATION_REFERENCE_PANEL_SIZE,
+                        ))),
+                        MeshMaterial3d(panel_material),
+                        Transform::from_translation(Vec3::new(p.x, cushion_y + 0.005, p.z)),
+                        ManifestationElement,
+                        Name::new("ManifestationReferencePanel"),
+                    ))
+                    .id();
+                state.active_reference_panel = Some(panel_entity);
+                state.pending_reference = Some(reference);
+                state.phase = ManifestationPhase::ReviewingReference;
+                state.current_stage_id = "reference_review".into();
+                state.current_stage_pct = 100;
+                state.pedestal_charge = 0.0;
+                sfx.write(PlaySfx::new(Sfx::ManifestSuccess));
+                println!("[ManifestationSystem] Reference ready for '{prompt}'; awaiting operator review.");
+            }
+            ManifestationEvent::ObjectReady {
+                prompt,
+                artifact_id,
+                provenance,
+                judgment,
+            } => {
+                // The object is revealed exactly as a finished creation is, but it is held for
+                // review: no library row, and no id on `active_artifact_id`, so `E` cannot take it
+                // before the operator keeps it.
+                reveal_object_on_altar(
+                    &mut commands,
+                    &asset_server,
+                    &mut meshes,
+                    &mut materials,
+                    &mut state,
+                    Some(&artifact_id),
+                );
+                state.active_artifact_id = None;
+                state.phase = ManifestationPhase::ReviewingObject;
+                state.current_stage_id = "object_review".into();
+                state.current_stage_msg = judgment.reason.clone();
+                state.pending_object = Some(PendingObject {
+                    artifact_id,
+                    prompt: prompt.clone(),
+                    provenance,
+                    judgment,
+                });
+                sfx.write(PlaySfx::new(Sfx::ManifestSuccess));
+                println!("[ManifestationSystem] Object ready for '{prompt}'; awaiting keep or discard.");
+            }
             ManifestationEvent::Success {
                 prompt,
                 detail: _,
                 artifact_id,
             } => {
-                // SUCCESS: Despawn the phasing hourglass
+                reveal_object_on_altar(
+                    &mut commands,
+                    &asset_server,
+                    &mut meshes,
+                    &mut materials,
+                    &mut state,
+                    artifact_id.as_deref(),
+                );
+                state.phase = ManifestationPhase::Completed;
+                state.current_stage_msg = "Summoned".into();
+                sfx.write(PlaySfx::new(Sfx::ManifestSuccess));
+                println!("[ManifestationSystem] Succeeded: Manifested '{prompt}' atop the altar!");
+            }
+            ManifestationEvent::Failure {
+                prompt: _,
+                stage_id,
+                detail,
+            } => {
+                state.phase = ManifestationPhase::Failed;
+                state.current_stage_id = stage_id.unwrap_or_else(|| "failure".into());
+                state.error_message = detail.clone();
+                state.pedestal_charge = 0.0;
+
+                spawn_floating_red_x(&mut commands, &mut meshes, &mut materials, &mut state);
+                sfx.write(PlaySfx::new(Sfx::ManifestFailure));
+                eprintln!("[ManifestationSystem] Manifestation Failed: {detail}");
+            }
+        }
+    }
+}
+
+/// Stage a converted object on the cushion with its reveal, and the picture it came from
+/// underneath. Shared by the kept-creation reveal and the review reveal, which differ only in
+/// what happens after the operator sees it.
+fn reveal_object_on_altar(
+    commands: &mut Commands,
+    asset_server: &AssetServer,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    state: &mut ManifestationState,
+    artifact_id: Option<&str>,
+) {
+    {
+        {
+                // Despawn the phasing hourglass
                 if let Some(symbol) = state.floating_symbol_entity.take() {
                     commands.entity(symbol).despawn();
                 }
 
-                state.phase = ManifestationPhase::Completed;
                 state.current_stage_id = "complete".into();
                 state.current_stage_pct = 100;
-                state.current_stage_msg = "Summoned".into();
                 state.pedestal_charge = 0.0;
 
                 // Despawn old artifact if present
@@ -1610,7 +1902,7 @@ fn poll_manifestation_results(
                 // Spawn newly summoned object atop the velvet cushion (validated import)
                 let artifact_entity = commands
                     .spawn((
-                        SceneRoot(asset_server.load(artifact_scene_path(artifact_id.as_deref()))),
+                        SceneRoot(asset_server.load(artifact_scene_path(artifact_id))),
                         Transform::from_xyz(p.x, cushion_y + MANIFESTATION_OBJECT_LIFT, p.z)
                             .with_scale(Vec3::splat(MANIFESTATION_OBJECT_SCALE)),
                         // One revolution in about eleven seconds: slow enough
@@ -1621,8 +1913,10 @@ fn poll_manifestation_results(
                     ))
                     .id();
 
+                // The entity is on the altar either way. Whether `E` may take it
+                // (`active_artifact_id`) is the caller's decision: kept creations yes,
+                // objects still under review no.
                 state.active_artifact = Some(artifact_entity);
-                state.active_artifact_id = artifact_id.clone();
 
                 // The same painting Chronos2 generated and fed to TripoSR, laid flat on the
                 // cushion **underneath** the object it became. The player reads the sequence
@@ -1643,7 +1937,7 @@ fn poll_manifestation_results(
                 let panel_pos = Vec3::new(p.x, cushion_y + 0.005, p.z);
                 let panel_material = materials.add(StandardMaterial {
                     base_color_texture: Some(asset_server.load(reference_asset_path(
-                        artifact_id.as_deref().unwrap_or("legacy"),
+                        artifact_id.unwrap_or("legacy"),
                     ))),
                     perceptual_roughness: 0.55,
                     metallic: 0.0,
@@ -1662,24 +1956,6 @@ fn poll_manifestation_results(
                     ))
                     .id();
                 state.active_reference_panel = Some(panel_entity);
-
-                sfx.write(PlaySfx::new(Sfx::ManifestSuccess));
-                println!("[ManifestationSystem] Succeeded: Manifested '{prompt}' atop the altar!");
-            }
-            ManifestationEvent::Failure {
-                prompt: _,
-                stage_id,
-                detail,
-            } => {
-                state.phase = ManifestationPhase::Failed;
-                state.current_stage_id = stage_id.unwrap_or_else(|| "failure".into());
-                state.error_message = detail.clone();
-                state.pedestal_charge = 0.0;
-
-                spawn_floating_red_x(&mut commands, &mut meshes, &mut materials, &mut state);
-                sfx.write(PlaySfx::new(Sfx::ManifestFailure));
-                eprintln!("[ManifestationSystem] Manifestation Failed: {detail}");
-            }
         }
     }
 }
@@ -1730,18 +2006,55 @@ fn update_manifestation_hud(
     };
 
     match state.phase {
-        ManifestationPhase::Manifesting => {
+        ManifestationPhase::DrawingReference | ManifestationPhase::Manifesting => {
             *banner_vis = Visibility::Visible;
             let stage_label = if !state.current_stage_msg.is_empty() {
                 &state.current_stage_msg
             } else {
                 "Initiating Chronos2..."
             };
+            let step = if state.phase == ManifestationPhase::DrawingReference {
+                "Step 1 of 2"
+            } else {
+                "Step 2 of 2"
+            };
             text.0 = format!(
-                "⏳ [{}%] {}: \"{}\" [{:.1}s] — Press [Esc] to cancel",
+                "⏳ {step} [{}%] {}: \"{}\" [{:.1}s] — Press [Esc] to cancel",
                 state.current_stage_pct, stage_label, state.active_prompt, state.waiting_elapsed
             );
             color.0 = Color::srgb(1.0, 0.85, 0.30); // Warm amber
+        }
+        ManifestationPhase::ReviewingReference => {
+            *banner_vis = Visibility::Visible;
+            text.0 = format!(
+                "🖼 REFERENCE for \"{}\" is on the altar. [Enter] build the object from it · [R] draw a different picture · [Esc] cancel",
+                state.active_prompt
+            );
+            color.0 = Color::srgb(0.55, 0.85, 1.0); // Calm review blue
+        }
+        ManifestationPhase::ReviewingObject => {
+            *banner_vis = Visibility::Visible;
+            // Chronos2's automated check is shown as advice. The operator decides.
+            let advice = match state.pending_object.as_ref().map(|pending| &pending.judgment) {
+                Some(judgment) if !judgment.checked => {
+                    format!("Automated check did not run: {}", judgment.reason)
+                }
+                Some(judgment) => format!(
+                    "Automated check {} ({}): {}",
+                    if judgment.matches { "agrees" } else { "has doubts" },
+                    judgment
+                        .score
+                        .map(|score| format!("{score:.2}"))
+                        .unwrap_or_else(|| "no score".to_string()),
+                    judgment.reason
+                ),
+                None => "No automated check was recorded.".to_string(),
+            };
+            text.0 = format!(
+                "🔍 REVIEW \"{}\" — {advice} — [Enter] keep it · [X] discard it",
+                state.active_prompt
+            );
+            color.0 = Color::srgb(0.55, 0.85, 1.0); // Calm review blue
         }
         ManifestationPhase::Failed => {
             *banner_vis = Visibility::Visible;
@@ -1768,7 +2081,11 @@ fn update_manifestation_hud(
 const ACTIVE_FRAME_INTERVAL: Duration = Duration::from_nanos(16_666_667);
 const MANIFESTING_FRAME_INTERVAL: Duration = Duration::from_nanos(66_666_667);
 fn manifestation_frame_interval(phase: &ManifestationPhase) -> Duration {
-    if *phase == ManifestationPhase::Manifesting {
+    // Both Chronos2 steps put Flux or Hunyuan on the same GPU the game renders with.
+    if matches!(
+        phase,
+        ManifestationPhase::DrawingReference | ManifestationPhase::Manifesting
+    ) {
         MANIFESTING_FRAME_INTERVAL
     } else {
         ACTIVE_FRAME_INTERVAL
@@ -1902,9 +2219,20 @@ mod tests {
             .expect("manifestation source readable");
         assert!(source.contains("command.env_remove(\"CHRONOS_FORGE_REFERENCE_CKPT\")"));
         assert!(source.contains("command.env(\"CHRONOS_FLUX_PROFILE\", \"normal\")"));
+        // The first reference of every request is drawn from the witnessed single-subject seed
+        // (attempt 2). Only the operator's explicit redraw moves off it, and it must really move,
+        // or `R` would paint the same picture again.
         assert!(
-            source.contains("\"{\\\"attempt\\\":2}\"") ,
-            "the buyer path must use the witnessed single-subject candidate seed"
+            source.contains("state.reference_attempt = 2;"),
+            "the buyer path must start from the witnessed single-subject candidate seed"
+        );
+        assert!(
+            source.contains(".arg(format!(\"{{\\\"attempt\\\":{attempt}}}\"))"),
+            "the reference step must hand Chronos2 the attempt it was asked for"
+        );
+        assert!(
+            source.contains("state.reference_attempt += 1;"),
+            "a redraw must advance to a new reference attempt"
         );
         assert!(
             source.contains("command.env(\"CHRONOS_COMFY_REFERENCE_POLL_TIMEOUT_SECS\", \"180\")")

@@ -1,0 +1,75 @@
+[Chronos stdout] [chronos-stage] id=start pct=2 state=begin msg=Starting your creation
+[Chronos stdout] [first-light] creating a brand-new artifact from your prompt — this is a live generation, not a saved file.
+[Chronos stdout] [first-light] material mode: Auto
+[Chronos stdout] [chronos-stage] id=start pct=2 state=done msg=Starting your creation
+[Chronos stdout] [chronos-stage] id=intent pct=5 state=begin msg=Recording what you asked for
+[Chronos stdout] [chronos-stage] id=intent pct=5 state=done msg=Recording what you asked for
+[Chronos stdout] [chronos-stage] id=sentinel pct=6 state=begin msg=Sentinel is reviewing your request
+[Chronos stdout] [chronos-stage] id=sentinel pct=6 state=done msg=Sentinel is reviewing your request - cleared - no prohibited use found
+[Chronos stdout] [chronos-stage] id=forge_plan pct=52 state=begin msg=Planning the geometry - Drawing the object reference
+[Chronos stdout] [object] reference ready for review -> C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\references\73f84e32-8686-49b5-b93a-0de013664d5a\reference_input.png
+[Chronos stdout] [chronos-stage] id=complete pct=100 state=done msg=Finished
+[ManifestationSystem] Reference ready for 'a wolf'; awaiting operator review.
+[Chronos stdout] [chronos-stage] id=start pct=2 state=begin msg=Starting your creation
+[Chronos stdout] [first-light] creating a brand-new artifact from your prompt — this is a live generation, not a saved file.
+[Chronos stdout] [first-light] material mode: Auto
+[Chronos stdout] [chronos-stage] id=start pct=2 state=done msg=Starting your creation
+[Chronos stdout] [chronos-stage] id=intent pct=5 state=begin msg=Recording what you asked for
+[Chronos stdout] [chronos-stage] id=intent pct=5 state=done msg=Recording what you asked for
+[Chronos stdout] [chronos-stage] id=sentinel pct=6 state=begin msg=Sentinel is reviewing your request
+[Chronos stdout] [chronos-stage] id=sentinel pct=6 state=done msg=Sentinel is reviewing your request - cleared - no prohibited use found
+[Chronos stdout] [chronos-decision] kind=governance id=village_protection verdict=allowed msg=The Sentinel read your request against the published prohibited-use policy on this machine and cleared it.
+[Chronos stdout] [chronos-stage] id=oracle pct=8 state=skip msg=Imagining your scene with the local language model - Object mode paints its own views; the language-model scene plan is not used
+[Chronos stdout] [governed-artifact] oracle: skipped — Object mode does not consume the scene sketch
+[Chronos stdout] [chronos-stage] id=staging pct=18 state=begin msg=Checking and freezing the scene plan
+[Chronos stdout] [object] ComfyUI ready at http://127.0.0.1:8000 (attempt 1)
+[Chronos stdout] [chronos-stage] id=forge_plan pct=52 state=begin msg=Planning the geometry - Object reference for Hunyuan3D
+[Chronos stdout] [object] using operator-supplied reference image: C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\references\73f84e32-8686-49b5-b93a-0de013664d5a\reference_input.png
+[Chronos stdout] [engine] building the Object-mode body with Hunyuan3D-2…
+[Chronos stdout] PointCrossAttentionEncoder INFO: pc_sharpedge_size is given, using pc_size=5120, pc_sharpedge_size=5120
+[Chronos stdout] HUNYUAN_MESH_PASS mesh=C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\5b8b4bd7-03a3-4435-9d42-c16cc1309423\engine_mesh\0\mesh.obj receipt=C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\5b8b4bd7-03a3-4435-9d42-c16cc1309423\engine_mesh\hunyuan_artifact.json verts=279693 faces=559382 watertight=True
+[Chronos stdout] [chronos-stage] id=forge_plan pct=52 state=done msg=Planning the geometry
+[Chronos stdout] [chronos-decision] kind=engine id=hunyuan3d verdict=chosen msg=Hunyuan3D-2 produced the Object-mode mesh from the operator-supplied reference image.
+[Chronos stdout] [chronos-stage] id=staging pct=18 state=done msg=Checking and freezing the scene plan
+[Chronos stdout] [chronos-stage] id=materials pct=22 state=skip msg=Synthesizing the materials - Object mode paints its own reference views; PBR maps from this sketch are not used
+[Chronos stdout] [object] staging the owned multi-view mesh for buyer review
+[Chronos stdout] [chronos-decision] kind=presentation id=multiview_showcase verdict=chosen msg=Staged the closed mesh beside the exact front, right, and top sources consumed by geometry.
+[Chronos stdout] [chronos-stage] id=blender_connect pct=64 state=begin msg=Connecting to Blender
+[Chronos stdout] [governed-artifact] connecting to BlenderMCP at tcp://127.0.0.1:9876
+[Chronos stdout] [chronos-stage] id=blender_connect pct=64 state=done msg=Connecting to Blender
+[Chronos stdout] [chronos-stage] id=render pct=68 state=begin msg=Building and rendering in Blender
+[Chronos stdout] [governed-artifact] triposr_object: dispatching authorized render through the governed gate…
+[Chronos stdout] [chronos-stage] id=render pct=68 state=done msg=Building and rendering in Blender
+[Chronos stdout] [chronos-stage] id=redteam pct=88 state=begin msg=Governance check - proving the refusal path works
+[Chronos stdout] [governed-artifact] red-team: attempting an unauthorized command (must be refused)…
+[Chronos stdout] [chronos-stage] id=redteam pct=88 state=done msg=Governance check - proving the refusal path works
+[Chronos stdout] [chronos-stage] id=seal pct=92 state=begin msg=Sealing the provenance record
+[Chronos stdout] [chronos-stage] id=seal pct=92 state=done msg=Sealing the provenance record
+[Chronos stdout] [chronos-decision] kind=guard id=subject_match verdict=discarded msg=At least one reconstruction-aligned view failed; weakest score 0.376.
+[Chronos stdout] [object] subject match sealed -> C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\5b8b4bd7-03a3-4435-9d42-c16cc1309423\subject_match.json
+[Chronos stdout] [chronos-stage] id=bundle pct=97 state=begin msg=Writing your artifact bundle
+[Chronos stdout] 
+[Chronos stdout] === Undeniable Artifact Run I ===
+[Chronos stdout]   bundle:            C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\5b8b4bd7-03a3-4435-9d42-c16cc1309423
+[Chronos stdout]   render dispatched: true
+[Chronos stdout]   drift blocked:     YES (CBIG)
+[Chronos stdout]   chain valid:       true
+[Chronos stdout]   comfy material:    applied
+[Chronos stdout]   artifact png:      bf695d3100e948f0e6351a8934e5093275b4f0df6fe3c1a99285b39bda130392
+[Chronos stdout]   events sealed:     15
+[Chronos stdout] [chronos-stage] id=bundle pct=97 state=done msg=Writing your artifact bundle
+[Chronos stdout] [chronos-stage] id=complete pct=100 state=done msg=Finished
+[Chronos stdout] [spin] background spin job started for C:\Users\m\AppData\Local\Temp\NeuroCognica\Archetypes\manifestations\5b8b4bd7-03a3-4435-9d42-c16cc1309423
+[archetypes-import] topology-preserving smooth shading; vertex colour carried
+[archetypes-import] generic triangle budget: 559382 -> 75000 (limit 75000); mesh_repaired=False
+INFO Draco mesh compression is available, use library at C:\Program Files\Blender Foundation\Blender 4.5\4.5\scripts\addons_core\io_scene_gltf2\extern_draco.dll
+20:17:14 | INFO: Starting glTF 2.0 export
+20:17:14 | INFO: Extracting primitive: mesh
+20:17:14 | INFO: Primitives created: 1
+20:17:14 | INFO: Finished glTF 2.0 export in 0.13766098022460938 s
+
+Blender 4.5.4 LTS (hash b3efe983cc58 built 2025-10-28 14:22:47)
+OBJ import of 'mesh.obj' took 430.26 ms
+
+Blender quit
+[ManifestationSystem] Object ready for 'a wolf'; awaiting keep or discard.

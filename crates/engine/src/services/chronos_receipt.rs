@@ -53,10 +53,10 @@ pub const HUNYUAN_RECEIPT_SCHEMA: &str = "chronosophia.hunyuan3d-mesh.v1";
 /// rarely fire -- but a floor that rarely fires is exactly the one worth keeping, because what
 /// it catches is noise being handed to the player as their own work.
 ///
-/// This is independent of `subject_match.json`: coverage catches a missing silhouette, while
-/// subject match catches a completed reconstruction that Chronos2 itself judged to be the wrong
-/// object. Both have to pass. A weak historical scorer is a reason to improve the scorer, not a
-/// reason to import an artifact whose machine-readable verdict is explicitly `matches=false`.
+/// This is independent of `subject_match.json`, and it is a different kind of fact. Coverage below
+/// this floor means no subject was extracted at all, so there is nothing to review and the bundle
+/// is refused. The subject-match verdict judges whether a completed body looks right; that is
+/// taste, so it travels to the operator's review screen as advice (`GameArtifact::judgment`).
 pub const MIN_SUBJECT_COVERAGE: f64 = 0.02;
 
 /// A verified Chronos2 bundle: what was asked for, what governed it, and what was built.
@@ -75,6 +75,20 @@ pub struct GameArtifact {
     pub source_image: PathBuf,
     pub source_image_sha256: String,
     pub subject_coverage: f64,
+    /// Chronos2's automated opinion of the finished body. Advice for the operator, never a gate:
+    /// the operator decides whether a creation failed (direction of 2026-09-13, after the scorer
+    /// refused a correct soccer ball at 0.4563 and a recognisable wolf at 0.3763).
+    pub judgment: SubjectJudgment,
+}
+
+/// What `subject_match.json` said, carried to the review screen as-is.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SubjectJudgment {
+    /// Whether the comparison actually ran. False when the file is absent or unreadable.
+    pub checked: bool,
+    pub matches: bool,
+    pub score: Option<f64>,
+    pub reason: String,
 }
 
 /// Every way a bundle can fail to be evidence.
@@ -92,12 +106,6 @@ pub enum ReceiptFault {
     DigestMismatch { what: &'static str, declared: String, measured: String },
     IntegrityBroken { detail: String },
     SubjectLost { coverage: f64 },
-    SubjectRejected {
-        checked: bool,
-        matches: bool,
-        score: Option<f64>,
-        reason: String,
-    },
     ReconstructionContract { detail: String },
 }
 
@@ -106,7 +114,7 @@ impl ReceiptFault {
     pub fn stage_id(&self) -> &'static str {
         match self {
             ReceiptFault::SentinelRefused { .. } | ReceiptFault::GovernanceMissing => "sentinel",
-            ReceiptFault::SubjectLost { .. } | ReceiptFault::SubjectRejected { .. } => "subject",
+            ReceiptFault::SubjectLost { .. } => "subject",
             _ => "geometry_forge",
         }
     }
@@ -164,19 +172,6 @@ impl fmt::Display for ReceiptFault {
                  reference survived, so the reconstruction was built from a nearly blank frame. \
                  This usually means the subject was close in colour to its backdrop.",
                 coverage * 100.0
-            ),
-            ReceiptFault::SubjectRejected {
-                checked,
-                matches,
-                score,
-                reason,
-            } => write!(
-                formatter,
-                "Chronos2 rejected its own reconstruction: checked={checked}, matches={matches}, \
-                 score={}. {reason} Nothing was imported or saved to your object library.",
-                score
-                    .map(|value| format!("{value:.4}"))
-                    .unwrap_or_else(|| "not recorded".to_string())
             ),
             ReceiptFault::ReconstructionContract { detail } => write!(
                 formatter,
@@ -349,44 +344,44 @@ pub fn verify(bundle: &Path, asked_prompt: &str) -> Result<GameArtifact, Receipt
         check_digest("recorded prompt", &prompt_path, declared, Digest::Blake3)?;
     }
 
-    // 4. The finished-object judgment. Generation is still attempted for every Sentinel-cleared
-    //    prompt; this is a post-generation acceptance gate. `matches=false` used to be advisory,
-    //    which allowed an artifact Chronos2 had explicitly rejected to enter the permanent game
-    //    library. Missing or unchecked evidence fails closed for the same reason: absence of a
-    //    passing judgment is not evidence of a passing object.
-    let subject_match = read_json(&bundle.join("subject_match.json"), "subject-match judgment")?;
-    if let Some(declared) = manifest
-        .get("bundle_files")
-        .and_then(|files| files.get("subject_match.json"))
-        .and_then(|value| value.as_str())
-    {
-        check_digest(
-            "subject-match judgment",
-            &bundle.join("subject_match.json"),
-            declared,
-            Digest::Blake3,
-        )?;
-    }
-    let checked = subject_match
-        .get("checked")
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false);
-    let matches = subject_match
-        .get("matches")
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false);
-    if !checked || !matches {
-        return Err(ReceiptFault::SubjectRejected {
-            checked,
-            matches,
+    // 4. The finished-object judgment, as ADVICE. Chronos2's scorer is shown to the operator on
+    //    the review screen and the operator keeps or discards the object. It is not a gate:
+    //    installed runs on 2026-09-13 had it refuse a correct soccer ball (0.4563, the reference's
+    //    floor shadow counted as subject) and a recognisable wolf (0.3763, the mesh turned 145
+    //    degrees from the picture's view). A tampered judgment is still refused below, because
+    //    a digest mismatch is a fact, not taste.
+    let subject_path = bundle.join("subject_match.json");
+    let judgment = if subject_path.is_file() {
+        if let Some(declared) = manifest
+            .get("bundle_files")
+            .and_then(|files| files.get("subject_match.json"))
+            .and_then(|value| value.as_str())
+        {
+            check_digest("subject-match judgment", &subject_path, declared, Digest::Blake3)?;
+        }
+        let subject_match = read_json(&subject_path, "subject-match judgment")?;
+        SubjectJudgment {
+            checked: subject_match
+                .get("checked")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false),
+            matches: subject_match
+                .get("matches")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false),
             score: subject_match.get("score").and_then(|value| value.as_f64()),
             reason: subject_match
                 .get("reason")
                 .and_then(|value| value.as_str())
-                .unwrap_or("No passing subject-match reason was recorded.")
+                .unwrap_or("No reason was recorded.")
                 .to_string(),
-        });
-    }
+        }
+    } else {
+        SubjectJudgment {
+            reason: "Chronos2 recorded no automated shape check for this object.".to_string(),
+            ..SubjectJudgment::default()
+        }
+    };
 
     // 5. The reconstruction receipt, and the bytes it speaks for.
     let hunyuan_path = bundle.join("engine_mesh").join("hunyuan_artifact.json");
@@ -526,6 +521,7 @@ pub fn verify(bundle: &Path, asked_prompt: &str) -> Result<GameArtifact, Receipt
         source_image,
         source_image_sha256,
         subject_coverage,
+        judgment,
     })
 }
 
@@ -740,47 +736,63 @@ mod tests {
         ));
     }
 
+    /// The operator decides whether a creation failed. A `matches=false` verdict reaches the review
+    /// screen intact, with its score and reason, instead of refusing the bundle.
     #[test]
-    fn a_completed_artifact_with_matches_false_is_never_imported() {
+    fn a_matches_false_verdict_is_carried_as_advice_not_a_refusal() {
         let bundle = Bundle::new("subject-false");
         bundle.put(
             "subject_match.json",
             r#"{"schema":"chronos.subject_match.v1","checked":true,"matches":false,"score":0.5024,"reason":"render did not preserve the requested subject"}"#,
         );
-        let fault = verify(bundle.path(), "a brass astrolabe").unwrap_err();
-        assert!(
-            matches!(
-                &fault,
-                ReceiptFault::SubjectRejected {
-                    checked: true,
-                    matches: false,
-                    score: Some(score),
-                    ..
-                } if (*score - 0.5024).abs() < f64::EPSILON
-            ),
-            "{fault:?}"
+        let artifact = verify(bundle.path(), "a brass astrolabe").expect("advice, not refusal");
+        assert!(artifact.judgment.checked);
+        assert!(!artifact.judgment.matches);
+        assert_eq!(artifact.judgment.score, Some(0.5024));
+        assert_eq!(
+            artifact.judgment.reason,
+            "render did not preserve the requested subject"
         );
-        assert_eq!(fault.stage_id(), "subject");
-        assert!(fault.to_string().contains("Nothing was imported or saved"));
     }
 
+    /// An unchecked or absent judgment is shown as "not checked", never silently as a pass.
     #[test]
-    fn an_unchecked_or_missing_subject_judgment_fails_closed() {
+    fn an_unchecked_or_missing_subject_judgment_is_reported_as_not_checked() {
         let unchecked = Bundle::new("subject-unchecked");
         unchecked.put(
             "subject_match.json",
             r#"{"schema":"chronos.subject_match.v1","checked":false,"matches":true}"#,
         );
-        assert!(matches!(
-            verify(unchecked.path(), "a brass astrolabe").unwrap_err(),
-            ReceiptFault::SubjectRejected { checked: false, .. }
-        ));
+        let judgment = verify(unchecked.path(), "a brass astrolabe").unwrap().judgment;
+        assert!(!judgment.checked);
 
         let missing = Bundle::new("subject-missing");
         fs::remove_file(missing.path().join("subject_match.json")).unwrap();
+        let judgment = verify(missing.path(), "a brass astrolabe").unwrap().judgment;
+        assert!(!judgment.checked);
+        assert!(!judgment.matches);
+        assert!(judgment.reason.contains("no automated shape check"));
+    }
+
+    /// Advice must not become a way around integrity: a judgment edited after sealing is refused.
+    #[test]
+    fn a_subject_judgment_edited_after_sealing_is_still_refused() {
+        let bundle = Bundle::new("subject-tampered");
+        let digest = Digest::Blake3.of(&bundle.path().join("subject_match.json")).unwrap();
+        let prompt_digest = Digest::Blake3.of(&bundle.path().join("human_prompt.txt")).unwrap();
+        bundle.put(
+            "manifest.json",
+            &format!(
+                r#"{{"codex_verify_valid":true,"bundle_files":{{"human_prompt.txt":"{prompt_digest}","subject_match.json":"{digest}"}}}}"#
+            ),
+        );
+        bundle.put(
+            "subject_match.json",
+            r#"{"schema":"chronos.subject_match.v1","checked":true,"matches":true,"score":0.99,"reason":"edited"}"#,
+        );
         assert!(matches!(
-            verify(missing.path(), "a brass astrolabe").unwrap_err(),
-            ReceiptFault::Missing { what: "subject-match judgment", .. }
+            verify(bundle.path(), "a brass astrolabe").unwrap_err(),
+            ReceiptFault::DigestMismatch { what: "subject-match judgment", .. }
         ));
     }
 
@@ -867,14 +879,6 @@ mod tests {
                 Err(ReceiptFault::SubjectLost { coverage }) => {
                     assert!(coverage < MIN_SUBJECT_COVERAGE);
                 }
-                // Historical bundles that already recorded `matches=false` are now expected
-                // rejections. Keeping them in the lab proves this gate closes the exact hole
-                // that used to import them.
-                Err(ReceiptFault::SubjectRejected {
-                    checked: true,
-                    matches: false,
-                    ..
-                }) => {}
                 Err(fault) => panic!("{}: {fault:?}", bundle.display()),
             }
             checked += 1;
