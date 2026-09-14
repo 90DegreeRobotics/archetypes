@@ -35,6 +35,9 @@ use std::path::{Path, PathBuf};
 /// under v1 assumptions.
 pub const TRIPOSR_RECEIPT_SCHEMA: &str = "chronosophia.triposr-mesh.v1";
 pub const MULTIVIEW_RECEIPT_SCHEMA: &str = "chronosophia.multiview-mesh.v1";
+/// Hunyuan3D-2 single-image lane (operator-local evaluation, 2026-09-13). Same evidence shape as
+/// the TripoSR receipt: one digest-bound source image, a mesh digest, and subject coverage.
+pub const HUNYUAN_RECEIPT_SCHEMA: &str = "chronosophia.hunyuan3d-mesh.v1";
 
 /// Below this share of the reference image, subject extraction has collapsed and TripoSR was
 /// handed a nearly blank frame.
@@ -126,7 +129,8 @@ impl fmt::Display for ReceiptFault {
             ReceiptFault::SchemaMismatch { found } => write!(
                 formatter,
                 "This Chronos2 speaks receipt version '{found}', and this build understands \
-                 '{TRIPOSR_RECEIPT_SCHEMA}' and '{MULTIVIEW_RECEIPT_SCHEMA}'. Refusing rather than reading its numbers under the \
+                 '{TRIPOSR_RECEIPT_SCHEMA}', '{MULTIVIEW_RECEIPT_SCHEMA}' and \
+                 '{HUNYUAN_RECEIPT_SCHEMA}'. Refusing rather than reading its numbers under the \
                  wrong assumptions."
             ),
             ReceiptFault::SentinelRefused { verdict, message } => write!(
@@ -385,8 +389,11 @@ pub fn verify(bundle: &Path, asked_prompt: &str) -> Result<GameArtifact, Receipt
     }
 
     // 5. The reconstruction receipt, and the bytes it speaks for.
+    let hunyuan_path = bundle.join("engine_mesh").join("hunyuan_artifact.json");
     let multiview_path = bundle.join("engine_mesh").join("multiview_artifact.json");
-    let (receipt_path, receipt_name) = if multiview_path.is_file() {
+    let (receipt_path, receipt_name) = if hunyuan_path.is_file() {
+        (hunyuan_path, "Hunyuan3D reconstruction receipt")
+    } else if multiview_path.is_file() {
         (multiview_path, "multi-view reconstruction receipt")
     } else {
         (
@@ -396,7 +403,12 @@ pub fn verify(bundle: &Path, asked_prompt: &str) -> Result<GameArtifact, Receipt
     };
     let receipt = read_json(&receipt_path, receipt_name)?;
     let schema = receipt.get("schema").and_then(|value| value.as_str()).unwrap_or_default();
-    if schema != TRIPOSR_RECEIPT_SCHEMA && schema != MULTIVIEW_RECEIPT_SCHEMA {
+    // Hunyuan3D is single-image like TripoSR, so it shares the single-source branch below:
+    // one digest-bound reference and a recorded subject coverage.
+    if schema != TRIPOSR_RECEIPT_SCHEMA
+        && schema != MULTIVIEW_RECEIPT_SCHEMA
+        && schema != HUNYUAN_RECEIPT_SCHEMA
+    {
         return Err(ReceiptFault::SchemaMismatch { found: schema.to_string() });
     }
 
@@ -699,6 +711,33 @@ mod tests {
             matches!(&fault, ReceiptFault::DigestMismatch { what, .. } if *what == "reference image"),
             "{fault:?}"
         );
+    }
+
+    /// The Hunyuan3D lane writes its own receipt beside the mesh. It is single-image, so it must
+    /// verify through the same source-image digest and coverage checks as TripoSR, and its
+    /// digests must still be enforced.
+    #[test]
+    fn a_hunyuan3d_receipt_verifies_and_its_mesh_digest_is_enforced() {
+        let bundle = Bundle::new("hunyuan");
+        let engine = bundle.path().join("engine_mesh");
+        let mesh_hash = sha256_file(&engine.join("0").join("mesh.obj")).unwrap();
+        let image_hash = sha256_file(&bundle.path().join("reference_input.png")).unwrap();
+        fs::remove_file(engine.join("triposr_artifact.json")).unwrap();
+        fs::write(
+            engine.join("hunyuan_artifact.json"),
+            format!(
+                r#"{{"schema":"{HUNYUAN_RECEIPT_SCHEMA}","source_image":{{"sha256":"{image_hash}"}},"mesh":{{"sha256":"{mesh_hash}"}},"preparation":{{"subject_coverage":0.3395}}}}"#
+            ),
+        )
+        .unwrap();
+        let artifact = verify(bundle.path(), "a brass astrolabe").expect("Hunyuan3D bundle verifies");
+        assert_eq!(artifact.subject_coverage, 0.3395);
+
+        fs::write(engine.join("0").join("mesh.obj"), "v 9 9 9\n").unwrap();
+        assert!(matches!(
+            verify(bundle.path(), "a brass astrolabe").unwrap_err(),
+            ReceiptFault::DigestMismatch { what: "reconstructed mesh", .. }
+        ));
     }
 
     #[test]
